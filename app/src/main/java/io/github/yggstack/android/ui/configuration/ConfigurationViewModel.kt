@@ -1,9 +1,17 @@
 package io.github.yggstack.android.ui.configuration
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Build
+import android.os.IBinder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.yggstack.android.data.*
+import io.github.yggstack.android.service.YggstackConfigParcelable
+import io.github.yggstack.android.service.YggstackService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -11,7 +19,8 @@ import kotlinx.coroutines.launch
  * ViewModel for Configuration screen
  */
 class ConfigurationViewModel(
-    private val repository: ConfigRepository
+    private val repository: ConfigRepository,
+    private val context: Context
 ) : ViewModel() {
 
     private val _config = MutableStateFlow(YggstackConfig())
@@ -26,8 +35,81 @@ class ConfigurationViewModel(
     private val _showPrivateKey = MutableStateFlow(false)
     val showPrivateKey: StateFlow<Boolean> = _showPrivateKey.asStateFlow()
 
+    private var yggstackService: YggstackService? = null
+    private var serviceBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val localBinder = binder as? YggstackService.YggstackBinder
+            yggstackService = localBinder?.getService()
+            serviceBound = true
+
+            // Sync initial state immediately
+            yggstackService?.let { service ->
+                _serviceState.value = if (service.isRunning.value) {
+                    ServiceState.Running
+                } else {
+                    ServiceState.Stopped
+                }
+                _yggdrasilIp.value = service.yggdrasilIp.value
+
+                // Observe service state changes
+                viewModelScope.launch {
+                    service.isRunning.collect { running ->
+                        // Only update if not in transitional state (Starting/Stopping)
+                        // Let those states timeout naturally
+                        if (_serviceState.value !is ServiceState.Starting &&
+                            _serviceState.value !is ServiceState.Stopping) {
+                            _serviceState.value = if (running) {
+                                ServiceState.Running
+                            } else {
+                                ServiceState.Stopped
+                            }
+                        } else if (running && _serviceState.value is ServiceState.Starting) {
+                            // Override Starting state when we detect service is running
+                            _serviceState.value = ServiceState.Running
+                        } else if (!running && _serviceState.value is ServiceState.Stopping) {
+                            // Override Stopping state when we detect service stopped
+                            _serviceState.value = ServiceState.Stopped
+                        }
+                    }
+                }
+                viewModelScope.launch {
+                    service.yggdrasilIp.collect { ip ->
+                        _yggdrasilIp.value = ip
+                    }
+                }
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            serviceBound = false
+            yggstackService = null
+            _serviceState.value = ServiceState.Stopped
+            _yggdrasilIp.value = null
+        }
+    }
+
     init {
         loadConfig()
+        bindToService()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        unbindFromService()
+    }
+
+    private fun bindToService() {
+        val intent = Intent(context, YggstackService::class.java)
+        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
+    private fun unbindFromService() {
+        if (serviceBound) {
+            context.unbindService(serviceConnection)
+            serviceBound = false
+        }
     }
 
     private fun loadConfig() {
@@ -107,21 +189,62 @@ class ConfigurationViewModel(
     fun startService() {
         viewModelScope.launch {
             _serviceState.value = ServiceState.Starting
-            // TODO: Implement actual service start with yggstack binding
-            // For now, simulate successful start
-            kotlinx.coroutines.delay(500)
-            _serviceState.value = ServiceState.Running
-            _yggdrasilIp.value = "324:71e:281a:9ed3::1" // Placeholder
+            try {
+                val intent = Intent(context, YggstackService::class.java).apply {
+                    action = YggstackService.ACTION_START
+                    putExtra(
+                        YggstackService.EXTRA_CONFIG,
+                        YggstackConfigParcelable.fromYggstackConfig(_config.value)
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+
+                // Add a timeout fallback to ensure state updates if service doesn't notify
+                kotlinx.coroutines.delay(3000)
+                // If still in Starting state after 3 seconds, check if we have an IP (means it started)
+                if (_serviceState.value is ServiceState.Starting) {
+                    if (_yggdrasilIp.value != null) {
+                        // Service started but state wasn't updated, force it
+                        _serviceState.value = ServiceState.Running
+                    } else {
+                        // Service didn't start, reset to stopped
+                        _serviceState.value = ServiceState.Stopped
+                    }
+                }
+            } catch (e: Exception) {
+                _serviceState.value = ServiceState.Error(e.message ?: "Unknown error")
+                // Fallback to stopped state after error
+                kotlinx.coroutines.delay(2000)
+                _serviceState.value = ServiceState.Stopped
+            }
         }
     }
 
     fun stopService() {
         viewModelScope.launch {
             _serviceState.value = ServiceState.Stopping
-            // TODO: Implement actual service stop
-            kotlinx.coroutines.delay(500)
-            _serviceState.value = ServiceState.Stopped
-            _yggdrasilIp.value = null
+            try {
+                val intent = Intent(context, YggstackService::class.java).apply {
+                    action = YggstackService.ACTION_STOP
+                }
+                context.startService(intent)
+
+                // Add a timeout fallback to reset state if service doesn't respond
+                kotlinx.coroutines.delay(3000)
+                if (_serviceState.value is ServiceState.Stopping) {
+                    _serviceState.value = ServiceState.Stopped
+                    _yggdrasilIp.value = null
+                }
+            } catch (e: Exception) {
+                _serviceState.value = ServiceState.Error(e.message ?: "Unknown error")
+                // Fallback to stopped state after error
+                kotlinx.coroutines.delay(2000)
+                _serviceState.value = ServiceState.Stopped
+            }
         }
     }
 
@@ -132,11 +255,14 @@ class ConfigurationViewModel(
         }
     }
 
-    class Factory(private val repository: ConfigRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: ConfigRepository,
+        private val context: Context
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ConfigurationViewModel::class.java)) {
-                return ConfigurationViewModel(repository) as T
+                return ConfigurationViewModel(repository, context) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

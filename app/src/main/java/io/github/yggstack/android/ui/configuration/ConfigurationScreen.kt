@@ -36,175 +36,181 @@ fun ConfigurationScreen(
 
     val isServiceRunning = serviceState is ServiceState.Running
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+    Box(
+        modifier = modifier.fillMaxSize()
     ) {
-        // Peers Section
-        ConfigSection(title = stringResource(R.string.peers_section)) {
-            config.peers.forEach { peer ->
-                PeerItem(
-                    peer = peer,
-                    enabled = !isServiceRunning,
-                    onDelete = { viewModel.removePeer(peer) }
-                )
-            }
+        // Scrollable content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+                .padding(bottom = 80.dp) // Space for button at bottom
+        ) {
+            // Peers Section
+            ConfigSection(title = stringResource(R.string.peers_section)) {
+                config.peers.forEach { peer ->
+                    PeerItem(
+                        peer = peer,
+                        enabled = !isServiceRunning,
+                        onDelete = { viewModel.removePeer(peer) }
+                    )
+                }
 
-            if (!isServiceRunning) {
-                OutlinedTextField(
-                    value = peerInput,
-                    onValueChange = { peerInput = it },
-                    label = { Text(stringResource(R.string.peer_uri_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            if (peerInput.isNotBlank()) {
-                                viewModel.addPeer(peerInput)
-                                peerInput = ""
+                if (!isServiceRunning) {
+                    OutlinedTextField(
+                        value = peerInput,
+                        onValueChange = { peerInput = it },
+                        label = { Text(stringResource(R.string.peer_uri_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                if (peerInput.isNotBlank()) {
+                                    viewModel.addPeer(peerInput)
+                                    peerInput = ""
+                                }
+                            }) {
+                                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_peer))
                             }
-                        }) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_peer))
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Private Key Section
+            ConfigSection(title = stringResource(R.string.private_key_section)) {
+                OutlinedTextField(
+                    value = config.privateKey,
+                    onValueChange = { viewModel.updatePrivateKey(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isServiceRunning,
+                    visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
+                            Icon(
+                                if (showPrivateKey) Icons.Default.Lock else Icons.Default.Edit,
+                                contentDescription = if (showPrivateKey)
+                                    stringResource(R.string.hide_private_key)
+                                else
+                                    stringResource(R.string.show_private_key)
+                            )
                         }
                     }
                 )
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // Private Key Section
-        ConfigSection(title = stringResource(R.string.private_key_section)) {
-            OutlinedTextField(
-                value = config.privateKey,
-                onValueChange = { viewModel.updatePrivateKey(it) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isServiceRunning,
-                visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
-                        Icon(
-                            if (showPrivateKey) Icons.Default.Lock else Icons.Default.Edit,
-                            contentDescription = if (showPrivateKey)
-                                stringResource(R.string.hide_private_key)
-                            else
-                                stringResource(R.string.show_private_key)
-                        )
-                    }
-                }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Yggdrasil IP Section
-        ConfigSection(title = stringResource(R.string.yggdrasil_ip_section)) {
-            OutlinedTextField(
-                value = yggdrasilIp ?: stringResource(R.string.not_connected),
-                onValueChange = { },
-                modifier = Modifier.fillMaxWidth(),
-                readOnly = true,
-                trailingIcon = {
-                    if (yggdrasilIp != null) {
-                        IconButton(onClick = {
-                            clipboardManager.setText(AnnotatedString(yggdrasilIp!!))
-                        }) {
-                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.copy_ip))
+            // Yggdrasil IP Section
+            ConfigSection(title = stringResource(R.string.yggdrasil_ip_section)) {
+                OutlinedTextField(
+                    value = yggdrasilIp ?: stringResource(R.string.not_connected),
+                    onValueChange = { },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    trailingIcon = {
+                        if (yggdrasilIp != null) {
+                            IconButton(onClick = {
+                                clipboardManager.setText(AnnotatedString(yggdrasilIp!!))
+                            }) {
+                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.copy_ip))
+                            }
                         }
                     }
-                }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Proxy Configuration Section
-        ConfigSectionWithToggle(
-            title = stringResource(R.string.proxy_config_section),
-            enabled = config.proxyEnabled,
-            onToggle = { viewModel.toggleProxyEnabled() }
-        ) {
-            OutlinedTextField(
-                value = config.socksProxy,
-                onValueChange = { viewModel.updateSocksProxy(it) },
-                label = { Text(stringResource(R.string.socks_proxy)) },
-                placeholder = { Text(stringResource(R.string.socks_proxy_hint)) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isServiceRunning && config.proxyEnabled
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = config.dnsServer,
-                onValueChange = { viewModel.updateDnsServer(it) },
-                label = { Text(stringResource(R.string.dns_server)) },
-                placeholder = { Text(stringResource(R.string.dns_server_hint)) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isServiceRunning && config.proxyEnabled
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Expose Local Port Section
-        ConfigSectionWithToggle(
-            title = stringResource(R.string.expose_local_port_section),
-            enabled = config.exposeEnabled,
-            onToggle = { viewModel.toggleExposeEnabled() }
-        ) {
-            config.exposeMappings.forEach { mapping ->
-                ExposeMappingItem(
-                    mapping = mapping,
-                    enabled = !isServiceRunning && config.exposeEnabled,
-                    onDelete = { viewModel.removeExposeMapping(mapping) }
                 )
             }
 
-            if (!isServiceRunning && config.exposeEnabled) {
-                Button(
-                    onClick = { showExposeDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.add_mapping))
-                }
-            }
-        }
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
+            // Proxy Configuration Section
+            ConfigSectionWithToggle(
+                title = stringResource(R.string.proxy_config_section),
+                enabled = config.proxyEnabled,
+                onToggle = { viewModel.toggleProxyEnabled() }
+            ) {
+                OutlinedTextField(
+                    value = config.socksProxy,
+                    onValueChange = { viewModel.updateSocksProxy(it) },
+                    label = { Text(stringResource(R.string.socks_proxy)) },
+                    placeholder = { Text(stringResource(R.string.socks_proxy_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isServiceRunning && config.proxyEnabled
+                )
 
-        // Forward Remote Port Section
-        ConfigSectionWithToggle(
-            title = stringResource(R.string.forward_remote_port_section),
-            enabled = config.forwardEnabled,
-            onToggle = { viewModel.toggleForwardEnabled() }
-        ) {
-            config.forwardMappings.forEach { mapping ->
-                ForwardMappingItem(
-                    mapping = mapping,
-                    enabled = !isServiceRunning && config.forwardEnabled,
-                    onDelete = { viewModel.removeForwardMapping(mapping) }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = config.dnsServer,
+                    onValueChange = { viewModel.updateDnsServer(it) },
+                    label = { Text(stringResource(R.string.dns_server)) },
+                    placeholder = { Text(stringResource(R.string.dns_server_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isServiceRunning && config.proxyEnabled
                 )
             }
 
-            if (!isServiceRunning && config.forwardEnabled) {
-                Button(
-                    onClick = { showForwardDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.add_mapping))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Expose Local Port Section
+            ConfigSectionWithToggle(
+                title = stringResource(R.string.expose_local_port_section),
+                enabled = config.exposeEnabled,
+                onToggle = { viewModel.toggleExposeEnabled() }
+            ) {
+                config.exposeMappings.forEach { mapping ->
+                    ExposeMappingItem(
+                        mapping = mapping,
+                        enabled = !isServiceRunning && config.exposeEnabled,
+                        onDelete = { viewModel.removeExposeMapping(mapping) }
+                    )
+                }
+
+                if (!isServiceRunning && config.exposeEnabled) {
+                    Button(
+                        onClick = { showExposeDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.add_mapping))
+                    }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Forward Remote Port Section
+            ConfigSectionWithToggle(
+                title = stringResource(R.string.forward_remote_port_section),
+                enabled = config.forwardEnabled,
+                onToggle = { viewModel.toggleForwardEnabled() }
+            ) {
+                config.forwardMappings.forEach { mapping ->
+                    ForwardMappingItem(
+                        mapping = mapping,
+                        enabled = !isServiceRunning && config.forwardEnabled,
+                        onDelete = { viewModel.removeForwardMapping(mapping) }
+                    )
+                }
+
+                if (!isServiceRunning && config.forwardEnabled) {
+                    Button(
+                        onClick = { showForwardDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.add_mapping))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Start/Stop Button
+        // Start/Stop Button - Sticky at bottom
         Button(
             onClick = {
                 if (isServiceRunning) {
@@ -213,7 +219,10 @@ fun ConfigurationScreen(
                     viewModel.startService()
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(16.dp),
             enabled = serviceState !is ServiceState.Starting && serviceState !is ServiceState.Stopping
         ) {
             Text(

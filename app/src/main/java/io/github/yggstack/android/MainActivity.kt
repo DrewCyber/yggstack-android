@@ -33,9 +33,10 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
-    val repository = ConfigRepository(androidx.compose.ui.platform.LocalContext.current)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = ConfigRepository(context)
     val configViewModel: ConfigurationViewModel = viewModel(
-        factory = ConfigurationViewModel.Factory(repository)
+        factory = ConfigurationViewModel.Factory(repository, context)
     )
 
     var selectedScreen by remember { mutableStateOf(0) }

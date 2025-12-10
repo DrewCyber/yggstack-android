@@ -11,11 +11,11 @@ data class YggstackConfig(
     val privateKey: String = "",
     val socksProxy: String = "",
     val dnsServer: String = "",
-    val proxyEnabled: Boolean = true,
+    val proxyEnabled: Boolean = false,
     val exposeMappings: List<ExposeMapping> = emptyList(),
-    val exposeEnabled: Boolean = true,
+    val exposeEnabled: Boolean = false,
     val forwardMappings: List<ForwardMapping> = emptyList(),
-    val forwardEnabled: Boolean = true
+    val forwardEnabled: Boolean = false
 )
 
 /**
