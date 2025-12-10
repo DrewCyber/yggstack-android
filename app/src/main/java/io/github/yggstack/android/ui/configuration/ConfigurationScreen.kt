@@ -47,6 +47,30 @@ fun ConfigurationScreen(
                 .padding(16.dp)
                 .padding(bottom = 80.dp) // Space for button at bottom
         ) {
+            // Private Key Section
+            ConfigSection(title = stringResource(R.string.private_key_section)) {
+                OutlinedTextField(
+                    value = config.privateKey,
+                    onValueChange = { viewModel.updatePrivateKey(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isServiceRunning,
+                    visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
+                            Icon(
+                                if (showPrivateKey) Icons.Default.Lock else Icons.Default.Edit,
+                                contentDescription = if (showPrivateKey)
+                                    stringResource(R.string.hide_private_key)
+                                else
+                                    stringResource(R.string.show_private_key)
+                            )
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Peers Section
             ConfigSection(title = stringResource(R.string.peers_section)) {
                 config.peers.forEach { peer ->
@@ -75,30 +99,6 @@ fun ConfigurationScreen(
                         }
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Private Key Section
-            ConfigSection(title = stringResource(R.string.private_key_section)) {
-                OutlinedTextField(
-                    value = config.privateKey,
-                    onValueChange = { viewModel.updatePrivateKey(it) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isServiceRunning,
-                    visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
-                            Icon(
-                                if (showPrivateKey) Icons.Default.Lock else Icons.Default.Edit,
-                                contentDescription = if (showPrivateKey)
-                                    stringResource(R.string.hide_private_key)
-                                else
-                                    stringResource(R.string.show_private_key)
-                            )
-                        }
-                    }
-                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -223,7 +223,15 @@ fun ConfigurationScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(16.dp),
-            enabled = serviceState !is ServiceState.Starting && serviceState !is ServiceState.Stopping
+            enabled = serviceState !is ServiceState.Starting && serviceState !is ServiceState.Stopping,
+            colors = if (isServiceRunning) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            } else {
+                ButtonDefaults.buttonColors()
+            }
         ) {
             Text(
                 if (isServiceRunning)

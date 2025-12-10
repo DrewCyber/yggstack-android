@@ -5,7 +5,7 @@
     <!-- Navigation -->
     <string name="nav_configuration">Configuration</string>
     <string name="nav_diagnostics">Diagnostics</string>
-    <string name="nav_settings">Settings</string>
+    <string name="nav_info">Info</string>
 
     <!-- Configuration Screen -->
     <string name="peers_section">Peers</string>

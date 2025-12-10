@@ -315,10 +315,12 @@ class YggstackService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Yggstack Service",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Yggstack background service notification"
-                setShowBadge(false)
+                setShowBadge(true)
+                enableLights(false)
+                enableVibration(false)
             }
 
             val notificationManager = getSystemService(NotificationManager::class.java)
@@ -359,7 +361,9 @@ class YggstackService : Service() {
             .setContentTitle("Yggstack")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(pendingIntent)
             .addAction(
                 android.R.drawable.ic_delete,

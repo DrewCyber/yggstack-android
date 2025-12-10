@@ -44,17 +44,17 @@ class ConfigRepository(private val context: Context) {
                 json.decodeFromString<List<String>>(it)
             } ?: emptyList(),
             privateKey = preferences[PRIVATE_KEY] ?: generatePrivateKey(),
-            socksProxy = preferences[SOCKS_PROXY] ?: "",
-            dnsServer = preferences[DNS_SERVER] ?: "",
-            proxyEnabled = preferences[PROXY_ENABLED] ?: true,
+            socksProxy = preferences[SOCKS_PROXY] ?: "127.0.0.1:1080",
+            dnsServer = preferences[DNS_SERVER] ?: "[308:62:45:62::]:53",
+            proxyEnabled = preferences[PROXY_ENABLED] ?: false,
             exposeMappings = preferences[EXPOSE_MAPPINGS]?.let {
                 json.decodeFromString<List<ExposeMapping>>(it)
             } ?: emptyList(),
-            exposeEnabled = preferences[EXPOSE_ENABLED] ?: true,
+            exposeEnabled = preferences[EXPOSE_ENABLED] ?: false,
             forwardMappings = preferences[FORWARD_MAPPINGS]?.let {
                 json.decodeFromString<List<ForwardMapping>>(it)
             } ?: emptyList(),
-            forwardEnabled = preferences[FORWARD_ENABLED] ?: true
+            forwardEnabled = preferences[FORWARD_ENABLED] ?: false
         )
     }
 

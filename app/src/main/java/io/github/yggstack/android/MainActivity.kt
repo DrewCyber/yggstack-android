@@ -67,8 +67,8 @@ fun MainScreen() {
                     onClick = { selectedScreen = 1 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text(stringResource(R.string.nav_settings)) },
+                    icon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_info)) },
                     selected = selectedScreen == 2,
                     onClick = { selectedScreen = 2 }
                 )
