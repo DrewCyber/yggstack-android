@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Yggstack</string>
+
+    <!-- Navigation -->
+    <string name="nav_configuration">Configuration</string>
+    <string name="nav_diagnostics">Diagnostics</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Configuration Screen -->
+    <string name="peers_section">Peers</string>
+    <string name="add_peer">Add Peer</string>
+    <string name="peer_uri_hint">Enter peer URI (tcp://, tls://, socks://...)</string>
+    <string name="private_key_section">Private Key</string>
+    <string name="show_private_key">Show private key</string>
+    <string name="hide_private_key">Hide private key</string>
+    <string name="yggdrasil_ip_section">Your Yggdrasil IP</string>
+    <string name="copy_ip">Copy IP</string>
+    <string name="not_connected">Not connected</string>
+    <string name="proxy_config_section">Proxy Configuration</string>
+    <string name="socks_proxy">SOCKS Proxy</string>
+    <string name="socks_proxy_hint">127.0.0.1:1080</string>
+    <string name="dns_server">DNS Server</string>
+    <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
+    <string name="expose_local_port_section">Expose Local Port</string>
+    <string name="add_mapping">Add Mapping</string>
+    <string name="forward_remote_port_section">Forward Remote Port</string>
+    <string name="start_service">Start Service</string>
+    <string name="stop_service">Stop Service</string>
+    <string name="delete_peer">Delete peer</string>
+    <string name="protocol_tcp">TCP</string>
+    <string name="protocol_udp">UDP</string>
+    <string name="local_port">Local Port</string>
+    <string name="local_ip">Local IP</string>
+    <string name="ygg_port">Yggdrasil Port</string>
+    <string name="remote_ip">Remote IP</string>
+    <string name="remote_port">Remote Port</string>
+
+    <!-- Diagnostics Screen -->
+    <string name="tab_config">Config</string>
+    <string name="tab_peers">Peers</string>
+    <string name="tab_logs">Logs</string>
+
+    <!-- Settings Screen -->
+    <string name="theme_section">Theme</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_system">System Default</string>
+    <string name="log_management">Log Management</string>
+    <string name="clear_logs">Clear Logs</string>
+    <string name="export_logs">Export Logs</string>
+    <string name="about_section">About</string>
+    <string name="version">Version</string>
+    <string name="library_version">Library Version</string>
+
+    <!-- Messages -->
+    <string name="ip_copied">IP address copied to clipboard</string>
+    <string name="config_saved">Configuration saved</string>
+    <string name="service_started">Service started</string>
+    <string name="service_stopped">Service stopped</string>
+    <string name="invalid_peer_uri">Invalid peer URI format</string>
+    <string name="invalid_port">Invalid port number</string>
+    <string name="invalid_ip">Invalid IP address</string>
+
+</resources>
+
