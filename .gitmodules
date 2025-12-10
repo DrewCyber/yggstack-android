@@ -1,0 +1,3 @@
+[submodule "lib/yggstack"]
+	path = lib/yggstack
+	url = ../yggstack
