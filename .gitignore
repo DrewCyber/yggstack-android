@@ -2,7 +2,7 @@ prompts/
 
 # Built application files
 *.apk
-*.aar
+# *.aar
 *.ap_
 *.aab
 
