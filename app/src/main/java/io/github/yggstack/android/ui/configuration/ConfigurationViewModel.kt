@@ -79,6 +79,16 @@ class ConfigurationViewModel(
                         _yggdrasilIp.value = ip
                     }
                 }
+
+                // Observe generated private key and save it
+                viewModelScope.launch {
+                    service.generatedPrivateKey.collect { key ->
+                        if (key != null && _config.value.privateKey.isBlank()) {
+                            // Save the generated key to config
+                            updateConfig(_config.value.copy(privateKey = key))
+                        }
+                    }
+                }
             }
         }
 

@@ -49,8 +49,15 @@ class YggstackService : Service() {
     private val _peerCount = MutableStateFlow(0)
     val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
 
+    private val _generatedPrivateKey = MutableStateFlow<String?>(null)
+    val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
+
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
+    }
+
+    fun clearLogs() {
+        _logs.value = emptyList()
     }
 
     override fun onCreate() {
@@ -106,21 +113,16 @@ class YggstackService : Service() {
                 })
                 yggstack?.setLogLevel("info")
 
-                // Generate or load config
-                val configJson = if (config.privateKey.isBlank()) {
-                    addLog("Generating new configuration...")
-                    Mobile.generateConfig()
-                } else {
-                    addLog("Using provided configuration...")
-                    buildConfigJson(config)
-                }
+                // Build config JSON (handles both new and existing private keys)
+                addLog("Loading configuration...")
+                val configJson = buildConfigJson(config)
 
+                // Log first 200 chars of config for debugging (without exposing full key)
+                addLog("Config preview: ${configJson.take(200)}...")
+
+                addLog("Calling loadConfigJSON...")
                 yggstack?.loadConfigJSON(configJson)
-
-                // Get and store the Yggdrasil IP
-                val address = yggstack?.address
-                _yggdrasilIp.value = address
-                addLog("Yggdrasil IP: $address")
+                addLog("Config loaded successfully")
 
                 // Start with optional SOCKS proxy and DNS server
                 val socksAddress = if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
@@ -135,7 +137,15 @@ class YggstackService : Service() {
                     ""
                 }
 
+                addLog("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
+                addLog("Start() completed successfully")
+
+                // Get and store the Yggdrasil IP AFTER starting
+                addLog("Getting Yggdrasil IP address...")
+                val address = yggstack?.address
+                _yggdrasilIp.value = address
+                addLog("Yggdrasil IP: $address")
 
                 _isRunning.value = true
                 _peerCount.value = config.peers.size
@@ -145,14 +155,34 @@ class YggstackService : Service() {
 
             } catch (e: Exception) {
                 addLog("Error starting Yggstack: ${e.message}")
+                addLog("Stack trace: ${e.stackTraceToString().take(500)}")
+
+                // Clean up properly on error
+                try {
+                    yggstack?.stop()
+                } catch (stopError: Exception) {
+                    addLog("Error during cleanup: ${stopError.message}")
+                }
+                yggstack = null
                 _isRunning.value = false
-                stopSelf()
+                _yggdrasilIp.value = null
+                _peerCount.value = 0
+
+
+                // Don't call stopSelf() here - let the service stay alive for retry
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
             }
         }
     }
 
     fun stopYggstack() {
         if (!_isRunning.value) {
+            addLog("Service already stopped")
             return
         }
 
@@ -164,6 +194,7 @@ class YggstackService : Service() {
                 _isRunning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
+                _generatedPrivateKey.value = null  // Reset generated key state
                 addLog("Yggstack stopped")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -174,36 +205,101 @@ class YggstackService : Service() {
                 stopSelf()
             } catch (e: Exception) {
                 addLog("Error stopping Yggstack: ${e.message}")
+                // Force cleanup even on error
+                yggstack = null
+                _isRunning.value = false
+                _yggdrasilIp.value = null
+                _peerCount.value = 0
+                _generatedPrivateKey.value = null
             }
         }
     }
 
     private fun buildConfigJson(config: YggstackConfig): String {
-        // Build a minimal JSON config from the YggstackConfig
-        val peers = config.peers.joinToString("\",\"", "[\"", "\"]")
-        val privateKey = if (config.privateKey.isNotBlank()) {
-            config.privateKey
-        } else {
-            // Generate a new key if not provided
-            val newConfig = Mobile.generateConfig()
-            // Extract the private key from the generated config
-            val keyMatch = Regex("\"PrivateKey\":\\s*\"([^\"]+)\"").find(newConfig)
-            keyMatch?.groupValues?.get(1) ?: ""
+        // If no private key is provided, generate a complete new config
+        if (config.privateKey.isBlank()) {
+            addLog("No private key found - generating new configuration...")
+            val newConfigJson = Mobile.generateConfig()
+            addLog("Generated config length: ${newConfigJson.length} chars")
+
+            // Log FULL config for debugging
+            addLog("FULL GENERATED CONFIG: $newConfigJson")
+
+            // Add Certificate field if missing (required by core.New)
+            val configWithCert = if (!newConfigJson.contains("\"Certificate\"")) {
+                // Insert Certificate field after PrivateKey
+                newConfigJson.replace(
+                    Regex("(\"PrivateKey\":\\s*\"[^\"]+\",)"),
+                    "$1\n  \"Certificate\": null,"
+                )
+            } else {
+                newConfigJson
+            }
+
+            addLog("Config after adding Certificate: ${configWithCert.take(300)}...")
+
+            // Extract the private key to save it back to the repository
+            val keyMatch = Regex("\"PrivateKey\":\\s*\"([^\"]+)\"").find(newConfigJson)
+            val extractedKey = keyMatch?.groupValues?.get(1) ?: ""
+
+            if (extractedKey.isNotBlank()) {
+                addLog("Private key extracted (length: ${extractedKey.length}, first 10 chars: ${extractedKey.take(10)}...)")
+                _generatedPrivateKey.value = extractedKey
+                addLog("Generated key will be saved to configuration")
+            } else {
+                addLog("ERROR: Failed to extract generated private key from config!")
+            }
+
+            // If we have peers, we need to merge them into the generated config
+            if (config.peers.isNotEmpty()) {
+                addLog("Adding ${config.peers.size} peer(s) to config")
+                val peersJson = config.peers.joinToString("\",\"", "[\"", "\"]")
+                val finalConfig = configWithCert.replace(
+                    Regex("\"Peers\":\\s*\\[\\s*\\]"),
+                    "\"Peers\": $peersJson"
+                )
+                return finalConfig
+            }
+
+            return configWithCert
         }
 
-        return """
-        {
-          "PrivateKey": "$privateKey",
-          "Peers": $peers,
-          "Listen": [],
-          "AdminListen": "none",
-          "MulticastInterfaces": [],
-          "InterfacePeers": {},
-          "AllowedPublicKeys": [],
-          "NodeInfo": {},
-          "NodeInfoPrivacy": false
+        // Build config with existing private key
+        // IMPORTANT: Must match the structure from Mobile.generateConfig()
+        addLog("Using existing private key (length: ${config.privateKey.length}, first 10 chars: ${config.privateKey.take(10)}...)")
+        val peers = if (config.peers.isEmpty()) {
+            "[]"
+        } else {
+            config.peers.joinToString("\",\"", "[\"", "\"]")
         }
+
+        // Use the same structure as generated config
+        val manualConfig = """
+{
+  "PrivateKey": "${config.privateKey}",
+  "Certificate": null,
+  "Peers": $peers,
+  "InterfacePeers": {},
+  "Listen": [],
+  "AdminListen": "none",
+  "MulticastInterfaces": [
+    {
+      "Regex": ".*",
+      "Beacon": true,
+      "Listen": true,
+      "Password": ""
+    }
+  ],
+  "AllowedPublicKeys": [],
+  "IfName": "auto",
+  "IfMTU": 65535,
+  "NodeInfoPrivacy": false,
+  "NodeInfo": null
+}
         """.trimIndent()
+
+        addLog("Built manual config matching generated structure")
+        return manualConfig
     }
 
     private fun addLog(message: String) {

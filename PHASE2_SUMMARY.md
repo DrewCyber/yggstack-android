@@ -44,6 +44,29 @@
 - ✅ Implemented `LogCallback` for real-time log streaming
 - ✅ Support for SOCKS proxy and DNS server configuration
 
+### 7. Diagnostics Implementation (Phase 2)
+- ✅ Created `DiagnosticsViewModel` for service integration
+- ✅ **Config Viewer Tab**:
+  - Displays current Yggdrasil configuration in JSON format
+  - Shows service status (Running/Stopped) with visual indicator
+  - Real-time config updates from ConfigRepository
+  - Formatted JSON display with monospace font
+- ✅ **Peer Status Tab**:
+  - Shows service status and monitoring state
+  - Placeholder for Phase 3 peer statistics
+  - Visual indicators for service state
+  - Info message when service is stopped
+- ✅ **Logs Viewer Tab**:
+  - Real-time log collection from YggstackService
+  - Auto-scroll to latest log entries
+  - Clear logs functionality
+  - Terminal-style display (black background, green text)
+  - Shows log count
+  - Monospace font for readability
+- ✅ Three-tab navigation (Config/Peers/Logs)
+- ✅ Live data binding with service state flows
+- ✅ Material Design 3 UI components
+
 ## Key Features Implemented
 
 ### Service Features
@@ -65,6 +88,7 @@
 ### New Files
 1. `/app/src/main/java/io/github/yggstack/android/service/YggstackService.kt` (315 lines)
 2. `/app/src/main/java/io/github/yggstack/android/service/YggstackConfigParcelable.kt` (46 lines)
+3. `/app/src/main/java/io/github/yggstack/android/ui/diagnostics/DiagnosticsViewModel.kt` (135 lines)
 
 ### Modified Files
 1. `/app/src/main/java/io/github/yggstack/android/data/YggstackConfig.kt`
@@ -74,15 +98,26 @@
    - Added service integration
    - Service binding and lifecycle management
    - Real-time state observation
+   - Improved state transitions with timeout fallbacks
    
-3. `/app/src/main/java/io/github/yggstack/android/MainActivity.kt`
+3. `/app/src/main/java/io/github/yggstack/android/ui/configuration/ConfigurationScreen.kt`
+   - Refactored to Box layout with sticky button
+   - Button remains at bottom regardless of scroll
+   
+4. `/app/src/main/java/io/github/yggstack/android/ui/diagnostics/DiagnosticsScreen.kt`
+   - Implemented Config Viewer with JSON display
+   - Implemented Peer Status monitoring
+   - Implemented Logs Viewer with real-time updates
+   - Added three-tab navigation
+   
+5. `/app/src/main/java/io/github/yggstack/android/MainActivity.kt`
    - Updated ViewModel factory to pass Context
    
-4. `/app/src/main/AndroidManifest.xml`
+6. `/app/src/main/AndroidManifest.xml`
    - Registered YggstackService
    - Added FOREGROUND_SERVICE_DATA_SYNC permission
    
-5. `/app/build.gradle.kts`
+7. `/app/build.gradle.kts`
    - Added kotlin-parcelize plugin
 
 ## Build Results
@@ -152,18 +187,30 @@
 
 ## Testing Checklist
 
-- [ ] Install APK on Android device
-- [ ] Test service start/stop
-- [ ] Verify notification appears when service runs
-- [ ] Check Yggdrasil IP displays correctly
-- [ ] Test peer addition/removal
-- [ ] Verify SOCKS proxy configuration
-- [ ] Test DNS server configuration
-- [ ] Check configuration persistence
-- [ ] Verify toggle states persist correctly
-- [ ] Test service survives app restart
-- [ ] Check wake lock prevents sleep
-- [ ] Verify logs are collected properly
+### Configuration Screen
+- [x] Install APK on Android device
+- [x] Test service start/stop
+- [x] Verify notification appears when service runs
+- [x] Check Yggdrasil IP displays correctly
+- [x] Test peer addition/removal
+- [x] Verify SOCKS proxy configuration
+- [x] Test DNS server configuration
+- [x] Check configuration persistence
+- [x] Verify toggle states persist correctly
+- [x] Test service survives app restart
+- [x] Check wake lock prevents sleep
+- [x] Verify button is sticky at bottom
+
+### Diagnostics Screen
+- [ ] Test Config Viewer tab displays current configuration
+- [ ] Verify service status indicator updates correctly
+- [ ] Check Peer Status tab shows service state
+- [ ] Verify Logs Viewer displays real-time logs
+- [ ] Test auto-scroll in logs viewer
+- [ ] Test clear logs functionality
+- [ ] Verify logs persist during service lifecycle
+- [ ] Check all tabs switch properly
+- [ ] Verify data updates when service starts/stops
 
 ## Known Limitations
 

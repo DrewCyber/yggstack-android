@@ -1,3 +1,6 @@
 [submodule "lib/yggstack"]
 	path = lib/yggstack
 	url = ../yggstack
+[submodule "lib/yggdrasil-go"]
+	path = lib/yggdrasil-go
+	url = git@github.com:yggdrasil-network/yggdrasil-go.git
