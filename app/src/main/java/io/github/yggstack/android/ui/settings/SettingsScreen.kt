@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.yggstack.android.BuildConfig
 import io.github.yggstack.android.R
 import io.github.yggstack.android.data.ConfigRepository
 import kotlinx.coroutines.launch
@@ -81,7 +82,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
                 SettingItem(
                     label = stringResource(R.string.version),
-                    value = "1.0.0"
+                    value = BuildConfig.VERSION_NAME
+                )
+
+                SettingItem(
+                    label = "Commit",
+                    value = BuildConfig.COMMIT_HASH
                 )
 
                 SettingItem(

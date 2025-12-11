@@ -60,17 +60,17 @@ app/
 - [x] GitHub Actions CI/CD
 
 ### Phase 2: Yggdrasil Core Functionality (In Progress)
-- [ ] Background service implementation
-- [ ] Yggstack integration
-- [ ] Peer management
-- [ ] Logging system
-- [ ] Diagnostics screens
+- [x] Background service implementation
+- [x] Yggstack integration
+- [x] Peer management
+- [x] Logging system
+- [x] Diagnostics screens
 
 ### Phase 3: Advanced Port Forwarding
-- [ ] Proxy configuration
-- [ ] Port mapping management
+- [x] Proxy configuration
+- [x] Port mapping management
 - [ ] Input validation
-- [ ] Status monitoring
+- [x] Status monitoring
 
 ## GitHub Actions
 

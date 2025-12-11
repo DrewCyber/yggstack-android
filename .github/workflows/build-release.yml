@@ -15,6 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # Fetch all history for tags
           submodules: recursive
 
       - name: Set up JDK 17
@@ -24,33 +25,64 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Get version from git tag
+        id: get_version
+        run: |
+          # Get the tag name (already available from github.ref_name)
+          TAG="${{ github.ref_name }}"
+          # Remove 'v' prefix if present
+          VERSION=${TAG#v}
+          # Get short commit hash
+          COMMIT=$(git rev-parse --short HEAD)
+          # Combine version and commit
+          APP_VERSION="${VERSION}-${COMMIT}"
+          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
+          echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${APP_VERSION}"
+
+      - name: Build yggstack AAR
+        run: |
+          cd lib/yggstack
+          chmod +x build-android.sh
+          ./build-android.sh
+          cp android-build/yggstack.aar ../../app/libs/
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build with Gradle
         run: ./gradlew assembleDebug
+
       - name: Rename APK
         run: |
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/yggstack-android-${{ github.ref_name }}.apk
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/yggstack-android-${{ steps.get_version.outputs.version }}.apk
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
+        with:
+          files: app/build/outputs/apk/debug/yggstack-android-${{ steps.get_version.outputs.version }}.apk
+          body: |
+            ## Yggstack Android ${{ steps.get_version.outputs.version }}
+            
+            **Version:** ${{ steps.get_version.outputs.version }}
+            **Commit:** ${{ github.sha }}
+            
+            ### Download
+            - [yggstack-android-${{ steps.get_version.outputs.version }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ steps.get_version.outputs.version }}.apk)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-
-      - name: Upload APK to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: app/build/outputs/apk/debug/yggstack-android-${{ github.ref_name }}.apk
-          asset_name: yggstack-android-${{ github.ref_name }}.apk
-          asset_content_type: application/vnd.android.package-archive
 

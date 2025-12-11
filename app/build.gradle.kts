@@ -5,6 +5,40 @@ plugins {
     id("kotlin-parcelize")
 }
 
+// Get version from git tag or environment variable
+fun getVersionName(): String {
+    // Try to get from environment variable (GitHub Actions)
+    val envVersion = System.getenv("APP_VERSION")
+    if (!envVersion.isNullOrEmpty()) {
+        return envVersion
+    }
+
+    // Try to get from git tag
+    return try {
+        val tag = Runtime.getRuntime().exec("git describe --tags --abbrev=0").inputStream.bufferedReader().readText().trim()
+        val commit = Runtime.getRuntime().exec("git rev-parse --short HEAD").inputStream.bufferedReader().readText().trim()
+        
+        // Remove 'v' prefix if present
+        val version = if (tag.startsWith("v")) tag.substring(1) else tag
+        
+        if (version.isNotEmpty() && commit.isNotEmpty()) {
+            "$version-$commit"
+        } else {
+            "0.0.0"
+        }
+    } catch (e: Exception) {
+        "0.0.0"
+    }
+}
+
+fun getCommitHash(): String {
+    return try {
+        Runtime.getRuntime().exec("git rev-parse --short HEAD").inputStream.bufferedReader().readText().trim()
+    } catch (e: Exception) {
+        "unknown"
+    }
+}
+
 android {
     namespace = "io.github.yggstack.android"
     compileSdk = 34
@@ -14,7 +48,11 @@ android {
         minSdk = 23
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = getVersionName()
+
+        // Generate BuildConfig fields
+        buildConfigField("String", "VERSION_NAME", "\"${getVersionName()}\"")
+        buildConfigField("String", "COMMIT_HASH", "\"${getCommitHash()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -43,6 +81,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {

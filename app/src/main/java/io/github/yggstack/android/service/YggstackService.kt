@@ -105,6 +105,8 @@ class YggstackService : Service() {
         serviceScope.launch {
             try {
                 addLog("Starting Yggstack...")
+                addLog("App version: ${io.github.yggstack.android.BuildConfig.VERSION_NAME}")
+                addLog("Commit: ${io.github.yggstack.android.BuildConfig.COMMIT_HASH}")
                 startForeground(NOTIFICATION_ID, createNotification("Starting...", 0))
 
                 // Create Yggstack instance
