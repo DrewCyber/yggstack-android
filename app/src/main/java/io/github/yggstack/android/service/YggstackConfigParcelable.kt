@@ -1,7 +1,7 @@
 package io.github.yggstack.android.service
 
 import android.os.Parcelable
-import io.github.yggstack.android.data.YggstackConfig
+import io.github.yggstack.android.data.*
 import kotlinx.parcelize.Parcelize
 
 /**
@@ -14,7 +14,9 @@ data class YggstackConfigParcelable(
     val socksProxy: String,
     val dnsServer: String,
     val proxyEnabled: Boolean,
+    val exposeMappings: List<ExposeMapping>,
     val exposeEnabled: Boolean,
+    val forwardMappings: List<ForwardMapping>,
     val forwardEnabled: Boolean
 ) : Parcelable {
 
@@ -25,9 +27,9 @@ data class YggstackConfigParcelable(
             socksProxy = socksProxy,
             dnsServer = dnsServer,
             proxyEnabled = proxyEnabled,
-            exposeMappings = emptyList(), // TODO: Implement in Phase 3
+            exposeMappings = exposeMappings,
             exposeEnabled = exposeEnabled,
-            forwardMappings = emptyList(), // TODO: Implement in Phase 3
+            forwardMappings = forwardMappings,
             forwardEnabled = forwardEnabled
         )
     }
@@ -40,7 +42,9 @@ data class YggstackConfigParcelable(
                 socksProxy = config.socksProxy,
                 dnsServer = config.dnsServer,
                 proxyEnabled = config.proxyEnabled,
+                exposeMappings = config.exposeMappings,
                 exposeEnabled = config.exposeEnabled,
+                forwardMappings = config.forwardMappings,
                 forwardEnabled = config.forwardEnabled
             )
         }

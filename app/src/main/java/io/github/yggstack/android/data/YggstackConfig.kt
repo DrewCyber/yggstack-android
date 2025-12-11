@@ -1,5 +1,7 @@
 package io.github.yggstack.android.data
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
 
 /**
@@ -21,17 +23,19 @@ data class YggstackConfig(
 /**
  * Mapping for exposing local ports to Yggdrasil network
  */
+@Parcelize
 @Serializable
 data class ExposeMapping(
     val protocol: Protocol,
     val localPort: Int,
     val localIp: String = "127.0.0.1",
     val yggPort: Int
-)
+) : Parcelable
 
 /**
  * Mapping for forwarding remote Yggdrasil ports to local
  */
+@Parcelize
 @Serializable
 data class ForwardMapping(
     val protocol: Protocol,
@@ -39,13 +43,14 @@ data class ForwardMapping(
     val localPort: Int,
     val remoteIp: String,
     val remotePort: Int
-)
+) : Parcelable
 
 /**
  * Network protocol type
  */
+@Parcelize
 @Serializable
-enum class Protocol {
+enum class Protocol : Parcelable {
     TCP, UDP
 }
 

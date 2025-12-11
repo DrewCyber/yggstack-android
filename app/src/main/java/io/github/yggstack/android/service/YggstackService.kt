@@ -325,20 +325,25 @@ class YggstackService : Service() {
                         val localAddr = "${mapping.localIp}:${mapping.localPort}"
                         val remoteAddr = "[${mapping.remoteIp}]:${mapping.remotePort}"
                         
+                        addLog("Configuring ${mapping.protocol} forward mapping: $localAddr -> $remoteAddr")
+                        
                         when (mapping.protocol) {
                             io.github.yggstack.android.data.Protocol.TCP -> {
                                 yggstack?.addLocalTCPMapping(localAddr, remoteAddr)
-                                addLog("Added TCP forward: $localAddr -> $remoteAddr")
+                                addLog("✓ Added TCP forward: $localAddr -> $remoteAddr")
                             }
                             io.github.yggstack.android.data.Protocol.UDP -> {
                                 yggstack?.addLocalUDPMapping(localAddr, remoteAddr)
-                                addLog("Added UDP forward: $localAddr -> $remoteAddr")
+                                addLog("✓ Added UDP forward: $localAddr -> $remoteAddr")
                             }
                         }
                     } catch (e: Exception) {
-                        addLog("Error adding forward mapping: ${e.message}")
+                        addLog("✗ Error adding forward mapping: ${e.message}")
+                        addLog("Stack trace: ${e.stackTraceToString().take(300)}")
                     }
                 }
+            } else {
+                addLog("No forward mappings configured (enabled=${config.forwardEnabled}, count=${config.forwardMappings.size})")
             }
 
             // Setup Expose Local Port (remote mappings - expose local port on Yggdrasil)
@@ -348,27 +353,33 @@ class YggstackService : Service() {
                     try {
                         val localAddr = "${mapping.localIp}:${mapping.localPort}"
                         
+                        addLog("Configuring ${mapping.protocol} expose mapping: Ygg port ${mapping.yggPort} -> $localAddr")
+                        
                         when (mapping.protocol) {
                             io.github.yggstack.android.data.Protocol.TCP -> {
                                 yggstack?.addRemoteTCPMapping(mapping.yggPort.toLong(), localAddr)
-                                addLog("Exposed TCP port ${mapping.yggPort} -> $localAddr")
+                                addLog("✓ Exposed TCP port ${mapping.yggPort} -> $localAddr")
                             }
                             io.github.yggstack.android.data.Protocol.UDP -> {
                                 yggstack?.addRemoteUDPMapping(mapping.yggPort.toLong(), localAddr)
-                                addLog("Exposed UDP port ${mapping.yggPort} -> $localAddr")
+                                addLog("✓ Exposed UDP port ${mapping.yggPort} -> $localAddr")
                             }
                         }
                     } catch (e: Exception) {
-                        addLog("Error adding expose mapping: ${e.message}")
+                        addLog("✗ Error adding expose mapping: ${e.message}")
+                        addLog("Stack trace: ${e.stackTraceToString().take(300)}")
                     }
                 }
+            } else {
+                addLog("No expose mappings configured (enabled=${config.exposeEnabled}, count=${config.exposeMappings.size})")
             }
 
             if (!config.forwardEnabled && !config.exposeEnabled) {
-                addLog("No port mappings configured")
+                addLog("Port forwarding disabled - no mappings will be configured")
             }
         } catch (e: Exception) {
-            addLog("Error setting up port mappings: ${e.message}")
+            addLog("✗ Error setting up port mappings: ${e.message}")
+            addLog("Stack trace: ${e.stackTraceToString().take(300)}")
         }
     }
 

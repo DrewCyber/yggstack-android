@@ -11,8 +11,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -58,6 +60,7 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
 fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val currentConfig by viewModel.currentConfig.collectAsState()
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
+    val clipboardManager = LocalClipboardManager.current
     val isDarkTheme = isSystemInDarkTheme()
     val successColor = if (isDarkTheme) {
         Color(0xFF4CAF50) // Medium green for dark theme
@@ -83,7 +86,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Current Configuration",
                         style = MaterialTheme.typography.titleMedium
@@ -94,11 +97,27 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                         color = if (isServiceRunning) successColor else Color.Gray
                     )
                 }
-                Icon(
-                    imageVector = if (isServiceRunning) Icons.Default.CheckCircle else Icons.Default.Cancel,
-                    contentDescription = null,
-                    tint = if (isServiceRunning) successColor else Color.Gray
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (currentConfig.isNotEmpty()) {
+                        IconButton(onClick = {
+                            clipboardManager.setText(AnnotatedString(currentConfig))
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Copy config",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = if (isServiceRunning) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                        contentDescription = null,
+                        tint = if (isServiceRunning) successColor else Color.Gray
+                    )
+                }
             }
         }
 
