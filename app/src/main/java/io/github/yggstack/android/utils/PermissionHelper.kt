@@ -1,12 +1,15 @@
 package io.github.yggstack.android.utils
 
+import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 
 /**
  * Helper class for checking and managing app permissions related to
@@ -38,10 +41,25 @@ object PermissionHelper {
     }
     
     /**
-     * Check if all background permissions are granted
+     * Check if notification permission is granted (Android 13+)
+     */
+    fun isNotificationPermissionGranted(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+        return true // Not required for versions below Android 13
+    }
+    
+    /**
+     * Check if all background and notification permissions are granted
      */
     fun hasAllBackgroundPermissions(context: Context): Boolean {
-        return isBatteryOptimizationDisabled(context) && !isBackgroundRestricted(context)
+        return isBatteryOptimizationDisabled(context) && 
+               !isBackgroundRestricted(context) && 
+               isNotificationPermissionGranted(context)
     }
     
     /**
@@ -65,4 +83,22 @@ object PermissionHelper {
             data = Uri.parse("package:${context.packageName}")
         }
     }
+    
+    /**
+     * Get an intent to open notification settings for the app
+     */
+    fun getNotificationSettingsIntent(context: Context): Intent {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            }
+        } else {
+            getAppInfoIntent(context)
+        }
+    }
+    
+    /**
+     * Constant for notification permission request (Android 13+)
+     */
+    const val NOTIFICATION_PERMISSION = Manifest.permission.POST_NOTIFICATIONS
 }

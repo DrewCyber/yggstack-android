@@ -1,9 +1,12 @@
 package io.github.yggstack.android
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -58,25 +61,58 @@ fun MainScreen() {
 
     var selectedScreen by remember { mutableStateOf(0) }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    var permissionsChecked by remember { mutableStateOf(false) }
 
-    // Check permissions on startup
-    LaunchedEffect(Unit) {
+    // Notification permission launcher for Android 13+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // After notification permission is handled, check all permissions again
         if (!PermissionHelper.hasAllBackgroundPermissions(context)) {
             showPermissionDialog = true
         }
     }
 
+    // Check permissions on startup
+    LaunchedEffect(Unit) {
+        // First, request notification permission if needed (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && 
+            !PermissionHelper.isNotificationPermissionGranted(context)) {
+            notificationPermissionLauncher.launch(PermissionHelper.NOTIFICATION_PERMISSION)
+        } else if (!PermissionHelper.hasAllBackgroundPermissions(context)) {
+            showPermissionDialog = true
+        }
+        permissionsChecked = true
+    }
+
     // Permission dialog
     if (showPermissionDialog) {
+        val needsNotification = !PermissionHelper.isNotificationPermissionGranted(context)
+        val needsBattery = !PermissionHelper.isBatteryOptimizationDisabled(context)
+        val needsBackground = PermissionHelper.isBackgroundRestricted(context)
+        
         BackgroundPermissionDialog(
+            needsNotification = needsNotification,
+            needsBattery = needsBattery,
+            needsBackground = needsBackground,
             onDismiss = { showPermissionDialog = false },
             onOpenSettings = {
                 showPermissionDialog = false
-                // Try to open battery optimization settings first
+                // Prioritize based on what's needed
                 try {
-                    context.startActivity(PermissionHelper.getBatteryOptimizationIntent(context))
+                    when {
+                        needsNotification -> {
+                            context.startActivity(PermissionHelper.getNotificationSettingsIntent(context))
+                        }
+                        needsBattery -> {
+                            context.startActivity(PermissionHelper.getBatteryOptimizationIntent(context))
+                        }
+                        else -> {
+                            context.startActivity(PermissionHelper.getAppInfoIntent(context))
+                        }
+                    }
                 } catch (e: Exception) {
-                    // If that fails, open app info settings
+                    // Fallback to app info settings
                     context.startActivity(PermissionHelper.getAppInfoIntent(context))
                 }
             }
@@ -134,6 +170,9 @@ fun MainScreen() {
 
 @Composable
 fun BackgroundPermissionDialog(
+    needsNotification: Boolean,
+    needsBattery: Boolean,
+    needsBackground: Boolean,
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -145,9 +184,30 @@ fun BackgroundPermissionDialog(
             Column {
                 Text(stringResource(R.string.permission_dialog_message))
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                if (needsNotification) {
+                    Text(
+                        text = "• " + stringResource(R.string.permission_notifications_required),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                if (needsBattery) {
+                    Text(
+                        text = "• " + stringResource(R.string.permission_battery_required),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                if (needsBackground) {
+                    Text(
+                        text = "• " + stringResource(R.string.permission_background_required),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(R.string.permission_dialog_instructions),
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         },
