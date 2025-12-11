@@ -6,12 +6,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.yggstack.android.R
+import io.github.yggstack.android.data.ConfigRepository
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val repository = remember { ConfigRepository(context) }
+    val selectedTheme by repository.themeFlow.collectAsState(initial = "system")
+    val coroutineScope = rememberCoroutineScope()
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -27,23 +36,33 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                var selectedTheme by remember { mutableStateOf("system") }
-
                 Column {
                     ThemeOption(
                         label = stringResource(R.string.theme_light),
                         selected = selectedTheme == "light",
-                        onClick = { selectedTheme = "light" }
+                        onClick = {
+                            coroutineScope.launch {
+                                repository.saveTheme("light")
+                            }
+                        }
                     )
                     ThemeOption(
                         label = stringResource(R.string.theme_dark),
                         selected = selectedTheme == "dark",
-                        onClick = { selectedTheme = "dark" }
+                        onClick = {
+                            coroutineScope.launch {
+                                repository.saveTheme("dark")
+                            }
+                        }
                     )
                     ThemeOption(
                         label = stringResource(R.string.theme_system),
                         selected = selectedTheme == "system",
-                        onClick = { selectedTheme = "system" }
+                        onClick = {
+                            coroutineScope.launch {
+                                repository.saveTheme("system")
+                            }
+                        }
                     )
                 }
             }

@@ -128,7 +128,8 @@ fun ConfigurationScreen(
             ConfigSectionWithToggle(
                 title = stringResource(R.string.proxy_config_section),
                 enabled = config.proxyEnabled,
-                onToggle = { viewModel.toggleProxyEnabled() }
+                onToggle = { viewModel.toggleProxyEnabled() },
+                isServiceRunning = isServiceRunning
             ) {
                 OutlinedTextField(
                     value = config.socksProxy,
@@ -157,7 +158,8 @@ fun ConfigurationScreen(
             ConfigSectionWithToggle(
                 title = stringResource(R.string.expose_local_port_section),
                 enabled = config.exposeEnabled,
-                onToggle = { viewModel.toggleExposeEnabled() }
+                onToggle = { viewModel.toggleExposeEnabled() },
+                isServiceRunning = isServiceRunning
             ) {
                 config.exposeMappings.forEach { mapping ->
                     ExposeMappingItem(
@@ -185,7 +187,8 @@ fun ConfigurationScreen(
             ConfigSectionWithToggle(
                 title = stringResource(R.string.forward_remote_port_section),
                 enabled = config.forwardEnabled,
-                onToggle = { viewModel.toggleForwardEnabled() }
+                onToggle = { viewModel.toggleForwardEnabled() },
+                isServiceRunning = isServiceRunning
             ) {
                 config.forwardMappings.forEach { mapping ->
                     ForwardMappingItem(
@@ -292,6 +295,7 @@ fun ConfigSectionWithToggle(
     enabled: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    isServiceRunning: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -311,7 +315,8 @@ fun ConfigSectionWithToggle(
                 )
                 Switch(
                     checked = enabled,
-                    onCheckedChange = { onToggle() }
+                    onCheckedChange = { onToggle() },
+                    enabled = !isServiceRunning
                 )
             }
 
@@ -414,6 +419,24 @@ fun ExposeMappingDialog(
     var localPort by remember { mutableStateOf("") }
     var localIp by remember { mutableStateOf("127.0.0.1") }
     var yggPort by remember { mutableStateOf("") }
+    
+    var localPortError by remember { mutableStateOf(false) }
+    var localIpError by remember { mutableStateOf(false) }
+    var yggPortError by remember { mutableStateOf(false) }
+
+    fun validatePort(port: String): Boolean {
+        val portNum = port.toIntOrNull() ?: return false
+        return portNum in 1..65535
+    }
+
+    fun validateIPv4(ip: String): Boolean {
+        val parts = ip.split(".")
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            val num = part.toIntOrNull() ?: return false
+            num in 0..255
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -441,35 +464,59 @@ fun ExposeMappingDialog(
 
                 OutlinedTextField(
                     value = localPort,
-                    onValueChange = { localPort = it },
+                    onValueChange = { 
+                        localPort = it
+                        localPortError = it.isNotEmpty() && !validatePort(it)
+                    },
                     label = { Text(stringResource(R.string.local_port)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("1-65535") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = localPortError,
+                    supportingText = if (localPortError) {
+                        { Text("Port must be between 1-65535") }
+                    } else null
                 )
 
                 OutlinedTextField(
                     value = localIp,
-                    onValueChange = { localIp = it },
+                    onValueChange = { 
+                        localIp = it
+                        localIpError = it.isNotEmpty() && !validateIPv4(it)
+                    },
                     label = { Text(stringResource(R.string.local_ip)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("127.0.0.1") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = localIpError,
+                    supportingText = if (localIpError) {
+                        { Text("Invalid IPv4 address") }
+                    } else null
                 )
 
                 OutlinedTextField(
                     value = yggPort,
-                    onValueChange = { yggPort = it },
+                    onValueChange = { 
+                        yggPort = it
+                        yggPortError = it.isNotEmpty() && !validatePort(it)
+                    },
                     label = { Text(stringResource(R.string.ygg_port)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("1-65535") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = yggPortError,
+                    supportingText = if (yggPortError) {
+                        { Text("Port must be between 1-65535") }
+                    } else null
                 )
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    localPort.toIntOrNull()?.let { lp ->
-                        yggPort.toIntOrNull()?.let { yp ->
-                            onConfirm(ExposeMapping(protocol, lp, localIp, yp))
-                        }
+                    if (validatePort(localPort) && validateIPv4(localIp) && validatePort(yggPort)) {
+                        onConfirm(ExposeMapping(protocol, localPort.toInt(), localIp, yggPort.toInt()))
                     }
-                }
+                },
+                enabled = localPort.isNotEmpty() && localIp.isNotEmpty() && yggPort.isNotEmpty() &&
+                        !localPortError && !localIpError && !yggPortError
             ) {
                 Text("Add")
             }
@@ -493,6 +540,35 @@ fun ForwardMappingDialog(
     var localPort by remember { mutableStateOf("") }
     var remoteIp by remember { mutableStateOf("") }
     var remotePort by remember { mutableStateOf("") }
+    
+    var localIpError by remember { mutableStateOf(false) }
+    var localPortError by remember { mutableStateOf(false) }
+    var remoteIpError by remember { mutableStateOf(false) }
+    var remotePortError by remember { mutableStateOf(false) }
+
+    fun validatePort(port: String): Boolean {
+        val portNum = port.toIntOrNull() ?: return false
+        return portNum in 1..65535
+    }
+
+    fun validateIPv4(ip: String): Boolean {
+        val parts = ip.split(".")
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            val num = part.toIntOrNull() ?: return false
+            num in 0..255
+        }
+    }
+
+    fun validateIPv6(ip: String): Boolean {
+        // Simple IPv6 validation - check for colon-separated hex values
+        if (!ip.contains(":")) return false
+        val parts = ip.split(":")
+        if (parts.size > 8) return false
+        return parts.all { part ->
+            part.isEmpty() || part.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -520,42 +596,76 @@ fun ForwardMappingDialog(
 
                 OutlinedTextField(
                     value = localIp,
-                    onValueChange = { localIp = it },
+                    onValueChange = { 
+                        localIp = it
+                        localIpError = it.isNotEmpty() && !validateIPv4(it) && it != "::1"
+                    },
                     label = { Text(stringResource(R.string.local_ip)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("127.0.0.1 or ::1") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = localIpError,
+                    supportingText = if (localIpError) {
+                        { Text("Invalid IP address") }
+                    } else null
                 )
 
                 OutlinedTextField(
                     value = localPort,
-                    onValueChange = { localPort = it },
+                    onValueChange = { 
+                        localPort = it
+                        localPortError = it.isNotEmpty() && !validatePort(it)
+                    },
                     label = { Text(stringResource(R.string.local_port)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("1-65535") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = localPortError,
+                    supportingText = if (localPortError) {
+                        { Text("Port must be between 1-65535") }
+                    } else null
                 )
 
                 OutlinedTextField(
                     value = remoteIp,
-                    onValueChange = { remoteIp = it },
+                    onValueChange = { 
+                        remoteIp = it
+                        remoteIpError = it.isNotEmpty() && !validateIPv6(it)
+                    },
                     label = { Text(stringResource(R.string.remote_ip)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("200:1234::1") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = remoteIpError,
+                    supportingText = if (remoteIpError) {
+                        { Text("Invalid IPv6 address") }
+                    } else null
                 )
 
                 OutlinedTextField(
                     value = remotePort,
-                    onValueChange = { remotePort = it },
+                    onValueChange = { 
+                        remotePort = it
+                        remotePortError = it.isNotEmpty() && !validatePort(it)
+                    },
                     label = { Text(stringResource(R.string.remote_port)) },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("1-65535") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = remotePortError,
+                    supportingText = if (remotePortError) {
+                        { Text("Port must be between 1-65535") }
+                    } else null
                 )
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    localPort.toIntOrNull()?.let { lp ->
-                        remotePort.toIntOrNull()?.let { rp ->
-                            onConfirm(ForwardMapping(protocol, localIp, lp, remoteIp, rp))
-                        }
+                    if (validatePort(localPort) && validatePort(remotePort) &&
+                        (validateIPv4(localIp) || localIp == "::1") && validateIPv6(remoteIp)) {
+                        onConfirm(ForwardMapping(protocol, localIp, localPort.toInt(), remoteIp, remotePort.toInt()))
                     }
-                }
+                },
+                enabled = localPort.isNotEmpty() && localIp.isNotEmpty() && 
+                        remoteIp.isNotEmpty() && remotePort.isNotEmpty() &&
+                        !localPortError && !localIpError && !remoteIpError && !remotePortError
             ) {
                 Text("Add")
             }

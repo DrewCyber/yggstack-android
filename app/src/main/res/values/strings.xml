@@ -10,7 +10,7 @@
     <!-- Configuration Screen -->
     <string name="peers_section">Peers</string>
     <string name="add_peer">Add Peer</string>
-    <string name="peer_uri_hint">Enter peer URI (tcp://, tls://, socks://...)</string>
+    <string name="peer_uri_hint">tcp://, tls://, quick://, ws://</string>
     <string name="private_key_section">Private Key</string>
     <string name="show_private_key">Show private key</string>
     <string name="hide_private_key">Hide private key</string>

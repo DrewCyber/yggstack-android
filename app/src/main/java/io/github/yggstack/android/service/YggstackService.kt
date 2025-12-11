@@ -141,6 +141,9 @@ class YggstackService : Service() {
                 yggstack?.start(socksAddress, dnsServer)
                 addLog("Start() completed successfully")
 
+                // Setup port mappings
+                setupPortMappings(config)
+
                 // Get and store the Yggdrasil IP AFTER starting
                 addLog("Getting Yggdrasil IP address...")
                 val address = yggstack?.address
@@ -302,6 +305,67 @@ class YggstackService : Service() {
         return manualConfig
     }
 
+    private fun setupPortMappings(config: YggstackConfig) {
+        try {
+            // Clear any existing mappings
+            yggstack?.clearLocalMappings()
+            yggstack?.clearRemoteMappings()
+
+            // Setup Forward Remote Port (local mappings - forward from local to remote Yggdrasil)
+            if (config.forwardEnabled && config.forwardMappings.isNotEmpty()) {
+                addLog("Setting up ${config.forwardMappings.size} forward port mapping(s)...")
+                config.forwardMappings.forEach { mapping ->
+                    try {
+                        val localAddr = "${mapping.localIp}:${mapping.localPort}"
+                        val remoteAddr = "[${mapping.remoteIp}]:${mapping.remotePort}"
+                        
+                        when (mapping.protocol) {
+                            io.github.yggstack.android.data.Protocol.TCP -> {
+                                yggstack?.addLocalTCPMapping(localAddr, remoteAddr)
+                                addLog("Added TCP forward: $localAddr -> $remoteAddr")
+                            }
+                            io.github.yggstack.android.data.Protocol.UDP -> {
+                                yggstack?.addLocalUDPMapping(localAddr, remoteAddr)
+                                addLog("Added UDP forward: $localAddr -> $remoteAddr")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        addLog("Error adding forward mapping: ${e.message}")
+                    }
+                }
+            }
+
+            // Setup Expose Local Port (remote mappings - expose local port on Yggdrasil)
+            if (config.exposeEnabled && config.exposeMappings.isNotEmpty()) {
+                addLog("Setting up ${config.exposeMappings.size} expose port mapping(s)...")
+                config.exposeMappings.forEach { mapping ->
+                    try {
+                        val localAddr = "${mapping.localIp}:${mapping.localPort}"
+                        
+                        when (mapping.protocol) {
+                            io.github.yggstack.android.data.Protocol.TCP -> {
+                                yggstack?.addRemoteTCPMapping(mapping.yggPort.toLong(), localAddr)
+                                addLog("Exposed TCP port ${mapping.yggPort} -> $localAddr")
+                            }
+                            io.github.yggstack.android.data.Protocol.UDP -> {
+                                yggstack?.addRemoteUDPMapping(mapping.yggPort.toLong(), localAddr)
+                                addLog("Exposed UDP port ${mapping.yggPort} -> $localAddr")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        addLog("Error adding expose mapping: ${e.message}")
+                    }
+                }
+            }
+
+            if (!config.forwardEnabled && !config.exposeEnabled) {
+                addLog("No port mappings configured")
+            }
+        } catch (e: Exception) {
+            addLog("Error setting up port mappings: ${e.message}")
+        }
+    }
+
     private fun addLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
@@ -321,6 +385,7 @@ class YggstackService : Service() {
                 setShowBadge(true)
                 enableLights(false)
                 enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
             val notificationManager = getSystemService(NotificationManager::class.java)
@@ -364,6 +429,7 @@ class YggstackService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
             .addAction(
                 android.R.drawable.ic_delete,
@@ -371,6 +437,8 @@ class YggstackService : Service() {
                 stopPendingIntent
             )
             .setOngoing(true)
+            .setShowWhen(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
