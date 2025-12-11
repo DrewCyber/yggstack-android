@@ -1,5 +1,6 @@
 package io.github.yggstack.android.ui.diagnostics
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -57,6 +58,12 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
 fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val currentConfig by viewModel.currentConfig.collectAsState()
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val successColor = if (isDarkTheme) {
+        Color(0xFF4CAF50) // Medium green for dark theme
+    } else {
+        Color(0xFF1B5E20) // Very dark green for light theme
+    }
 
     Column(
         modifier = Modifier
@@ -84,13 +91,13 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     Text(
                         text = if (isServiceRunning) "Service Running" else "Service Stopped",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isServiceRunning) Color.Green else Color.Gray
+                        color = if (isServiceRunning) successColor else Color.Gray
                     )
                 }
                 Icon(
                     imageVector = if (isServiceRunning) Icons.Default.CheckCircle else Icons.Default.Cancel,
                     contentDescription = null,
-                    tint = if (isServiceRunning) Color.Green else Color.Gray
+                    tint = if (isServiceRunning) successColor else Color.Gray
                 )
             }
         }
@@ -135,10 +142,19 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
 @Composable
 fun PeerStatus(viewModel: DiagnosticsViewModel) {
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
+    val peerCount by viewModel.peerCount.collectAsState()
+    val peerDetails by viewModel.peerDetails.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val successColor = if (isDarkTheme) {
+        Color(0xFF4CAF50) // Medium green for dark theme
+    } else {
+        Color(0xFF1B5E20) // Very dark green for light theme
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
         Card(
@@ -162,7 +178,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
                     Text(
                         text = if (isServiceRunning) "Monitoring active" else "Start service to monitor",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isServiceRunning) Color.Green else Color.Gray
+                        color = if (isServiceRunning) successColor else Color.Gray
                     )
                 }
             }
@@ -213,23 +229,168 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Placeholder for future peer data
-                    Text(
-                        text = "Detailed peer statistics will be available in Phase 3",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Connected Peers",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "$peerCount",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = if (peerCount > 0) successColor else Color.Gray
+                            )
+                        }
+                        
+                        Icon(
+                            imageVector = if (peerCount > 0) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = if (peerCount > 0) successColor else Color.Gray
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        text = "• Connection state\n• Latency measurements\n• Bytes sent/received\n• Ping test functionality",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (peerCount == 0) {
+                        Text(
+                            text = "No peers connected. Add peers in the Configuration tab to connect to the Yggdrasil network.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "You are connected to $peerCount peer${if (peerCount != 1) "s" else ""} on the Yggdrasil network.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
+        
+        // Display each peer's details as separate cards
+        if (peerCount > 0) {
+            peerDetails.forEach { peer ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (peer.up) {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.errorContainer
+                        }
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (peer.inbound) "Inbound" else "Outbound",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Icon(
+                                imageVector = if (peer.up) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                contentDescription = null,
+                                tint = if (peer.up) successColor else Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        Text(
+                            text = peer.uri,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Uptime",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = formatUptime(peer.uptime),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Latency",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = if (peer.latency > 0) "${peer.latency} ms" else "-",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "RX: ${formatBytes(peer.rxBytes)}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "TX: ${formatBytes(peer.txBytes)}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun formatUptime(seconds: Double): String {
+    val sec = seconds.toInt()
+    val hours = sec / 3600
+    val minutes = (sec % 3600) / 60
+    val secs = sec % 60
+    return when {
+        hours > 0 -> String.format("%dh %dm", hours, minutes)
+        minutes > 0 -> String.format("%dm %ds", minutes, secs)
+        else -> String.format("%ds", secs)
+    }
+}
+
+fun formatBytes(bytes: Long): String {
+    return when {
+        bytes >= 1_000_000_000 -> String.format("%.2f GB", bytes / 1_000_000_000.0)
+        bytes >= 1_000_000 -> String.format("%.2f MB", bytes / 1_000_000.0)
+        bytes >= 1_000 -> String.format("%.2f KB", bytes / 1_000.0)
+        else -> "$bytes B"
     }
 }
 

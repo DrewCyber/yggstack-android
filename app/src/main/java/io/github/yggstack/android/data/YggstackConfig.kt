@@ -49,3 +49,15 @@ enum class Protocol {
     TCP, UDP
 }
 
+data class PeerDetail(
+    val uri: String,
+    val up: Boolean,
+    val inbound: Boolean,
+    val port: Long,
+    val priority: Int,
+    val rxBytes: Long,
+    val txBytes: Long,
+    val uptime: Double,
+    val latency: Long
+)
+

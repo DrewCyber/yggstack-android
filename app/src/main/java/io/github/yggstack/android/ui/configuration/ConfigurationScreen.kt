@@ -1,5 +1,7 @@
 package io.github.yggstack.android.ui.configuration
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -9,7 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -71,39 +75,7 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Peers Section
-            ConfigSection(title = stringResource(R.string.peers_section)) {
-                config.peers.forEach { peer ->
-                    PeerItem(
-                        peer = peer,
-                        enabled = !isServiceRunning,
-                        onDelete = { viewModel.removePeer(peer) }
-                    )
-                }
-
-                if (!isServiceRunning) {
-                    OutlinedTextField(
-                        value = peerInput,
-                        onValueChange = { peerInput = it },
-                        label = { Text(stringResource(R.string.peer_uri_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                if (peerInput.isNotBlank()) {
-                                    viewModel.addPeer(peerInput)
-                                    peerInput = ""
-                                }
-                            }) {
-                                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_peer))
-                            }
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Yggdrasil IP Section
+            // Yggdrasil IP Section (moved before Peers)
             ConfigSection(title = stringResource(R.string.yggdrasil_ip_section)) {
                 OutlinedTextField(
                     value = yggdrasilIp ?: stringResource(R.string.not_connected),
@@ -120,6 +92,69 @@ fun ConfigurationScreen(
                         }
                     }
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Peers Section with clickable header
+            val context = LocalContext.current
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Clickable header
+                    Surface(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://publicpeers.neilalexander.dev/"))
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.Transparent
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.peers_section),
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                Icons.Default.Link,
+                                contentDescription = "Find public peers",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    config.peers.forEach { peer ->
+                        PeerItem(
+                            peer = peer,
+                            enabled = !isServiceRunning,
+                            onDelete = { viewModel.removePeer(peer) }
+                        )
+                    }
+
+                    if (!isServiceRunning) {
+                        OutlinedTextField(
+                            value = peerInput,
+                            onValueChange = { peerInput = it },
+                            label = { Text(stringResource(R.string.peer_uri_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    if (peerInput.isNotBlank()) {
+                                        viewModel.addPeer(peerInput)
+                                        peerInput = ""
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_peer))
+                                }
+                            }
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

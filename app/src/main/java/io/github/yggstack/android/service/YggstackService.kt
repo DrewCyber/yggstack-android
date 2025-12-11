@@ -49,6 +49,9 @@ class YggstackService : Service() {
     private val _peerCount = MutableStateFlow(0)
     val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
 
+    private val _peerDetailsJSON = MutableStateFlow<String>("[]")
+    val peerDetailsJSON: StateFlow<String> = _peerDetailsJSON.asStateFlow()
+
     private val _generatedPrivateKey = MutableStateFlow<String?>(null)
     val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
 
@@ -155,6 +158,9 @@ class YggstackService : Service() {
 
                 addLog("Yggstack started successfully")
                 updateNotification("Connected", config.peers.size)
+
+                // Start periodic peer stats update
+                startPeerStatsUpdater()
 
             } catch (e: Exception) {
                 addLog("Error starting Yggstack: ${e.message}")
@@ -372,6 +378,25 @@ class YggstackService : Service() {
         val logEntry = "[$timestamp] $message"
 
         _logs.value = (_logs.value + logEntry).takeLast(MAX_LOG_ENTRIES)
+    }
+
+    private fun startPeerStatsUpdater() {
+        serviceScope.launch {
+            while (_isRunning.value) {
+                try {
+                    val peersJson = yggstack?.getPeersJSON()
+                    if (peersJson != null) {
+                        _peerDetailsJSON.value = peersJson
+                        // Update peer count from actual connected peers
+                        val count = peersJson.count { it == '{' }
+                        _peerCount.value = count
+                    }
+                } catch (e: Exception) {
+                    addLog("Error fetching peer stats: ${e.message}")
+                }
+                kotlinx.coroutines.delay(5000) // Update every 5 seconds
+            }
+        }
     }
 
     private fun createNotificationChannel() {

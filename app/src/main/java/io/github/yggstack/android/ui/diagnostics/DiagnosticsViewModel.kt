@@ -12,6 +12,8 @@ import io.github.yggstack.android.data.ConfigRepository
 import io.github.yggstack.android.service.YggstackService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONException
 
 /**
  * ViewModel for Diagnostics screen
@@ -33,6 +35,12 @@ class DiagnosticsViewModel(
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning: StateFlow<Boolean> = _isServiceRunning.asStateFlow()
 
+    private val _peerCount = MutableStateFlow(0)
+    val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
+
+    private val _peerDetails = MutableStateFlow<List<io.github.yggstack.android.data.PeerDetail>>(emptyList())
+    val peerDetails: StateFlow<List<io.github.yggstack.android.data.PeerDetail>> = _peerDetails.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -51,10 +59,22 @@ class DiagnosticsViewModel(
                         _isServiceRunning.value = running
                     }
                 }
+                viewModelScope.launch {
+                    service.peerCount.collect { count ->
+                        _peerCount.value = count
+                    }
+                }
+                viewModelScope.launch {
+                    service.peerDetailsJSON.collect { json ->
+                        _peerDetails.value = parsePeerDetails(json)
+                    }
+                }
 
                 // Sync initial state
                 _logs.value = service.logs.value
                 _isServiceRunning.value = service.isRunning.value
+                _peerCount.value = service.peerCount.value
+                _peerDetails.value = parsePeerDetails(service.peerDetailsJSON.value)
             }
         }
 
@@ -122,6 +142,36 @@ class DiagnosticsViewModel(
         yggstackService?.clearLogs()
         // Also clear local state immediately for responsive UI
         _logs.value = emptyList()
+    }
+
+    private fun parsePeerDetails(json: String): List<io.github.yggstack.android.data.PeerDetail> {
+        if (json.isBlank() || json == "[]") return emptyList()
+        
+        return try {
+            val jsonArray = JSONArray(json)
+            val peers = mutableListOf<io.github.yggstack.android.data.PeerDetail>()
+            
+            for (i in 0 until jsonArray.length()) {
+                val peerObj = jsonArray.getJSONObject(i)
+                val peer = io.github.yggstack.android.data.PeerDetail(
+                    uri = peerObj.optString("URI", ""),
+                    up = peerObj.optBoolean("Up", false),
+                    inbound = peerObj.optBoolean("Inbound", false),
+                    port = peerObj.optLong("Port", 0),
+                    priority = peerObj.optInt("Priority", 0),
+                    rxBytes = peerObj.optLong("RXBytes", 0),
+                    txBytes = peerObj.optLong("TXBytes", 0),
+                    uptime = peerObj.optDouble("Uptime", 0.0) / 1_000_000_000.0, // nanoseconds to seconds
+                    latency = peerObj.optLong("Latency", 0) / 1_000_000 // nanoseconds to milliseconds
+                )
+                peers.add(peer)
+            }
+            
+            // Sort by URI to prevent list flapping
+            peers.sortedBy { it.uri }
+        } catch (e: JSONException) {
+            emptyList()
+        }
     }
 
     class Factory(
