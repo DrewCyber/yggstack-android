@@ -62,5 +62,12 @@
     <string name="invalid_port">Invalid port number</string>
     <string name="invalid_ip">Invalid IP address</string>
 
+    <!-- Background Permissions Dialog -->
+    <string name="permission_dialog_title">Background Activity Required</string>
+    <string name="permission_dialog_message">To keep the Yggstack service running in the background, you need to disable battery optimization and allow background activity for this app.</string>
+    <string name="permission_dialog_instructions">Please follow these steps:\n\n1. Disable battery optimization\n2. Allow background activity without restrictions\n\nThis ensures the service stays active even when the app is not in the foreground.</string>
+    <string name="permission_dialog_open_settings">Open Settings</string>
+    <string name="permission_dialog_later">Later</string>
+
 </resources>
 

@@ -1,10 +1,14 @@
 package io.github.yggstack.android
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -12,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.yggstack.android.data.ConfigRepository
 import io.github.yggstack.android.ui.configuration.ConfigurationScreen
@@ -19,6 +24,7 @@ import io.github.yggstack.android.ui.configuration.ConfigurationViewModel
 import io.github.yggstack.android.ui.diagnostics.DiagnosticsScreen
 import io.github.yggstack.android.ui.settings.SettingsScreen
 import io.github.yggstack.android.ui.theme.YggstackAndroidTheme
+import io.github.yggstack.android.utils.PermissionHelper
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +57,31 @@ fun MainScreen() {
     )
 
     var selectedScreen by remember { mutableStateOf(0) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
+
+    // Check permissions on startup
+    LaunchedEffect(Unit) {
+        if (!PermissionHelper.hasAllBackgroundPermissions(context)) {
+            showPermissionDialog = true
+        }
+    }
+
+    // Permission dialog
+    if (showPermissionDialog) {
+        BackgroundPermissionDialog(
+            onDismiss = { showPermissionDialog = false },
+            onOpenSettings = {
+                showPermissionDialog = false
+                // Try to open battery optimization settings first
+                try {
+                    context.startActivity(PermissionHelper.getBatteryOptimizationIntent(context))
+                } catch (e: Exception) {
+                    // If that fails, open app info settings
+                    context.startActivity(PermissionHelper.getAppInfoIntent(context))
+                }
+            }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -99,5 +130,37 @@ fun MainScreen() {
             }
         }
     }
+}
+
+@Composable
+fun BackgroundPermissionDialog(
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+        title = { Text(stringResource(R.string.permission_dialog_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.permission_dialog_message))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.permission_dialog_instructions),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onOpenSettings) {
+                Text(stringResource(R.string.permission_dialog_open_settings))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.permission_dialog_later))
+            }
+        }
+    )
 }
 
