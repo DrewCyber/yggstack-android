@@ -142,12 +142,17 @@ class YggstackService : Service() {
                     ""
                 }
 
+                // Clear any existing mappings from previous runs to avoid duplicates
+                yggstack?.clearLocalMappings()
+                yggstack?.clearRemoteMappings()
+
+                // Setup port mappings BEFORE starting
+                // This ensures mappings are in place when start() runs
+                setupPortMappings(config)
+
                 addLog("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
                 addLog("Start() completed successfully")
-
-                // Setup port mappings
-                setupPortMappings(config)
 
                 // Get and store the Yggdrasil IP AFTER starting
                 addLog("Getting Yggdrasil IP address...")
@@ -315,10 +320,9 @@ class YggstackService : Service() {
 
     private fun setupPortMappings(config: YggstackConfig) {
         try {
-            // Clear any existing mappings
-            yggstack?.clearLocalMappings()
-            yggstack?.clearRemoteMappings()
-
+            // Note: Mappings should be set up BEFORE calling start()
+            // so the handlers are started properly in the Start() function
+            
             // Setup Forward Remote Port (local mappings - forward from local to remote Yggdrasil)
             if (config.forwardEnabled && config.forwardMappings.isNotEmpty()) {
                 addLog("Setting up ${config.forwardMappings.size} forward port mapping(s)...")
