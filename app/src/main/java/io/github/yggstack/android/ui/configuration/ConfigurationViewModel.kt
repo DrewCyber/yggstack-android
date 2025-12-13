@@ -144,6 +144,15 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(peers = currentPeers))
     }
 
+    fun updatePeer(oldPeer: String, newPeer: String) {
+        val currentPeers = _config.value.peers.toMutableList()
+        val index = currentPeers.indexOf(oldPeer)
+        if (index != -1 && newPeer !in currentPeers) {
+            currentPeers[index] = newPeer.trim()
+            updateConfig(_config.value.copy(peers = currentPeers))
+        }
+    }
+
     fun updatePrivateKey(privateKey: String) {
         updateConfig(_config.value.copy(privateKey = privateKey))
     }
@@ -172,6 +181,15 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(exposeMappings = currentMappings))
     }
 
+    fun updateExposeMapping(oldMapping: ExposeMapping, newMapping: ExposeMapping) {
+        val currentMappings = _config.value.exposeMappings.toMutableList()
+        val index = currentMappings.indexOf(oldMapping)
+        if (index != -1) {
+            currentMappings[index] = newMapping
+            updateConfig(_config.value.copy(exposeMappings = currentMappings))
+        }
+    }
+
     fun toggleExposeEnabled() {
         updateConfig(_config.value.copy(exposeEnabled = !_config.value.exposeEnabled))
     }
@@ -186,6 +204,15 @@ class ConfigurationViewModel(
         val currentMappings = _config.value.forwardMappings.toMutableList()
         currentMappings.remove(mapping)
         updateConfig(_config.value.copy(forwardMappings = currentMappings))
+    }
+
+    fun updateForwardMapping(oldMapping: ForwardMapping, newMapping: ForwardMapping) {
+        val currentMappings = _config.value.forwardMappings.toMutableList()
+        val index = currentMappings.indexOf(oldMapping)
+        if (index != -1) {
+            currentMappings[index] = newMapping
+            updateConfig(_config.value.copy(forwardMappings = currentMappings))
+        }
     }
 
     fun toggleForwardEnabled() {

@@ -35,8 +35,11 @@ fun ConfigurationScreen(
     val clipboardManager = LocalClipboardManager.current
 
     var peerInput by remember { mutableStateOf("") }
+    var editingPeer by remember { mutableStateOf<String?>(null) }
     var showExposeDialog by remember { mutableStateOf(false) }
+    var editingExposeMapping by remember { mutableStateOf<ExposeMapping?>(null) }
     var showForwardDialog by remember { mutableStateOf(false) }
+    var editingForwardMapping by remember { mutableStateOf<ForwardMapping?>(null) }
 
     val isServiceRunning = serviceState is ServiceState.Running
 
@@ -132,6 +135,10 @@ fun ConfigurationScreen(
                         PeerItem(
                             peer = peer,
                             enabled = !isServiceRunning,
+                            onEdit = {
+                                editingPeer = peer
+                                peerInput = peer
+                            },
                             onDelete = { viewModel.removePeer(peer) }
                         )
                     }
@@ -140,16 +147,34 @@ fun ConfigurationScreen(
                         OutlinedTextField(
                             value = peerInput,
                             onValueChange = { peerInput = it },
-                            label = { Text(stringResource(R.string.peer_uri_hint)) },
+                            label = { Text(if (editingPeer != null) "Edit Peer" else stringResource(R.string.peer_uri_hint)) },
                             modifier = Modifier.fillMaxWidth(),
                             trailingIcon = {
-                                IconButton(onClick = {
-                                    if (peerInput.isNotBlank()) {
-                                        viewModel.addPeer(peerInput)
-                                        peerInput = ""
+                                Row {
+                                    if (editingPeer != null) {
+                                        IconButton(onClick = {
+                                            editingPeer = null
+                                            peerInput = ""
+                                        }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Cancel")
+                                        }
                                     }
-                                }) {
-                                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_peer))
+                                    IconButton(onClick = {
+                                        if (peerInput.isNotBlank()) {
+                                            if (editingPeer != null) {
+                                                viewModel.updatePeer(editingPeer!!, peerInput)
+                                                editingPeer = null
+                                            } else {
+                                                viewModel.addPeer(peerInput)
+                                            }
+                                            peerInput = ""
+                                        }
+                                    }) {
+                                        Icon(
+                                            if (editingPeer != null) Icons.Default.Check else Icons.Default.Add,
+                                            contentDescription = if (editingPeer != null) "Update" else stringResource(R.string.add_peer)
+                                        )
+                                    }
                                 }
                             }
                         )
@@ -200,6 +225,10 @@ fun ConfigurationScreen(
                     ExposeMappingItem(
                         mapping = mapping,
                         enabled = !isServiceRunning && config.exposeEnabled,
+                        onEdit = {
+                            editingExposeMapping = mapping
+                            showExposeDialog = true
+                        },
                         onDelete = { viewModel.removeExposeMapping(mapping) }
                     )
                 }
@@ -229,6 +258,10 @@ fun ConfigurationScreen(
                     ForwardMappingItem(
                         mapping = mapping,
                         enabled = !isServiceRunning && config.forwardEnabled,
+                        onEdit = {
+                            editingForwardMapping = mapping
+                            showForwardDialog = true
+                        },
                         onDelete = { viewModel.removeForwardMapping(mapping) }
                     )
                 }
@@ -282,11 +315,20 @@ fun ConfigurationScreen(
 
     // Dialogs
     if (showExposeDialog) {
-        key(showExposeDialog) {
+        key(showExposeDialog, editingExposeMapping) {
             ExposeMappingDialog(
-                onDismiss = { showExposeDialog = false },
+                initialMapping = editingExposeMapping,
+                onDismiss = {
+                    showExposeDialog = false
+                    editingExposeMapping = null
+                },
                 onConfirm = { mapping ->
-                    viewModel.addExposeMapping(mapping)
+                    if (editingExposeMapping != null) {
+                        viewModel.updateExposeMapping(editingExposeMapping!!, mapping)
+                        editingExposeMapping = null
+                    } else {
+                        viewModel.addExposeMapping(mapping)
+                    }
                     showExposeDialog = false
                 }
             )
@@ -294,11 +336,20 @@ fun ConfigurationScreen(
     }
 
     if (showForwardDialog) {
-        key(showForwardDialog) {
+        key(showForwardDialog, editingForwardMapping) {
             ForwardMappingDialog(
-                onDismiss = { showForwardDialog = false },
+                initialMapping = editingForwardMapping,
+                onDismiss = {
+                    showForwardDialog = false
+                    editingForwardMapping = null
+                },
                 onConfirm = { mapping ->
-                    viewModel.addForwardMapping(mapping)
+                    if (editingForwardMapping != null) {
+                        viewModel.updateForwardMapping(editingForwardMapping!!, mapping)
+                        editingForwardMapping = null
+                    } else {
+                        viewModel.addForwardMapping(mapping)
+                    }
                     showForwardDialog = false
                 }
             )
@@ -371,6 +422,7 @@ fun ConfigSectionWithToggle(
 fun PeerItem(
     peer: String,
     enabled: Boolean,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -387,6 +439,9 @@ fun PeerItem(
             style = MaterialTheme.typography.bodyMedium
         )
         if (enabled) {
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit peer")
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_peer))
             }
@@ -398,6 +453,7 @@ fun PeerItem(
 fun ExposeMappingItem(
     mapping: ExposeMapping,
     enabled: Boolean,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -414,6 +470,9 @@ fun ExposeMappingItem(
             style = MaterialTheme.typography.bodyMedium
         )
         if (enabled) {
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit mapping")
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_peer))
             }
@@ -425,6 +484,7 @@ fun ExposeMappingItem(
 fun ForwardMappingItem(
     mapping: ForwardMapping,
     enabled: Boolean,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -441,6 +501,9 @@ fun ForwardMappingItem(
             style = MaterialTheme.typography.bodyMedium
         )
         if (enabled) {
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit mapping")
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_peer))
             }
@@ -451,13 +514,14 @@ fun ForwardMappingItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExposeMappingDialog(
+    initialMapping: ExposeMapping? = null,
     onDismiss: () -> Unit,
     onConfirm: (ExposeMapping) -> Unit
 ) {
-    var protocol by remember { mutableStateOf(Protocol.TCP) }
-    var localPort by remember { mutableStateOf("") }
-    var localIp by remember { mutableStateOf("127.0.0.1") }
-    var yggPort by remember { mutableStateOf("") }
+    var protocol by remember { mutableStateOf(initialMapping?.protocol ?: Protocol.TCP) }
+    var localPort by remember { mutableStateOf(initialMapping?.localPort?.toString() ?: "") }
+    var localIp by remember { mutableStateOf(initialMapping?.localIp ?: "127.0.0.1") }
+    var yggPort by remember { mutableStateOf(initialMapping?.yggPort?.toString() ?: "") }
     
     var localPortError by remember { mutableStateOf(false) }
     var localIpError by remember { mutableStateOf(false) }
@@ -479,7 +543,7 @@ fun ExposeMappingDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.add_mapping)) },
+        title = { Text(if (initialMapping != null) "Edit Mapping" else stringResource(R.string.add_mapping)) },
         text = {
             Column {
                 // Protocol selector
@@ -557,7 +621,7 @@ fun ExposeMappingDialog(
                 enabled = localPort.isNotEmpty() && localIp.isNotEmpty() && yggPort.isNotEmpty() &&
                         !localPortError && !localIpError && !yggPortError
             ) {
-                Text("Add")
+                Text(if (initialMapping != null) "Update" else "Add")
             }
         },
         dismissButton = {
@@ -571,14 +635,15 @@ fun ExposeMappingDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForwardMappingDialog(
+    initialMapping: ForwardMapping? = null,
     onDismiss: () -> Unit,
     onConfirm: (ForwardMapping) -> Unit
 ) {
-    var protocol by remember { mutableStateOf(Protocol.TCP) }
-    var localIp by remember { mutableStateOf("127.0.0.1") }
-    var localPort by remember { mutableStateOf("") }
-    var remoteIp by remember { mutableStateOf("") }
-    var remotePort by remember { mutableStateOf("") }
+    var protocol by remember { mutableStateOf(initialMapping?.protocol ?: Protocol.TCP) }
+    var localIp by remember { mutableStateOf(initialMapping?.localIp ?: "127.0.0.1") }
+    var localPort by remember { mutableStateOf(initialMapping?.localPort?.toString() ?: "") }
+    var remoteIp by remember { mutableStateOf(initialMapping?.remoteIp ?: "") }
+    var remotePort by remember { mutableStateOf(initialMapping?.remotePort?.toString() ?: "") }
     
     var localIpError by remember { mutableStateOf(false) }
     var localPortError by remember { mutableStateOf(false) }
@@ -611,7 +676,7 @@ fun ForwardMappingDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.add_mapping)) },
+        title = { Text(if (initialMapping != null) "Edit Mapping" else stringResource(R.string.add_mapping)) },
         text = {
             Column {
                 // Protocol selector
@@ -706,7 +771,7 @@ fun ForwardMappingDialog(
                         remoteIp.isNotEmpty() && remotePort.isNotEmpty() &&
                         !localPortError && !localIpError && !remoteIpError && !remotePortError
             ) {
-                Text("Add")
+                Text(if (initialMapping != null) "Update" else "Add")
             }
         },
         dismissButton = {
