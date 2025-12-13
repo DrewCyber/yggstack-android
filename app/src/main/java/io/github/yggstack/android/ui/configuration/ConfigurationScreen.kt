@@ -282,23 +282,27 @@ fun ConfigurationScreen(
 
     // Dialogs
     if (showExposeDialog) {
-        ExposeMappingDialog(
-            onDismiss = { showExposeDialog = false },
-            onConfirm = { mapping ->
-                viewModel.addExposeMapping(mapping)
-                showExposeDialog = false
-            }
-        )
+        key(showExposeDialog) {
+            ExposeMappingDialog(
+                onDismiss = { showExposeDialog = false },
+                onConfirm = { mapping ->
+                    viewModel.addExposeMapping(mapping)
+                    showExposeDialog = false
+                }
+            )
+        }
     }
 
     if (showForwardDialog) {
-        ForwardMappingDialog(
-            onDismiss = { showForwardDialog = false },
-            onConfirm = { mapping ->
-                viewModel.addForwardMapping(mapping)
-                showForwardDialog = false
-            }
-        )
+        key(showForwardDialog) {
+            ForwardMappingDialog(
+                onDismiss = { showForwardDialog = false },
+                onConfirm = { mapping ->
+                    viewModel.addForwardMapping(mapping)
+                    showForwardDialog = false
+                }
+            )
+        }
     }
 }
 

@@ -10,14 +10,14 @@
     <!-- Configuration Screen -->
     <string name="peers_section">Peers</string>
     <string name="add_peer">Add Peer</string>
-    <string name="peer_uri_hint">tcp://, tls://, quick://, ws://</string>
+    <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
     <string name="private_key_section">Private Key</string>
     <string name="show_private_key">Show private key</string>
     <string name="hide_private_key">Hide private key</string>
     <string name="yggdrasil_ip_section">Your Yggdrasil IP</string>
     <string name="copy_ip">Copy IP</string>
     <string name="not_connected">Not connected</string>
-    <string name="proxy_config_section">Proxy Configuration</string>
+    <string name="proxy_config_section">Yggdrasil Proxy</string>
     <string name="socks_proxy">SOCKS Proxy</string>
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="dns_server">DNS Server</string>
