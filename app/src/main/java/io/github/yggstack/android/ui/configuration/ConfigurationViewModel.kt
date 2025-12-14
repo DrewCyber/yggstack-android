@@ -219,6 +219,10 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(forwardEnabled = !_config.value.forwardEnabled))
     }
 
+    fun setMulticastEnabled(enabled: Boolean) {
+        updateConfig(_config.value.copy(multicastEnabled = enabled))
+    }
+
     fun toggleShowPrivateKey() {
         _showPrivateKey.value = !_showPrivateKey.value
     }

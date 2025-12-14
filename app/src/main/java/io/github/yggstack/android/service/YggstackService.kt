@@ -286,18 +286,30 @@ class YggstackService : Service() {
                 addLog("ERROR: Failed to extract generated private key from config!")
             }
 
-            // If we have peers, we need to merge them into the generated config
+            // Apply peers and multicast configuration
+            var finalConfig = configWithCert
+            
             if (config.peers.isNotEmpty()) {
                 addLog("Adding ${config.peers.size} peer(s) to config")
                 val peersJson = config.peers.joinToString("\",\"", "[\"", "\"]")
-                val finalConfig = configWithCert.replace(
+                finalConfig = finalConfig.replace(
                     Regex("\"Peers\":\\s*\\[\\s*\\]"),
                     "\"Peers\": $peersJson"
                 )
-                return finalConfig
+            }
+            
+            // Handle multicast discovery switch
+            if (!config.multicastEnabled) {
+                addLog("Multicast discovery disabled - removing MulticastInterfaces")
+                finalConfig = finalConfig.replace(
+                    Regex("\"MulticastInterfaces\":\\s*\\[[^\\]]*\\]"),
+                    "\"MulticastInterfaces\": []"
+                )
+            } else {
+                addLog("Multicast discovery enabled - using default configuration")
             }
 
-            return configWithCert
+            return finalConfig
         }
 
         // Build config with existing private key
@@ -309,6 +321,21 @@ class YggstackService : Service() {
             config.peers.joinToString("\",\"", "[\"", "\"]")
         }
 
+        val multicastInterfaces = if (config.multicastEnabled) {
+            addLog("Multicast discovery enabled - using default configuration")
+            """[
+    {
+      "Regex": ".*",
+      "Beacon": true,
+      "Listen": true,
+      "Password": ""
+    }
+  ]"""
+        } else {
+            addLog("Multicast discovery disabled - using empty configuration")
+            "[]"
+        }
+
         // Use the same structure as generated config
         val manualConfig = """
 {
@@ -318,14 +345,7 @@ class YggstackService : Service() {
   "InterfacePeers": {},
   "Listen": [],
   "AdminListen": "none",
-  "MulticastInterfaces": [
-    {
-      "Regex": ".*",
-      "Beacon": true,
-      "Listen": true,
-      "Password": ""
-    }
-  ],
+  "MulticastInterfaces": $multicastInterfaces,
   "AllowedPublicKeys": [],
   "IfName": "auto",
   "IfMTU": 65535,

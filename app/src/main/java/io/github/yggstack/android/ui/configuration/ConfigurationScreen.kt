@@ -179,6 +179,34 @@ fun ConfigurationScreen(
                             }
                         )
                     }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Multicast Discovery Switch
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.multicast_discovery),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.multicast_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = config.multicastEnabled,
+                            onCheckedChange = { viewModel.setMulticastEnabled(it) },
+                            enabled = !isServiceRunning
+                        )
+                    }
                 }
             }
 

@@ -11,6 +11,8 @@
     <string name="peers_section">Peers</string>
     <string name="add_peer">Add Peer</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
+    <string name="multicast_discovery">Multicast discovery</string>
+    <string name="multicast_description">Automatically discover peers on local network</string>
     <string name="private_key_section">Private Key</string>
     <string name="show_private_key">Show private key</string>
     <string name="hide_private_key">Hide private key</string>

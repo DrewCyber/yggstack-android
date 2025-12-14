@@ -17,7 +17,8 @@ data class YggstackConfig(
     val exposeMappings: List<ExposeMapping> = emptyList(),
     val exposeEnabled: Boolean = false,
     val forwardMappings: List<ForwardMapping> = emptyList(),
-    val forwardEnabled: Boolean = false
+    val forwardEnabled: Boolean = false,
+    val multicastEnabled: Boolean = true
 )
 
 /**
