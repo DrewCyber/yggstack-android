@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
 import link.yggdrasil.yggstack.mobile.Yggstack
+import org.json.JSONArray
 
 /**
  * Foreground service for running Yggstack
@@ -405,8 +406,13 @@ class YggstackService : Service() {
                     if (peersJson != null) {
                         _peerDetailsJSON.value = peersJson
                         // Update peer count from actual connected peers
-                        val count = peersJson.count { it == '{' }
-                        _peerCount.value = count
+                        try {
+                            val jsonArray = JSONArray(peersJson)
+                            _peerCount.value = jsonArray.length()
+                        } catch (e: Exception) {
+                            addLog("Error parsing peer JSON: ${e.message}")
+                            _peerCount.value = 0
+                        }
                     }
                 } catch (e: Exception) {
                     addLog("Error fetching peer stats: ${e.message}")
@@ -496,7 +502,7 @@ class YggstackService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "YggstackService::WakeLock"
         ).apply {
-            acquire(10 * 60 * 1000L) // 10 minutes timeout
+            acquire() // Acquire indefinitely while service is running
         }
     }
 
