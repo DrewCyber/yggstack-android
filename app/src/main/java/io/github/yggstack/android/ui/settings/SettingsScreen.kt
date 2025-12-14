@@ -2,12 +2,14 @@ package io.github.yggstack.android.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.yggstack.android.BuildConfig
 import io.github.yggstack.android.R
 import io.github.yggstack.android.data.ConfigRepository
+import io.github.yggstack.android.utils.AutostartHelper
+import io.github.yggstack.android.utils.PermissionHelper
 import kotlinx.coroutines.launch
 
 @Composable
@@ -26,6 +30,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val repository = remember { ConfigRepository(context) }
     val selectedTheme by repository.themeFlow.collectAsState(initial = "system")
+    val autostartEnabled by repository.autostartFlow.collectAsState(initial = false)
     val coroutineScope = rememberCoroutineScope()
 
     Column(
@@ -71,6 +76,101 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             }
                         }
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Autostart Section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = stringResource(R.string.autostart_section),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.autostart_enabled),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.autostart_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autostartEnabled,
+                        onCheckedChange = { enabled ->
+                            coroutineScope.launch {
+                                repository.saveAutostart(enabled)
+                            }
+                            
+                            // Try to open manufacturer-specific autostart settings when enabled
+                            if (enabled && AutostartHelper.requiresManufacturerAutostartPermission()) {
+                                AutostartHelper.openAutostartSettings(context)
+                            }
+                        }
+                    )
+                }
+                
+                // Manufacturer-specific autostart button
+                if (autostartEnabled && AutostartHelper.requiresManufacturerAutostartPermission()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val opened = AutostartHelper.openAutostartSettings(context)
+                            if (!opened) {
+                                // Fallback to general settings
+                                try {
+                                    context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                } catch (e: Exception) {
+                                    // Ignore
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open ${AutostartHelper.getManufacturerName()} Autostart Settings")
+                    }
+                }
+                
+                // Check battery optimization button
+                if (autostartEnabled && !PermissionHelper.isBatteryOptimizationDisabled(context)) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                context.startActivity(PermissionHelper.getBatteryOptimizationIntent(context))
+                            } catch (e: Exception) {
+                                // Fallback to general settings
+                                context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Disable Battery Optimization")
+                    }
                 }
             }
         }

@@ -175,10 +175,10 @@ class YggstackService : Service() {
                 addLog("Yggdrasil IP: $address")
 
                 _isRunning.value = true
-                _peerCount.value = config.peers.size
+                _peerCount.value = 0
 
                 addLog("Yggstack started successfully")
-                updateNotification("Connected", config.peers.size)
+                updateNotification("Connected", 0)
 
                 // Start periodic peer stats update
                 startPeerStatsUpdater()
@@ -426,10 +426,14 @@ class YggstackService : Service() {
                         // Update peer count from actual connected peers
                         try {
                             val jsonArray = JSONArray(peersJson)
-                            _peerCount.value = jsonArray.length()
+                            val count = jsonArray.length()
+                            _peerCount.value = count
+                            // Update notification with actual peer count
+                            updateNotification("Connected", count)
                         } catch (e: Exception) {
                             addLog("Error parsing peer JSON: ${e.message}")
                             _peerCount.value = 0
+                            updateNotification("Connected", 0)
                         }
                     }
                 } catch (e: Exception) {

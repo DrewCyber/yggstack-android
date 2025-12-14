@@ -5,7 +5,7 @@
     <!-- Navigation -->
     <string name="nav_configuration">Configuration</string>
     <string name="nav_diagnostics">Diagnostics</string>
-    <string name="nav_info">Info</string>
+    <string name="nav_info">System</string>
 
     <!-- Configuration Screen -->
     <string name="peers_section">Peers</string>
@@ -46,6 +46,9 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_system">System Default</string>
+    <string name="autostart_section">Autostart</string>
+    <string name="autostart_enabled">Start service on boot</string>
+    <string name="autostart_description">Automatically start Yggstack when the device boots. Note: Some manufacturers (Xiaomi, Huawei, Oppo) may require additional autostart permission in their system settings.</string>
     <string name="log_management">Log Management</string>
     <string name="clear_logs">Clear Logs</string>
     <string name="export_logs">Export Logs</string>

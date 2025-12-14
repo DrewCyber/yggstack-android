@@ -33,6 +33,7 @@ class ConfigRepository(private val context: Context) {
         private val FORWARD_MAPPINGS = stringPreferencesKey("forward_mappings")
         private val FORWARD_ENABLED = booleanPreferencesKey("forward_enabled")
         private val THEME_KEY = stringPreferencesKey("theme")
+        private val AUTOSTART_KEY = booleanPreferencesKey("autostart")
     }
 
     /**
@@ -88,6 +89,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[THEME_KEY] = theme
+        }
+    }
+
+    /**
+     * Get autostart preference
+     */
+    val autostartFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[AUTOSTART_KEY] ?: false
+    }
+
+    /**
+     * Save autostart preference
+     */
+    suspend fun saveAutostart(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTOSTART_KEY] = enabled
         }
     }
 
