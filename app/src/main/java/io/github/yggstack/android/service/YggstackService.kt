@@ -58,6 +58,9 @@ class YggstackService : Service() {
     private val _generatedPrivateKey = MutableStateFlow<String?>(null)
     val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
 
+    private val _fullConfigJSON = MutableStateFlow<String>("")
+    val fullConfigJSON: StateFlow<String> = _fullConfigJSON.asStateFlow()
+
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
     }
@@ -135,6 +138,9 @@ class YggstackService : Service() {
                 // Build config JSON (handles both new and existing private keys)
                 addLog("Loading configuration...")
                 val configJson = buildConfigJson(config)
+                
+                // Store the full config JSON for diagnostics
+                _fullConfigJSON.value = configJson
 
                 // Log first 200 chars of config for debugging (without exposing full key)
                 addLog("Config preview: ${configJson.take(200)}...")

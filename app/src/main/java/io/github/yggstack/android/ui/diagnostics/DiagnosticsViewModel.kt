@@ -75,12 +75,18 @@ class DiagnosticsViewModel(
                         _peerDetails.value = parsePeerDetails(json)
                     }
                 }
+                viewModelScope.launch {
+                    service.fullConfigJSON.collect { configJson ->
+                        _currentConfig.value = configJson
+                    }
+                }
 
                 // Sync initial state
                 _logs.value = service.logs.value
                 _isServiceRunning.value = service.isRunning.value
                 _peerCount.value = service.peerCount.value
                 _peerDetails.value = parsePeerDetails(service.peerDetailsJSON.value)
+                _currentConfig.value = service.fullConfigJSON.value
             }
         }
 
@@ -113,34 +119,8 @@ class DiagnosticsViewModel(
     }
 
     private fun loadConfig() {
-        viewModelScope.launch {
-            repository.configFlow.collect { config ->
-                // Build config JSON for display
-                val configJson = buildConfigJson(config)
-                _currentConfig.value = configJson
-            }
-        }
-    }
-
-    private fun buildConfigJson(config: io.github.yggstack.android.data.YggstackConfig): String {
-        return """
-{
-  "Peers": ${config.peers.joinToString(",\n    ", "[\n    \"", "\"\n  ]")},
-  "PrivateKey": "${if (config.privateKey.isNotBlank()) config.privateKey else ""}",
-  "Listen": [],
-  "AdminListen": "none",
-  "MulticastInterfaces": [],
-  "InterfacePeers": {},
-  "AllowedPublicKeys": [],
-  "NodeInfo": {},
-  "NodeInfoPrivacy": false,
-  "ProxyEnabled": ${config.proxyEnabled},
-  "SOCKSProxy": "${config.socksProxy}",
-  "DNSServer": "${config.dnsServer}",
-  "ExposeEnabled": ${config.exposeEnabled},
-  "ForwardEnabled": ${config.forwardEnabled}
-}
-        """.trimIndent()
+        // Config is now loaded from service's fullConfigJSON flow
+        // in onServiceConnected, so this method can be simplified or removed
     }
 
     fun clearLogs() {
