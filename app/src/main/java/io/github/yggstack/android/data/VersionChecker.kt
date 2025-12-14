@@ -27,7 +27,7 @@ class VersionChecker(private val context: Context) {
     private val LAST_CHECK_KEY = longPreferencesKey("last_version_check")
     private val POSTPONED_VERSION_KEY = stringPreferencesKey("postponed_version")
     
-    private val CHECK_INTERVAL = TimeUnit.DAYS.toMillis(1) // 1 day
+    private val CHECK_INTERVAL = TimeUnit.HOURS.toMillis(1) // 1 hour
     private val GITHUB_API_URL = "https://api.github.com/repos/DrewCyber/yggstack-android/releases/latest"
     
     suspend fun shouldCheckForUpdate(): Boolean {

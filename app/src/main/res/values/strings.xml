@@ -53,7 +53,7 @@
     <string name="version">Version</string>
     <string name="library_version">Library Version</string>
     <string name="repository">GitHub Repository</string>
-    <string name="telegram_chat">Telegram Chat</string>
+    <string name="telegram_chat">Telegram Chat (Ru/En)</string>
     <string name="download_logs">Download Logs</string>
     <string name="check_updates">Check for Updates</string>
     <string name="new_version_available">New version available</string>
