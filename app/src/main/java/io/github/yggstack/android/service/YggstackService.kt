@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import io.github.yggstack.android.MainActivity
 import io.github.yggstack.android.R
 import io.github.yggstack.android.data.YggstackConfig
+import io.github.yggstack.android.data.PersistentLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,6 +38,7 @@ class YggstackService : Service() {
     private var yggstack: Yggstack? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private lateinit var persistentLogger: PersistentLogger
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -61,13 +63,24 @@ class YggstackService : Service() {
     }
 
     fun clearLogs() {
-        _logs.value = emptyList()
+        serviceScope.launch {
+            persistentLogger.clearLogs()
+            _logs.value = emptyList()
+        }
     }
+    
+    suspend fun getLogFile() = persistentLogger.getLogFile()
 
     override fun onCreate() {
         super.onCreate()
+        persistentLogger = PersistentLogger(this)
         createNotificationChannel()
         acquireWakeLock()
+        
+        // Load existing logs on startup
+        serviceScope.launch {
+            _logs.value = persistentLogger.readLogs()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -396,6 +409,11 @@ class YggstackService : Service() {
         val logEntry = "[$timestamp] $message"
 
         _logs.value = (_logs.value + logEntry).takeLast(MAX_LOG_ENTRIES)
+        
+        // Also persist to file
+        serviceScope.launch {
+            persistentLogger.appendLog(message)
+        }
     }
 
     private fun startPeerStatsUpdater() {

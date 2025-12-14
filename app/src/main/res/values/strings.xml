@@ -52,6 +52,13 @@
     <string name="about_section">About</string>
     <string name="version">Version</string>
     <string name="library_version">Library Version</string>
+    <string name="repository">GitHub Repository</string>
+    <string name="telegram_chat">Telegram Chat</string>
+    <string name="download_logs">Download Logs</string>
+    <string name="check_updates">Check for Updates</string>
+    <string name="new_version_available">New version available</string>
+    <string name="update_later">Update Later</string>
+    <string name="download_update">Download Update</string>
 
     <!-- Messages -->
     <string name="ip_copied">IP address copied to clipboard</string>

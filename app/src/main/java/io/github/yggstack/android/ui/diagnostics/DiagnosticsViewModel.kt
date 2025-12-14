@@ -4,16 +4,22 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.IBinder
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.yggstack.android.data.ConfigRepository
 import io.github.yggstack.android.service.YggstackService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
+import java.io.File
 
 /**
  * ViewModel for Diagnostics screen
@@ -142,6 +148,53 @@ class DiagnosticsViewModel(
         yggstackService?.clearLogs()
         // Also clear local state immediately for responsive UI
         _logs.value = emptyList()
+    }
+    
+    fun downloadLogs(context: Context) {
+        viewModelScope.launch {
+            try {
+                val logFile = withContext(Dispatchers.IO) {
+                    yggstackService?.getLogFile()
+                }
+                
+                if (logFile != null) {
+                    withContext(Dispatchers.IO) {
+                        // Copy log file to external cache dir so it can be shared
+                        val cacheDir = context.externalCacheDir ?: context.cacheDir
+                        val shareFile = File(cacheDir, "yggstack_logs.txt")
+                        logFile.copyTo(shareFile, overwrite = true)
+                        
+                        // Share the file
+                        withContext(Dispatchers.Main) {
+                            val uri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                shareFile
+                            )
+                            
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            
+                            val chooser = Intent.createChooser(intent, "Download Logs")
+                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(chooser)
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "No log file available", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error downloading logs: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun parsePeerDetails(json: String): List<io.github.yggstack.android.data.PeerDetail> {

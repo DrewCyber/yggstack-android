@@ -459,6 +459,15 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
                 if (logs.isNotEmpty()) {
                     Row {
                         IconButton(onClick = {
+                            // Download logs as file
+                            viewModel.downloadLogs(context)
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.InsertDriveFile,
+                                contentDescription = "Download logs"
+                            )
+                        }
+                        IconButton(onClick = {
                             // Export logs via share
                             val logsText = logs.joinToString("\n")
                             val sendIntent = android.content.Intent().apply {

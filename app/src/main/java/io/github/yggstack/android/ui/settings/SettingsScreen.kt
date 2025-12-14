@@ -1,10 +1,16 @@
 package io.github.yggstack.android.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -94,6 +100,22 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     label = stringResource(R.string.library_version),
                     value = "yggstack 0.1.0"
                 )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Repository link
+                SettingLinkItem(
+                    label = stringResource(R.string.repository),
+                    url = "https://github.com/DrewCyber/yggstack-android",
+                    context = context
+                )
+                
+                // Telegram chat link
+                SettingLinkItem(
+                    label = stringResource(R.string.telegram_chat),
+                    url = "http://t.me/yggstackandroid",
+                    context = context
+                )
             }
         }
     }
@@ -134,6 +156,36 @@ fun SettingItem(
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
         Text(text = value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+fun SettingLinkItem(
+    label: String,
+    url: String,
+    context: android.content.Context
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            }
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Icon(
+            imageVector = Icons.Default.ArrowForward,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
     }
 }
 

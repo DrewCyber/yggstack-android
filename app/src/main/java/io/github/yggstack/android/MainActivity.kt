@@ -1,6 +1,7 @@
 package io.github.yggstack.android
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,12 +23,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.yggstack.android.data.ConfigRepository
+import io.github.yggstack.android.data.VersionChecker
+import io.github.yggstack.android.data.VersionInfo
 import io.github.yggstack.android.ui.configuration.ConfigurationScreen
 import io.github.yggstack.android.ui.configuration.ConfigurationViewModel
 import io.github.yggstack.android.ui.diagnostics.DiagnosticsScreen
 import io.github.yggstack.android.ui.settings.SettingsScreen
 import io.github.yggstack.android.ui.theme.YggstackAndroidTheme
 import io.github.yggstack.android.utils.PermissionHelper
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,6 +66,9 @@ fun MainScreen() {
     var selectedScreen by remember { mutableStateOf(0) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var permissionsChecked by remember { mutableStateOf(false) }
+    var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Notification permission launcher for Android 13+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -73,7 +80,7 @@ fun MainScreen() {
         }
     }
 
-    // Check permissions on startup
+    // Check permissions and version on startup
     LaunchedEffect(Unit) {
         // First, request notification permission if needed (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && 
@@ -83,6 +90,17 @@ fun MainScreen() {
             showPermissionDialog = true
         }
         permissionsChecked = true
+        
+        // Check for updates
+        coroutineScope.launch {
+            val versionChecker = VersionChecker(context)
+            if (versionChecker.shouldCheckForUpdate()) {
+                versionChecker.checkForUpdate()?.let { update ->
+                    versionInfo = update
+                    showUpdateDialog = true
+                }
+            }
+        }
     }
 
     // Permission dialog
@@ -115,6 +133,24 @@ fun MainScreen() {
                     // Fallback to app info settings
                     context.startActivity(PermissionHelper.getAppInfoIntent(context))
                 }
+            }
+        )
+    }
+    
+    // Update dialog
+    if (showUpdateDialog && versionInfo != null) {
+        UpdateAvailableDialog(
+            versionInfo = versionInfo!!,
+            onDismiss = {
+                showUpdateDialog = false
+                coroutineScope.launch {
+                    VersionChecker(context).postponeVersion(versionInfo!!.latestVersion)
+                }
+            },
+            onDownload = {
+                showUpdateDialog = false
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(versionInfo!!.downloadUrl))
+                context.startActivity(intent)
             }
         )
     }
@@ -219,6 +255,55 @@ fun BackgroundPermissionDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.permission_dialog_later))
+            }
+        }
+    )
+}
+
+@Composable
+fun UpdateAvailableDialog(
+    versionInfo: VersionInfo,
+    onDismiss: () -> Unit,
+    onDownload: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Info, contentDescription = null) },
+        title = { Text(stringResource(R.string.new_version_available)) },
+        text = {
+            Column {
+                Text(
+                    text = "Version ${versionInfo.latestVersion} is available",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Current version: ${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (versionInfo.releaseNotes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Release Notes:",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = versionInfo.releaseNotes.take(300) + 
+                               if (versionInfo.releaseNotes.length > 300) "..." else "",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDownload) {
+                Text(stringResource(R.string.download_update))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.update_later))
             }
         }
     )
