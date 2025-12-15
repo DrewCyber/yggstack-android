@@ -61,6 +61,29 @@ class YggstackService : Service() {
     private val _fullConfigJSON = MutableStateFlow<String>("")
     val fullConfigJSON: StateFlow<String> = _fullConfigJSON.asStateFlow()
 
+    /**
+     * Truncate private key for security - shows only first 8 and last 8 characters
+     */
+    private fun truncatePrivateKey(key: String): String {
+        return if (key.length > 20) {
+            "${key.take(8)}...${key.takeLast(8)}"
+        } else {
+            "***"
+        }
+    }
+
+    /**
+     * Sanitize config JSON by replacing private key with truncated version
+     */
+    private fun sanitizeConfigJson(json: String): String {
+        return json.replace(
+            Regex("\"PrivateKey\":\\s*\"([^\"]{20,})\""),
+        ) { matchResult ->
+            val key = matchResult.groupValues[1]
+            "\"PrivateKey\": \"${truncatePrivateKey(key)}\""
+        }
+    }
+
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
     }
@@ -139,11 +162,8 @@ class YggstackService : Service() {
                 addLog("Loading configuration...")
                 val configJson = buildConfigJson(config)
                 
-                // Store the full config JSON for diagnostics
-                _fullConfigJSON.value = configJson
-
-                // Log first 200 chars of config for debugging (without exposing full key)
-                addLog("Config preview: ${configJson.take(200)}...")
+                // Store SANITIZED config JSON for diagnostics display (private key truncated)
+                _fullConfigJSON.value = sanitizeConfigJson(configJson)
 
                 addLog("Calling loadConfigJSON...")
                 yggstack?.loadConfigJSON(configJson)
@@ -258,9 +278,6 @@ class YggstackService : Service() {
             val newConfigJson = Mobile.generateConfig()
             addLog("Generated config length: ${newConfigJson.length} chars")
 
-            // Log FULL config for debugging
-            addLog("FULL GENERATED CONFIG: $newConfigJson")
-
             // Add Certificate field if missing (required by core.New)
             val configWithCert = if (!newConfigJson.contains("\"Certificate\"")) {
                 // Insert Certificate field after PrivateKey
@@ -272,14 +289,12 @@ class YggstackService : Service() {
                 newConfigJson
             }
 
-            addLog("Config after adding Certificate: ${configWithCert.take(300)}...")
-
             // Extract the private key to save it back to the repository
             val keyMatch = Regex("\"PrivateKey\":\\s*\"([^\"]+)\"").find(newConfigJson)
             val extractedKey = keyMatch?.groupValues?.get(1) ?: ""
 
             if (extractedKey.isNotBlank()) {
-                addLog("Private key extracted (length: ${extractedKey.length}, first 10 chars: ${extractedKey.take(10)}...)")
+                addLog("Private key extracted (length: ${extractedKey.length}, key: ${truncatePrivateKey(extractedKey)})")
                 _generatedPrivateKey.value = extractedKey
                 addLog("Generated key will be saved to configuration")
             } else {
@@ -314,7 +329,7 @@ class YggstackService : Service() {
 
         // Build config with existing private key
         // IMPORTANT: Must match the structure from Mobile.generateConfig()
-        addLog("Using existing private key (length: ${config.privateKey.length}, first 10 chars: ${config.privateKey.take(10)}...)")
+        addLog("Using existing private key (length: ${config.privateKey.length}, key: ${truncatePrivateKey(config.privateKey)})")
         val peers = if (config.peers.isEmpty()) {
             "[]"
         } else {
