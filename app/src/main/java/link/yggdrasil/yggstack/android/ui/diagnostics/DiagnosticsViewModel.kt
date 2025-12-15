@@ -44,6 +44,9 @@ class DiagnosticsViewModel(
     private val _peerCount = MutableStateFlow(0)
     val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
 
+    private val _totalPeerCount = MutableStateFlow(0)
+    val totalPeerCount: StateFlow<Int> = _totalPeerCount.asStateFlow()
+
     private val _peerDetails = MutableStateFlow<List<link.yggdrasil.yggstack.android.data.PeerDetail>>(emptyList())
     val peerDetails: StateFlow<List<link.yggdrasil.yggstack.android.data.PeerDetail>> = _peerDetails.asStateFlow()
 
@@ -68,6 +71,16 @@ class DiagnosticsViewModel(
                 viewModelScope.launch {
                     service.peerCount.collect { count ->
                         _peerCount.value = count
+                    }
+                }
+                viewModelScope.launch {
+                    service.totalPeerCount.collect { count ->
+                        _totalPeerCount.value = count
+                    }
+                }
+                viewModelScope.launch {
+                    service.totalPeerCount.collect { count ->
+                        _totalPeerCount.value = count
                     }
                 }
                 viewModelScope.launch {

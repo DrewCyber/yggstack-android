@@ -162,6 +162,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
 fun PeerStatus(viewModel: DiagnosticsViewModel) {
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
     val peerCount by viewModel.peerCount.collectAsState()
+    val totalPeerCount by viewModel.totalPeerCount.collectAsState()
     val peerDetails by viewModel.peerDetails.collectAsState()
     val isDarkTheme = isSystemInDarkTheme()
     val successColor = if (isDarkTheme) {
@@ -259,7 +260,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "$peerCount",
+                                text = if (totalPeerCount > 0) "$peerCount/$totalPeerCount" else "0",
                                 style = MaterialTheme.typography.headlineMedium,
                                 color = if (peerCount > 0) successColor else Color.Gray
                             )

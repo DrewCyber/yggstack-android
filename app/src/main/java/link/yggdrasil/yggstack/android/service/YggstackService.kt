@@ -52,6 +52,9 @@ class YggstackService : Service() {
     private val _peerCount = MutableStateFlow(0)
     val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
 
+    private val _totalPeerCount = MutableStateFlow(0)
+    val totalPeerCount: StateFlow<Int> = _totalPeerCount.asStateFlow()
+
     private val _peerDetailsJSON = MutableStateFlow<String>("[]")
     val peerDetailsJSON: StateFlow<String> = _peerDetailsJSON.asStateFlow()
 
@@ -147,7 +150,7 @@ class YggstackService : Service() {
                 addLog("Starting Yggstack...")
                 addLog("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
                 addLog("Commit: ${link.yggdrasil.yggstack.android.BuildConfig.COMMIT_HASH}")
-                startForeground(NOTIFICATION_ID, createNotification("Starting...", 0))
+                startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
 
                 // Create Yggstack instance
                 yggstack = Mobile.newYggstack()
@@ -204,7 +207,7 @@ class YggstackService : Service() {
                 _peerCount.value = 0
 
                 addLog("Yggstack started successfully")
-                updateNotification("Connected", 0)
+                updateNotification("Connected", 0, 0)
 
                 // Start periodic peer stats update
                 startPeerStatsUpdater()
@@ -245,13 +248,19 @@ class YggstackService : Service() {
         serviceScope.launch {
             try {
                 addLog("Stopping Yggstack...")
+                _isRunning.value = false  // Set this first to stop the peer updater
                 yggstack?.stop()
                 yggstack = null
-                _isRunning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
+                _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null  // Reset generated key state
                 addLog("Yggstack stopped")
+                
+                // Cancel the notification
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_ID)
+                
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
@@ -266,7 +275,12 @@ class YggstackService : Service() {
                 _isRunning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
+                _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null
+                
+                // Cancel notification on error too
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_ID)
             }
         }
     }
@@ -461,20 +475,38 @@ class YggstackService : Service() {
         serviceScope.launch {
             while (_isRunning.value) {
                 try {
+                    // Double-check service is still running before updating
+                    if (!_isRunning.value) break
+                    
                     val peersJson = yggstack?.getPeersJSON()
                     if (peersJson != null) {
                         _peerDetailsJSON.value = peersJson
                         // Update peer count from actual connected peers
                         try {
                             val jsonArray = JSONArray(peersJson)
-                            val count = jsonArray.length()
-                            _peerCount.value = count
-                            // Update notification with actual peer count
-                            updateNotification("Connected", count)
+                            val totalCount = jsonArray.length()
+                            // Count only peers that are Up (connected)
+                            var connectedCount = 0
+                            for (i in 0 until jsonArray.length()) {
+                                val peerObj = jsonArray.getJSONObject(i)
+                                if (peerObj.optBoolean("Up", false)) {
+                                    connectedCount++
+                                }
+                            }
+                            _peerCount.value = connectedCount
+                            _totalPeerCount.value = totalCount
+                            
+                            // Only update notification if still running
+                            if (_isRunning.value) {
+                                updateNotification("Connected", connectedCount, totalCount)
+                            }
                         } catch (e: Exception) {
                             addLog("Error parsing peer JSON: ${e.message}")
                             _peerCount.value = 0
-                            updateNotification("Connected", 0)
+                            _totalPeerCount.value = 0
+                            if (_isRunning.value) {
+                                updateNotification("Connected", 0, 0)
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -490,12 +522,13 @@ class YggstackService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Yggstack Service",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_LOW  // LOW = no sound, no vibration, no heads-up
             ).apply {
                 description = "Yggstack background service notification"
                 setShowBadge(true)
                 enableLights(false)
                 enableVibration(false)
+                setSound(null, null)  // Explicitly disable sound
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
@@ -504,7 +537,7 @@ class YggstackService : Service() {
         }
     }
 
-    private fun createNotification(status: String, peerCount: Int): Notification {
+    private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -528,8 +561,8 @@ class YggstackService : Service() {
             if (_yggdrasilIp.value != null) {
                 append("\n${_yggdrasilIp.value}")
             }
-            if (peerCount > 0) {
-                append("\nPeers: $peerCount")
+            if (totalPeerCount > 0) {
+                append("\nPeers: $peerCount/$totalPeerCount")
             }
         }
 
@@ -549,12 +582,13 @@ class YggstackService : Service() {
             )
             .setOngoing(true)
             .setShowWhen(true)
+            .setOnlyAlertOnce(true)  // Prevent sound/vibration on updates
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
-    private fun updateNotification(status: String, peerCount: Int) {
-        val notification = createNotification(status, peerCount)
+    private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
+        val notification = createNotification(status, peerCount, totalPeerCount)
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
