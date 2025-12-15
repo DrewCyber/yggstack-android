@@ -74,11 +74,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "io.github.yggstack.android"
+    namespace = "link.yggdrasil.yggstack.android"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "io.github.yggstack.android"
+        applicationId = "link.yggdrasil.yggstack.android"
         minSdk = 23
         targetSdk = 34
         versionCode = getVersionCode()
