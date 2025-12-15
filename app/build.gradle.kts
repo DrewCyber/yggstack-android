@@ -5,6 +5,9 @@ plugins {
     id("kotlin-parcelize")
 }
 
+import java.util.Properties
+import java.io.FileInputStream
+
 // Get version from git tag or environment variable
 fun getVersionName(): String {
     // Try to get from environment variable (GitHub Actions)
@@ -24,10 +27,34 @@ fun getVersionName(): String {
         if (version.isNotEmpty() && commit.isNotEmpty()) {
             "$version-$commit"
         } else {
-            "0.0.0"
+            "0.0.1"
         }
     } catch (e: Exception) {
-        "0.0.0"
+        "0.0.1"
+    }
+}
+
+// Calculate versionCode from semantic version (e.g., 1.2.3 -> 10203)
+fun getVersionCode(): Int {
+    return try {
+        val versionName = getVersionName()
+        // Extract version without commit hash (e.g., "1.2.3-abc123" -> "1.2.3")
+        val version = versionName.split("-")[0]
+        val parts = version.split(".")
+        
+        if (parts.size >= 3) {
+            val major = parts[0].toIntOrNull() ?: 0
+            val minor = parts[1].toIntOrNull() ?: 0
+            val patch = parts[2].toIntOrNull() ?: 0
+            
+            // Calculate: major * 10000 + minor * 100 + patch
+            // Max values: 99.99.99 = 999999
+            major * 10000 + minor * 100 + patch
+        } else {
+            1
+        }
+    } catch (e: Exception) {
+        1
     }
 }
 
@@ -39,6 +66,13 @@ fun getCommitHash(): String {
     }
 }
 
+// Load keystore properties for local builds
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "io.github.yggstack.android"
     compileSdk = 34
@@ -47,7 +81,7 @@ android {
         applicationId = "io.github.yggstack.android"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
+        versionCode = getVersionCode()
         versionName = getVersionName()
 
         // Generate BuildConfig fields
@@ -60,6 +94,33 @@ android {
         }
     }
 
+    // Signing configuration
+    signingConfigs {
+        create("release") {
+            // For local builds: use release.keystore in project root with keystore.properties
+            // For GitHub Actions: keystore is decoded from secrets with env variables
+            val keystorePath = System.getenv("KEYSTORE_FILE") ?: "../release.keystore"
+            val keystoreFile = if (System.getenv("KEYSTORE_FILE") != null) {
+                file(keystorePath)
+            } else {
+                val localKeystore = file("../release.keystore")
+                if (localKeystore.exists()) localKeystore else null
+            }
+            
+            if (keystoreFile != null && keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") 
+                    ?: keystoreProperties.getProperty("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS") 
+                    ?: keystoreProperties.getProperty("KEY_ALIAS") 
+                    ?: "release"
+                keyPassword = System.getenv("KEY_PASSWORD") 
+                    ?: keystoreProperties.getProperty("KEY_PASSWORD") 
+                    ?: storePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -67,6 +128,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            
+            // Use signing config if available
+            val releaseSigningConfig = signingConfigs.getByName("release")
+            if (releaseSigningConfig.storeFile?.exists() == true) {
+                signingConfig = releaseSigningConfig
+            }
         }
     }
 

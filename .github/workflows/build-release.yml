@@ -63,18 +63,27 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew assembleDebug
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > ${{ github.workspace }}/release.keystore
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
 
       - name: Rename APK
         run: |
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/yggstack-android-${{ steps.get_version.outputs.version }}.apk
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}.apk
 
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          files: app/build/outputs/apk/debug/yggstack-android-${{ steps.get_version.outputs.version }}.apk
+          files: app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}.apk
           body: |
             ## Yggstack Android ${{ steps.get_version.outputs.version }}
             
