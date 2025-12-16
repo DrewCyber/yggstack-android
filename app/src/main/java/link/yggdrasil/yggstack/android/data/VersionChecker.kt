@@ -1,6 +1,7 @@
 package link.yggdrasil.yggstack.android.data
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -39,10 +40,13 @@ class VersionChecker(private val context: Context) {
     
     suspend fun checkForUpdate(): VersionInfo? = withContext(Dispatchers.IO) {
         try {
+            Log.i("VersionChecker", "Checking for updates from GitHub...")
             val json = URL(GITHUB_API_URL).readText()
             val jsonObj = JSONObject(json)
             
             val tagName = jsonObj.getString("tag_name").removePrefix("v")
+            Log.i("VersionChecker", "Latest version on GitHub: $tagName (current: ${BuildConfig.VERSION_NAME})")
+            
             val downloadUrl = jsonObj.getJSONArray("assets")
                 .let { assets ->
                     for (i in 0 until assets.length()) {
@@ -64,17 +68,24 @@ class VersionChecker(private val context: Context) {
             
             // Check if this is a new version
             if (isNewerVersion(tagName, BuildConfig.VERSION_NAME)) {
+                Log.i("VersionChecker", "New version available: $tagName")
                 // Check if user has postponed this version
                 val prefs = context.versionDataStore.data.first()
                 val postponedVersion = prefs[POSTPONED_VERSION_KEY]
                 
                 if (postponedVersion != tagName) {
+                    Log.i("VersionChecker", "Showing update notification for version $tagName")
                     return@withContext VersionInfo(tagName, downloadUrl, releaseNotes)
+                } else {
+                    Log.i("VersionChecker", "Version $tagName was postponed by user")
                 }
+            } else {
+                Log.i("VersionChecker", "Already running the latest version")
             }
             
             null
         } catch (e: Exception) {
+            Log.e("VersionChecker", "Error checking for updates: ${e.message}", e)
             e.printStackTrace()
             null
         }
