@@ -39,6 +39,10 @@ class YggstackService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
+    
+    // Store last config for automatic restart after crash
+    private var lastConfig: YggstackConfig? = null
+    private var crashRestartAttempts = 0
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -144,8 +148,23 @@ class YggstackService : Service() {
             addLog("Yggstack is already running")
             return
         }
+        
+        // Store config for crash recovery
+        lastConfig = config
+        crashRestartAttempts = 0
 
         serviceScope.launch {
+            // Force cleanup any zombie instance before starting
+            if (yggstack != null) {
+                addLog("Cleaning up existing Yggstack instance...")
+                try {
+                    yggstack?.stop()
+                } catch (e: Exception) {
+                    addLog("Error cleaning up old instance: ${e.message}")
+                }
+                yggstack = null
+                kotlinx.coroutines.delay(500) // Give it time to fully stop
+            }
             try {
                 addLog("Starting Yggstack...")
                 addLog("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
@@ -213,7 +232,7 @@ class YggstackService : Service() {
                 startPeerStatsUpdater()
 
             } catch (e: Exception) {
-                addLog("Error starting Yggstack: ${e.message}")
+                addLog("ERROR starting Yggstack: ${e.message}")
                 addLog("Stack trace: ${e.stackTraceToString().take(500)}")
 
                 // Clean up properly on error
@@ -226,23 +245,38 @@ class YggstackService : Service() {
                 _isRunning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
+                _totalPeerCount.value = 0
 
+                // Cancel notification
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_ID)
 
-                // Don't call stopSelf() here - let the service stay alive for retry
+                // Stop foreground and service to force UI sync
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
                     @Suppress("DEPRECATION")
                     stopForeground(true)
                 }
+                
+                // Update notification with error state
+                val errorNotification = createNotification("Failed to start - check logs", 0, 0)
+                notificationManager.notify(NOTIFICATION_ID, errorNotification)
+                
+                addLog("Service stopped due to error. Please check configuration and try again.")
             }
         }
     }
 
     fun stopYggstack() {
-        if (!_isRunning.value) {
+        // Force cleanup even if _isRunning is false (handles desync state)
+        if (!_isRunning.value && yggstack == null) {
             addLog("Service already stopped")
             return
+        }
+        
+        if (!_isRunning.value && yggstack != null) {
+            addLog("WARNING: State desync detected - forcing cleanup of zombie instance")
         }
 
         serviceScope.launch {
@@ -508,12 +542,51 @@ class YggstackService : Service() {
                                 updateNotification("Connected", 0, 0)
                             }
                         }
+                    } else {
+                        // Yggstack returned null - instance crashed/corrupted
+                        addLog("ERROR: getPeersJSON returned null - Yggstack instance is corrupted")
+                        if (_isRunning.value) {
+                            addLog("Detected Yggstack crash - attempting automatic restart...")
+                            _isRunning.value = false
+                            _peerCount.value = 0
+                            _totalPeerCount.value = 0
+                            
+                            // Attempt automatic restart if we have the config
+                            if (lastConfig != null && crashRestartAttempts < MAX_CRASH_RESTART_ATTEMPTS) {
+                                crashRestartAttempts++
+                                val backoffDelay = (crashRestartAttempts * 2000L).coerceAtMost(10000L)
+                                addLog("Crash restart attempt $crashRestartAttempts/$MAX_CRASH_RESTART_ATTEMPTS (waiting ${backoffDelay}ms)...")
+                                updateNotification("Restarting after crash...", 0, 0)
+                                
+                                kotlinx.coroutines.delay(backoffDelay)
+                                
+                                // Force cleanup of corrupted instance
+                                try {
+                                    yggstack?.stop()
+                                } catch (e: Exception) {
+                                    addLog("Error stopping corrupted instance: ${e.message}")
+                                }
+                                yggstack = null
+                                kotlinx.coroutines.delay(1000)
+                                
+                                // Restart with same config
+                                addLog("Restarting Yggstack after crash...")
+                                startYggstack(lastConfig!!)
+                            } else {
+                                val reason = if (lastConfig == null) "no config available" else "max restart attempts reached"
+                                addLog("ERROR: Cannot auto-restart - $reason")
+                                updateNotification("Crashed - manual restart required", 0, 0)
+                            }
+                        }
+                        break
                     }
                 } catch (e: Exception) {
                     addLog("Error fetching peer stats: ${e.message}")
+                    // Don't break on transient errors, but log them
                 }
                 kotlinx.coroutines.delay(5000) // Update every 5 seconds
             }
+            addLog("Peer stats updater stopped")
         }
     }
 
@@ -619,6 +692,7 @@ class YggstackService : Service() {
         const val ACTION_STOP = "link.yggdrasil.yggstack.android.action.STOP"
         const val EXTRA_CONFIG = "config"
         private const val MAX_LOG_ENTRIES = 500
+        private const val MAX_CRASH_RESTART_ATTEMPTS = 3
     }
 }
 
