@@ -1,7 +1,10 @@
 package link.yggdrasil.yggstack.android.ui.diagnostics
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,9 +21,12 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DiagnosticsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -29,28 +35,57 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
         factory = DiagnosticsViewModel.Factory(repository, context)
     )
 
-    var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf(
         stringResource(R.string.tab_config),
         stringResource(R.string.tab_peers),
         stringResource(R.string.tab_logs)
     )
+    
+    // Load saved tab before creating pager
+    var initialTab by remember { mutableStateOf<Int?>(null) }
+    
+    LaunchedEffect(Unit) {
+        initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 2)
+    }
+    
+    // Only show content after initial tab is loaded
+    initialTab?.let { startPage ->
+        val pagerState = rememberPagerState(
+            initialPage = startPage,
+            pageCount = { tabs.size }
+        )
+        val coroutineScope = rememberCoroutineScope()
 
-    Column(modifier = modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedTab) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title) }
-                )
-            }
+        // Save tab index when user changes it
+        LaunchedEffect(pagerState.currentPage) {
+            repository.saveDiagnosticsTab(pagerState.currentPage)
         }
 
-        when (selectedTab) {
-            0 -> ConfigViewer(viewModel)
-            1 -> PeerStatus(viewModel)
-            2 -> LogsViewer(viewModel)
+        Column(modifier = modifier.fillMaxSize()) {
+            TabRow(selectedTabIndex = pagerState.currentPage) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        },
+                        text = { Text(title) }
+                    )
+                }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (page) {
+                    0 -> ConfigViewer(viewModel)
+                    1 -> PeerStatus(viewModel)
+                    2 -> LogsViewer(viewModel)
+                }
+            }
         }
     }
 }

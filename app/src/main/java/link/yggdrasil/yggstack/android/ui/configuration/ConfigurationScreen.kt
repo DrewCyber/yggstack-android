@@ -54,6 +54,14 @@ fun ConfigurationScreen(
                 .padding(16.dp)
                 .padding(bottom = 80.dp) // Space for button at bottom
         ) {
+            // App title as part of scrollable content
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
             // Private Key Section
             ConfigSection(title = stringResource(R.string.private_key_section)) {
                 OutlinedTextField(

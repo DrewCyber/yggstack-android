@@ -35,6 +35,7 @@ class ConfigRepository(private val context: Context) {
         private val THEME_KEY = stringPreferencesKey("theme")
         private val AUTOSTART_KEY = booleanPreferencesKey("autostart")
         private val MULTICAST_ENABLED = booleanPreferencesKey("multicast_enabled")
+        private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
     }
 
     /**
@@ -108,6 +109,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveAutostart(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTOSTART_KEY] = enabled
+        }
+    }
+
+    /**
+     * Get diagnostics tab preference
+     */
+    val diagnosticsTabFlow: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[DIAGNOSTICS_TAB_KEY] ?: 0
+    }
+
+    /**
+     * Save diagnostics tab preference
+     */
+    suspend fun saveDiagnosticsTab(tabIndex: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[DIAGNOSTICS_TAB_KEY] = tabIndex
         }
     }
 
