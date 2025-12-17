@@ -98,9 +98,9 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val clipboardManager = LocalClipboardManager.current
     val isDarkTheme = isSystemInDarkTheme()
     val successColor = if (isDarkTheme) {
-        Color(0xFF4CAF50) // Medium green for dark theme
+        MaterialTheme.colorScheme.secondary
     } else {
-        Color(0xFF1B5E20) // Very dark green for light theme
+        MaterialTheme.colorScheme.secondary
     }
 
     Column(
@@ -201,9 +201,9 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
     val peerDetails by viewModel.peerDetails.collectAsState()
     val isDarkTheme = isSystemInDarkTheme()
     val successColor = if (isDarkTheme) {
-        Color(0xFF4CAF50) // Medium green for dark theme
+        MaterialTheme.colorScheme.secondary
     } else {
-        Color(0xFF1B5E20) // Very dark green for light theme
+        MaterialTheme.colorScheme.secondary
     }
 
     Column(

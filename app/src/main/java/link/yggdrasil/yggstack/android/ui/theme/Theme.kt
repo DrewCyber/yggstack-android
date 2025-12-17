@@ -14,21 +14,21 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = androidx.compose.ui.graphics.Color(0xFF80CBC4),
-    secondary = androidx.compose.ui.graphics.Color(0xFF03DAC5),
-    tertiary = androidx.compose.ui.graphics.Color(0xFF3700B3)
+    primary = androidx.compose.ui.graphics.Color(0xFF6CDB9C),
+    secondary = androidx.compose.ui.graphics.Color(0xFF4CAF50),
+    tertiary = androidx.compose.ui.graphics.Color(0xFF1B5E20)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = androidx.compose.ui.graphics.Color(0xFF00796B),
-    secondary = androidx.compose.ui.graphics.Color(0xFF018786),
-    tertiary = androidx.compose.ui.graphics.Color(0xFF3700B3)
+    primary = androidx.compose.ui.graphics.Color(0xFF006C4C),
+    secondary = androidx.compose.ui.graphics.Color(0xFF1B5E20),
+    tertiary = androidx.compose.ui.graphics.Color(0xFF4CAF50)
 )
 
 @Composable
 fun YggstackAndroidTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
