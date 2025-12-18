@@ -7,6 +7,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -39,6 +43,15 @@ class YggstackService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
+    
+    // Network connectivity monitoring
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val connectivityManager by lazy { 
+        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager 
+    }
+    private var lastNetworkType: String? = null
+    private var lastNetworkChangeTime: Long = 0
+    private val NETWORK_CHANGE_DEBOUNCE_MS = 2000L // 2 seconds
     
     // Store last config for automatic restart after crash
     private var lastConfig: YggstackConfig? = null
@@ -109,6 +122,7 @@ class YggstackService : Service() {
         persistentLogger = PersistentLogger(this)
         createNotificationChannel()
         acquireWakeLock()
+        registerNetworkCallback()
         
         // Load existing logs on startup
         serviceScope.launch {
@@ -139,6 +153,7 @@ class YggstackService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopYggstack()
+        unregisterNetworkCallback()
         releaseWakeLock()
         serviceScope.cancel()
     }
@@ -186,6 +201,9 @@ class YggstackService : Service() {
                 
                 // Store SANITIZED config JSON for diagnostics display (private key truncated)
                 _fullConfigJSON.value = sanitizeConfigJson(configJson)
+
+                // Debug: Log first 500 chars of config to diagnose parsing issues
+                addLog("Config JSON preview: ${configJson.take(500)}")
 
                 addLog("Calling loadConfigJSON...")
                 yggstack?.loadConfigJSON(configJson)
@@ -354,7 +372,19 @@ class YggstackService : Service() {
             
             if (config.peers.isNotEmpty()) {
                 addLog("Adding ${config.peers.size} peer(s) to config")
-                val peersJson = config.peers.joinToString("\",\"", "[\"", "\"]")
+                // Add ?maxbackoff=1m to each peer URI for mobile-friendly timeouts
+                val peersWithBackoff = config.peers.map { peer ->
+                    if (peer.contains("?")) {
+                        if (!peer.contains("maxbackoff=")) {
+                            "$peer&maxbackoff=1m"
+                        } else {
+                            peer // Already has maxbackoff
+                        }
+                    } else {
+                        "$peer?maxbackoff=1m"
+                    }
+                }
+                val peersJson = peersWithBackoff.joinToString("\",\"", "[\"", "\"]")
                 finalConfig = finalConfig.replace(
                     Regex("\"Peers\":\\s*\\[\\s*\\]"),
                     "\"Peers\": $peersJson"
@@ -381,7 +411,19 @@ class YggstackService : Service() {
         val peers = if (config.peers.isEmpty()) {
             "[]"
         } else {
-            config.peers.joinToString("\",\"", "[\"", "\"]")
+            // Add ?maxbackoff=30s to each peer URI for mobile-friendly timeouts
+            val peersWithBackoff = config.peers.map { peer ->
+                if (peer.contains("?")) {
+                    if (!peer.contains("maxbackoff=")) {
+                        "$peer&maxbackoff=30s"
+                    } else {
+                        peer // Already has maxbackoff
+                    }
+                } else {
+                    "$peer?maxbackoff=30s"
+                }
+            }
+            peersWithBackoff.joinToString("\", \"", "[\"", "\"]")
         }
 
         val multicastInterfaces = if (config.multicastEnabled) {
@@ -400,8 +442,7 @@ class YggstackService : Service() {
         }
 
         // Use the same structure as generated config
-        val manualConfig = """
-{
+        val manualConfig = """{
   "PrivateKey": "${config.privateKey}",
   "Certificate": null,
   "Peers": $peers,
@@ -414,8 +455,7 @@ class YggstackService : Service() {
   "IfMTU": 65535,
   "NodeInfoPrivacy": false,
   "NodeInfo": null
-}
-        """.trimIndent()
+}"""
 
         addLog("Built manual config matching generated structure")
         return manualConfig
@@ -683,6 +723,85 @@ class YggstackService : Service() {
             }
         }
         wakeLock = null
+    }
+
+    private fun registerNetworkCallback() {
+        try {
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    addLog("Network available: ${network}")
+                    // Don't retry here - let onCapabilitiesChanged handle it to avoid duplicates
+                }
+                
+                override fun onLost(network: Network) {
+                    addLog("Network lost: ${network}")
+                }
+                
+                override fun onCapabilitiesChanged(
+                    network: Network,
+                    networkCapabilities: NetworkCapabilities
+                ) {
+                    val isWifi = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                    val isCellular = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    val transportType = when {
+                        isWifi -> "WiFi"
+                        isCellular -> "Cellular"
+                        else -> "Unknown"
+                    }
+                    
+                    // Debounce: only log and retry if network type changed or enough time passed
+                    val now = System.currentTimeMillis()
+                    val shouldProcess = lastNetworkType != transportType || 
+                                      (now - lastNetworkChangeTime) > NETWORK_CHANGE_DEBOUNCE_MS
+                    
+                    if (shouldProcess) {
+                        if (lastNetworkType != null && lastNetworkType != transportType) {
+                            addLog("Network switched: $lastNetworkType -> $transportType")
+                            // Force reconnection only when transport type actually changes
+                            retryPeersNow()
+                        } else if (lastNetworkType == null) {
+                            addLog("Initial network: $transportType")
+                        }
+                        lastNetworkType = transportType
+                        lastNetworkChangeTime = now
+                    }
+                }
+            }
+            
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager.registerNetworkCallback(request, networkCallback!!)
+            addLog("Network monitoring registered")
+        } catch (e: Exception) {
+            addLog("Failed to register network callback: ${e.message}")
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        try {
+            networkCallback?.let {
+                connectivityManager.unregisterNetworkCallback(it)
+                addLog("Network monitoring unregistered")
+            }
+            networkCallback = null
+        } catch (e: Exception) {
+            addLog("Failed to unregister network callback: ${e.message}")
+        }
+    }
+
+    private fun retryPeersNow() {
+        serviceScope.launch {
+            if (_isRunning.value) {
+                try {
+                    addLog("Forcing peer reconnection due to network change...")
+                    yggstack?.retryPeersNow()
+                    addLog("Peer retry triggered successfully")
+                } catch (e: Exception) {
+                    addLog("Error triggering peer retry: ${e.message}")
+                }
+            }
+        }
     }
 
     companion object {
