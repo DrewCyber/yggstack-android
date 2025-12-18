@@ -369,16 +369,16 @@ class YggstackService : Service() {
             
             if (config.peers.isNotEmpty()) {
                 addLog("Adding ${config.peers.size} peer(s) to config")
-                // Add ?maxbackoff=1m to each peer URI for mobile-friendly timeouts
+                // Add ?maxbackoff=30s to each peer URI for mobile-friendly timeouts
                 val peersWithBackoff = config.peers.map { peer ->
                     if (peer.contains("?")) {
                         if (!peer.contains("maxbackoff=")) {
-                            "$peer&maxbackoff=1m"
+                            "$peer&maxbackoff=30s"
                         } else {
                             peer // Already has maxbackoff
                         }
                     } else {
-                        "$peer?maxbackoff=1m"
+                        "$peer?maxbackoff=30s"
                     }
                 }
                 val peersJson = peersWithBackoff.joinToString("\",\"", "[\"", "\"]")
