@@ -51,7 +51,7 @@ class YggstackService : Service() {
     }
     private var lastNetworkType: String? = null
     private var lastNetworkChangeTime: Long = 0
-    private val NETWORK_CHANGE_DEBOUNCE_MS = 2000L // 2 seconds
+    private val NETWORK_CHANGE_DEBOUNCE_MS = 5000L // 5 seconds to avoid flip-flop during transitions
     
     // Store last config for automatic restart after crash
     private var lastConfig: YggstackConfig? = null
@@ -202,9 +202,6 @@ class YggstackService : Service() {
                 // Store SANITIZED config JSON for diagnostics display (private key truncated)
                 _fullConfigJSON.value = sanitizeConfigJson(configJson)
 
-                // Debug: Log first 500 chars of config to diagnose parsing issues
-                addLog("Config JSON preview: ${configJson.take(500)}")
-
                 addLog("Calling loadConfigJSON...")
                 yggstack?.loadConfigJSON(configJson)
                 addLog("Config loaded successfully")
@@ -278,7 +275,7 @@ class YggstackService : Service() {
                 }
                 
                 // Update notification with error state
-                val errorNotification = createNotification("Failed to start - check logs", 0, 0)
+                val errorNotification = createNotification("Failed to start - check logs", 0, 0, showStopButton = false)
                 notificationManager.notify(NOTIFICATION_ID, errorNotification)
                 
                 addLog("Service stopped due to error. Please check configuration and try again.")
@@ -650,22 +647,12 @@ class YggstackService : Service() {
         }
     }
 
-    private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int): Notification {
+    private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int, showStopButton: Boolean = true): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
             notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val stopIntent = Intent(this, YggstackService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            0,
-            stopIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -679,7 +666,7 @@ class YggstackService : Service() {
             }
         }
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Yggstack")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
@@ -688,16 +675,29 @@ class YggstackService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
-            .addAction(
+            .setOngoing(showStopButton)
+            .setShowWhen(true)
+            .setOnlyAlertOnce(true)  // Prevent sound/vibration on updates
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+
+        if (showStopButton) {
+            val stopIntent = Intent(this, YggstackService::class.java).apply {
+                action = ACTION_STOP
+            }
+            val stopPendingIntent = PendingIntent.getService(
+                this,
+                0,
+                stopIntent,
+                PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
                 android.R.drawable.ic_delete,
                 "Stop",
                 stopPendingIntent
             )
-            .setOngoing(true)
-            .setShowWhen(true)
-            .setOnlyAlertOnce(true)  // Prevent sound/vibration on updates
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .build()
+        }
+
+        return builder.build()
     }
 
     private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
@@ -730,7 +730,12 @@ class YggstackService : Service() {
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     addLog("Network available: ${network}")
-                    // Don't retry here - let onCapabilitiesChanged handle it to avoid duplicates
+                    // Trigger reconnection when network comes back (handles WiFi drop/restore)
+                    // Only if peers are actually disconnected (peerCount = 0)
+                    if (_isRunning.value && _peerCount.value == 0) {
+                        addLog("Network restored while disconnected - forcing reconnection")
+                        retryPeersNow()
+                    }
                 }
                 
                 override fun onLost(network: Network) {
@@ -743,23 +748,25 @@ class YggstackService : Service() {
                 ) {
                     val isWifi = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
                     val isCellular = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    
+                    // Prioritize WiFi when both are available during transitions
                     val transportType = when {
                         isWifi -> "WiFi"
                         isCellular -> "Cellular"
                         else -> "Unknown"
                     }
                     
-                    // Debounce: only log and retry if network type changed or enough time passed
+                    // Debounce: prevent flip-flop during network transitions
+                    // Only process if network type changed AND enough time passed since last change
                     val now = System.currentTimeMillis()
-                    val shouldProcess = lastNetworkType != transportType || 
-                                      (now - lastNetworkChangeTime) > NETWORK_CHANGE_DEBOUNCE_MS
+                    val timeSinceLastChange = now - lastNetworkChangeTime
                     
-                    if (shouldProcess) {
-                        if (lastNetworkType != null && lastNetworkType != transportType) {
+                    if (lastNetworkType != transportType && timeSinceLastChange > NETWORK_CHANGE_DEBOUNCE_MS) {
+                        if (lastNetworkType != null) {
                             addLog("Network switched: $lastNetworkType -> $transportType")
-                            // Force reconnection only when transport type actually changes
+                            // Force reconnection when transport type actually changes
                             retryPeersNow()
-                        } else if (lastNetworkType == null) {
+                        } else {
                             addLog("Initial network: $transportType")
                         }
                         lastNetworkType = transportType
