@@ -51,7 +51,7 @@ fun ConfigurationScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(12.dp)
                 .padding(bottom = 80.dp) // Space for button at bottom
         ) {
             // App title as part of scrollable content
@@ -59,7 +59,7 @@ fun ConfigurationScreen(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 12.dp)
             )
             
             // Private Key Section
@@ -70,6 +70,8 @@ fun ConfigurationScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isServiceRunning,
                     visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = !showPrivateKey,
+                    maxLines = if (showPrivateKey) Int.MAX_VALUE else 1,
                     trailingIcon = {
                         IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
                             Icon(
@@ -84,9 +86,9 @@ fun ConfigurationScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Yggdrasil IP Section (moved before Peers)
+            // Yggdrasil IP Section
             ConfigSection(title = stringResource(R.string.yggdrasil_ip_section)) {
                 OutlinedTextField(
                     value = yggdrasilIp ?: stringResource(R.string.not_connected),
@@ -105,12 +107,12 @@ fun ConfigurationScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Peers Section with clickable header
             val context = LocalContext.current
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)) {
                     // Clickable header
                     Surface(
                         onClick = {
@@ -121,23 +123,23 @@ fun ConfigurationScreen(
                         color = Color.Transparent
                     ) {
                         Row(
-                            modifier = Modifier.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = stringResource(R.string.peers_section),
                                 style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
                             )
                             Icon(
                                 Icons.Default.Link,
                                 contentDescription = "Find public peers",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
                     
                     config.peers.forEach { peer ->
                         PeerItem(
@@ -403,7 +405,7 @@ fun ConfigSection(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
             Text(
                 text = title,
@@ -428,7 +430,7 @@ fun ConfigSectionWithToggle(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
