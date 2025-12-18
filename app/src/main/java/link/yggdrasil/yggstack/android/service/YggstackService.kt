@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
 import link.yggdrasil.yggstack.mobile.Yggstack
@@ -43,6 +44,12 @@ class YggstackService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
+    private var peerStatsJob: kotlinx.coroutines.Job? = null
+    
+    // Operation state management
+    private val _isTransitioning = MutableStateFlow(false)
+    val isTransitioning: StateFlow<Boolean> = _isTransitioning.asStateFlow()
+    private val operationMutex = kotlinx.coroutines.sync.Mutex()
     
     // Network connectivity monitoring
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -159,28 +166,37 @@ class YggstackService : Service() {
     }
 
     fun startYggstack(config: YggstackConfig) {
-        if (_isRunning.value) {
-            addLog("Yggstack is already running")
-            return
-        }
-        
-        // Store config for crash recovery
-        lastConfig = config
-        crashRestartAttempts = 0
-
         serviceScope.launch {
-            // Force cleanup any zombie instance before starting
-            if (yggstack != null) {
-                addLog("Cleaning up existing Yggstack instance...")
-                try {
-                    yggstack?.stop()
-                } catch (e: Exception) {
-                    addLog("Error cleaning up old instance: ${e.message}")
-                }
-                yggstack = null
-                kotlinx.coroutines.delay(500) // Give it time to fully stop
+            // Use mutex to prevent concurrent start/stop operations
+            if (!operationMutex.tryLock()) {
+                addLog("Operation already in progress - ignoring start request")
+                return@launch
             }
+            
             try {
+                if (_isRunning.value) {
+                    addLog("Yggstack is already running")
+                    return@launch
+                }
+                
+                _isTransitioning.value = true
+                
+                // Store config for crash recovery
+                lastConfig = config
+                crashRestartAttempts = 0
+                
+                // Force cleanup any zombie instance before starting
+                if (yggstack != null) {
+                    addLog("Cleaning up existing Yggstack instance...")
+                    try {
+                        yggstack?.stop()
+                    } catch (e: Exception) {
+                        addLog("Error cleaning up old instance: ${e.message}")
+                    }
+                    yggstack = null
+                    kotlinx.coroutines.delay(500) // Give it time to fully stop
+                }
+                
                 addLog("Starting Yggstack...")
                 addLog("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
                 addLog("Commit: ${link.yggdrasil.yggstack.android.BuildConfig.COMMIT_HASH}")
@@ -239,6 +255,7 @@ class YggstackService : Service() {
 
                 _isRunning.value = true
                 _peerCount.value = 0
+                _isTransitioning.value = false
 
                 addLog("Yggstack started successfully")
                 updateNotification("Connected", 0, 0)
@@ -258,6 +275,7 @@ class YggstackService : Service() {
                 }
                 yggstack = null
                 _isRunning.value = false
+                _isTransitioning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
@@ -279,25 +297,41 @@ class YggstackService : Service() {
                 notificationManager.notify(NOTIFICATION_ID, errorNotification)
                 
                 addLog("Service stopped due to error. Please check configuration and try again.")
+            } finally {
+                operationMutex.unlock()
             }
         }
     }
 
     fun stopYggstack() {
-        // Force cleanup even if _isRunning is false (handles desync state)
-        if (!_isRunning.value && yggstack == null) {
-            addLog("Service already stopped")
-            return
-        }
-        
-        if (!_isRunning.value && yggstack != null) {
-            addLog("WARNING: State desync detected - forcing cleanup of zombie instance")
-        }
-
         serviceScope.launch {
+            // Use mutex to prevent concurrent start/stop operations
+            if (!operationMutex.tryLock()) {
+                addLog("Operation already in progress - ignoring stop request")
+                return@launch
+            }
+            
             try {
+                // Force cleanup even if _isRunning is false (handles desync state)
+                if (!_isRunning.value && yggstack == null) {
+                    addLog("Service already stopped")
+                    return@launch
+                }
+                
+                if (!_isRunning.value && yggstack != null) {
+                    addLog("WARNING: State desync detected - forcing cleanup of zombie instance")
+                }
+                
+                _isTransitioning.value = true
+
                 addLog("Stopping Yggstack...")
                 _isRunning.value = false  // Set this first to stop the peer updater
+                _isTransitioning.value = false
+                
+                // Cancel peer stats updater
+                peerStatsJob?.cancel()
+                peerStatsJob = null
+                
                 yggstack?.stop()
                 yggstack = null
                 _yggdrasilIp.value = null
@@ -322,6 +356,7 @@ class YggstackService : Service() {
                 // Force cleanup even on error
                 yggstack = null
                 _isRunning.value = false
+                _isTransitioning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
@@ -330,6 +365,8 @@ class YggstackService : Service() {
                 // Cancel notification on error too
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
+            } finally {
+                operationMutex.unlock()
             }
         }
     }
@@ -543,7 +580,9 @@ class YggstackService : Service() {
     }
 
     private fun startPeerStatsUpdater() {
-        serviceScope.launch {
+        // Cancel any existing updater first
+        peerStatsJob?.cancel()
+        peerStatsJob = serviceScope.launch {
             while (_isRunning.value) {
                 try {
                     // Double-check service is still running before updating
@@ -623,7 +662,9 @@ class YggstackService : Service() {
                 }
                 kotlinx.coroutines.delay(5000) // Update every 5 seconds
             }
-            addLog("Peer stats updater stopped")
+            if (_isRunning.value) {
+                addLog("Peer stats updater stopped")
+            }
         }
     }
 

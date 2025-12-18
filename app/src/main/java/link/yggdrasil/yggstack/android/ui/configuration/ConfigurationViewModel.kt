@@ -56,24 +56,30 @@ class ConfigurationViewModel(
                 // Observe service state changes
                 viewModelScope.launch {
                     service.isRunning.collect { running ->
-                        // Only update if not in transitional state (Starting/Stopping)
-                        // Let those states timeout naturally
-                        if (_serviceState.value !is ServiceState.Starting &&
-                            _serviceState.value !is ServiceState.Stopping) {
-                            _serviceState.value = if (running) {
-                                ServiceState.Running
-                            } else {
-                                ServiceState.Stopped
-                            }
-                        } else if (running && _serviceState.value is ServiceState.Starting) {
-                            // Override Starting state when we detect service is running
-                            _serviceState.value = ServiceState.Running
-                        } else if (!running && _serviceState.value is ServiceState.Stopping) {
-                            // Override Stopping state when we detect service stopped
-                            _serviceState.value = ServiceState.Stopped
+                        // Update state based on actual service state
+                        _serviceState.value = if (running) {
+                            ServiceState.Running
+                        } else {
+                            ServiceState.Stopped
                         }
                     }
                 }
+                
+                // Observe transition state to properly disable button during operations
+                viewModelScope.launch {
+                    service.isTransitioning.collect { transitioning ->
+                        if (transitioning) {
+                            // Don't override - let existing state determine if Starting or Stopping
+                            if (_serviceState.value is ServiceState.Stopped) {
+                                _serviceState.value = ServiceState.Starting
+                            } else if (_serviceState.value is ServiceState.Running) {
+                                _serviceState.value = ServiceState.Stopping
+                            }
+                        }
+                        // When transition completes, isRunning observer will update to final state
+                    }
+                }
+                
                 viewModelScope.launch {
                     service.yggdrasilIp.collect { ip ->
                         _yggdrasilIp.value = ip
