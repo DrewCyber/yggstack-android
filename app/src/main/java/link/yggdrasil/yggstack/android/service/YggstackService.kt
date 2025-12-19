@@ -153,7 +153,19 @@ class YggstackService : Service() {
                 config?.let { startYggstack(it.toYggstackConfig()) }
             }
             ACTION_STOP -> stopYggstack()
+            null -> {
+                // Service was restarted by system after being killed
+                if (lastConfig != null && !_isRunning.value) {
+                    addLog("Service was killed by system - attempting automatic restart with last config")
+                    startYggstack(lastConfig!!)
+                } else if (_isRunning.value) {
+                    addLog("Service restarted by system but already running - ignoring")
+                } else {
+                    addLog("Service restarted by system but no config available - service will remain stopped")
+                }
+            }
         }
+        // Restart service if killed by system, preserving lastConfig
         return START_STICKY
     }
 
@@ -326,18 +338,21 @@ class YggstackService : Service() {
 
                 addLog("Stopping Yggstack...")
                 _isRunning.value = false  // Set this first to stop the peer updater
-                _isTransitioning.value = false
                 
                 // Cancel peer stats updater
                 peerStatsJob?.cancel()
                 peerStatsJob = null
                 
+                // Stop yggstack and wait for it to complete
                 yggstack?.stop()
                 yggstack = null
+                
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null  // Reset generated key state
+                _isTransitioning.value = false
+                
                 addLog("Yggstack stopped")
                 
                 // Cancel the notification
