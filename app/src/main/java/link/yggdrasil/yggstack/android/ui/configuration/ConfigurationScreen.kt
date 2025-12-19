@@ -344,17 +344,61 @@ fun ConfigurationScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
                     ) {
-                        logLevels.forEach { level ->
-                            FilterChip(
-                                selected = config.logLevel == level,
+                        logLevels.forEachIndexed { index, level ->
+                            Button(
                                 onClick = { viewModel.setLogLevel(level) },
-                                label = { Text(logLevelLabels[level] ?: level) },
                                 enabled = !isServiceRunning,
-                                modifier = Modifier.weight(1f)
-                            )
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (config.logLevel == level) {
+                                        // Use red color for debug level when selected
+                                        if (level == "debug") {
+                                            Color(0xFFDC3545) // Red color for debug
+                                        } else {
+                                            MaterialTheme.colorScheme.primary
+                                        }
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    },
+                                    contentColor = if (config.logLevel == level) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    disabledContainerColor = if (config.logLevel == level) {
+                                        // Keep red color for debug when disabled
+                                        if (level == "debug") {
+                                            Color(0xFFDC3545).copy(alpha = 0.5f)
+                                        } else {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                        }
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    },
+                                    disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
+                                ),
+                                shape = when (index) {
+                                    0 -> MaterialTheme.shapes.small.copy(
+                                        topEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
+                                        bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp)
+                                    )
+                                    logLevels.size - 1 -> MaterialTheme.shapes.small.copy(
+                                        topStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+                                        bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp)
+                                    )
+                                    else -> androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+                                },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    text = logLevelLabels[level] ?: level,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
                         }
                     }
                 }

@@ -11,6 +11,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -42,6 +43,7 @@ class YggstackService : Service() {
     private val binder = YggstackBinder()
     private var yggstack: Yggstack? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
     private var peerStatsJob: kotlinx.coroutines.Job? = null
@@ -56,9 +58,13 @@ class YggstackService : Service() {
     private val connectivityManager by lazy { 
         getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager 
     }
+    private val wifiManager by lazy {
+        applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    }
     private var lastNetworkType: String? = null
     private var lastNetworkChangeTime: Long = 0
     private val NETWORK_CHANGE_DEBOUNCE_MS = 5000L // 5 seconds to avoid flip-flop during transitions
+    private var isOnWifi: Boolean = false
     
     // Store last config for automatic restart after crash
     private var lastConfig: YggstackConfig? = null
@@ -180,6 +186,7 @@ class YggstackService : Service() {
         addLog("=== YggstackService onDestroy - service being destroyed ===")
         super.onDestroy()
         stopYggstack()
+        releaseMulticastLock()
         unregisterNetworkCallback()
         releaseWakeLock()
         serviceScope.cancel()
@@ -267,6 +274,19 @@ class YggstackService : Service() {
                 // This ensures mappings are in place when start() runs
                 setupPortMappings(config)
 
+                // Acquire MulticastLock if multicast is enabled and we're on WiFi
+                if (config.multicastEnabled && checkNetworkType()) {
+                    addLog("Multicast enabled and on WiFi - acquiring MulticastLock")
+                    isOnWifi = true
+                    acquireMulticastLock()
+                } else if (config.multicastEnabled) {
+                    addLog("Multicast enabled but not on WiFi - MulticastLock not acquired")
+                    isOnWifi = false
+                } else {
+                    addLog("Multicast disabled - skipping MulticastLock")
+                    isOnWifi = false
+                }
+
                 addLog("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
                 addLog("Start() completed successfully")
@@ -303,6 +323,9 @@ class YggstackService : Service() {
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
+                
+                // Release MulticastLock on error
+                releaseMulticastLock()
 
                 // Cancel notification
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -355,6 +378,9 @@ class YggstackService : Service() {
                 peerStatsJob?.cancel()
                 peerStatsJob = null
                 
+                // Release MulticastLock if held
+                releaseMulticastLock()
+                
                 // Stop yggstack and wait for it to complete
                 yggstack?.stop()
                 yggstack = null
@@ -388,6 +414,9 @@ class YggstackService : Service() {
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null
+                
+                // Release MulticastLock on error too
+                releaseMulticastLock()
                 
                 // Cancel notification on error too
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -793,8 +822,87 @@ class YggstackService : Service() {
         wakeLock = null
     }
 
+    private fun acquireMulticastLock() {
+        try {
+            if (multicastLock == null) {
+                multicastLock = wifiManager.createMulticastLock("YggstackService::MulticastLock")
+            }
+            if (multicastLock?.isHeld == false) {
+                multicastLock?.acquire()
+                addLog("MulticastLock acquired")
+            }
+        } catch (e: Exception) {
+            addLog("Failed to acquire MulticastLock: ${e.message}")
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        try {
+            multicastLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    addLog("MulticastLock released")
+                }
+            }
+            multicastLock = null
+        } catch (e: Exception) {
+            addLog("Failed to release MulticastLock: ${e.message}")
+        }
+    }
+
+    private fun checkNetworkType(): Boolean {
+        try {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            return networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        } catch (e: Exception) {
+            addLog("Failed to check network type: ${e.message}")
+            return false
+        }
+    }
+
+    private fun handleMulticastForNetwork(isWifi: Boolean) {
+        serviceScope.launch {
+            try {
+                if (!_isRunning.value || lastConfig?.multicastEnabled != true) {
+                    return@launch
+                }
+
+                if (isWifi && !isOnWifi) {
+                    // Switched to WiFi - enable multicast
+                    addLog("Switched to WiFi - enabling multicast discovery")
+                    isOnWifi = true
+                    acquireMulticastLock()
+                    // Restart yggstack to apply multicast configuration
+                    yggstack?.let {
+                        addLog("Restarting multicast discovery...")
+                        // Note: In Go, we need to reload config to enable multicast
+                        // This is a simplified approach - alternatively we could expose
+                        // a method in the Go layer to enable/disable multicast dynamically
+                        lastConfig?.let { config -> 
+                            // Trigger peer retry to pick up multicast peers
+                            retryPeersNow()
+                        }
+                    }
+                } else if (!isWifi && isOnWifi) {
+                    // Switched to Cellular - disable multicast
+                    addLog("Switched to Cellular - disabling multicast discovery")
+                    isOnWifi = false
+                    releaseMulticastLock()
+                    // Note: Multicast will be automatically stopped as it requires WiFi
+                    // The Go layer should handle this gracefully
+                }
+            } catch (e: Exception) {
+                addLog("Error handling multicast for network change: ${e.message}")
+            }
+        }
+    }
+
     private fun registerNetworkCallback() {
         try {
+            // Initialize network state
+            isOnWifi = checkNetworkType()
+            
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     addLog("Network available: ${network}")
@@ -832,6 +940,8 @@ class YggstackService : Service() {
                     if (lastNetworkType != transportType && timeSinceLastChange > NETWORK_CHANGE_DEBOUNCE_MS) {
                         if (lastNetworkType != null) {
                             addLog("Network switched: $lastNetworkType -> $transportType")
+                            // Handle multicast based on network type
+                            handleMulticastForNetwork(isWifi)
                             // Force reconnection when transport type actually changes
                             retryPeersNow()
                         } else {
