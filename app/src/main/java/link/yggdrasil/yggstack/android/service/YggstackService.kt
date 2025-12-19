@@ -144,6 +144,7 @@ class YggstackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                addLog("onStartCommand: ACTION_START received")
                 val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_CONFIG, YggstackConfigParcelable::class.java)
                 } else {
@@ -152,16 +153,22 @@ class YggstackService : Service() {
                 }
                 config?.let { startYggstack(it.toYggstackConfig()) }
             }
-            ACTION_STOP -> stopYggstack()
+            ACTION_STOP -> {
+                addLog("onStartCommand: ACTION_STOP received")
+                stopYggstack()
+            }
             null -> {
                 // Service was restarted by system after being killed
+                addLog("=== WARNING: Service restarted by system (intent=null) ===")
+                addLog("This indicates the app/service was killed by the system")
                 if (lastConfig != null && !_isRunning.value) {
-                    addLog("Service was killed by system - attempting automatic restart with last config")
+                    addLog("Attempting automatic restart with last config after system kill")
                     startYggstack(lastConfig!!)
                 } else if (_isRunning.value) {
-                    addLog("Service restarted by system but already running - ignoring")
+                    addLog("Service claims to be running - checking state consistency")
                 } else {
-                    addLog("Service restarted by system but no config available - service will remain stopped")
+                    addLog("No config available - service will remain stopped")
+                    addLog("User must manually restart the service")
                 }
             }
         }
@@ -170,6 +177,7 @@ class YggstackService : Service() {
     }
 
     override fun onDestroy() {
+        addLog("=== YggstackService onDestroy - service being destroyed ===")
         super.onDestroy()
         stopYggstack()
         unregisterNetworkCallback()
