@@ -30,15 +30,15 @@ object AutostartHelper {
         val manufacturer = Build.MANUFACTURER.lowercase()
         
         val intents = when (manufacturer) {
-            "xiaomi" -> getXiaomiIntents(context)
-            "huawei" -> getHuaweiIntents(context)
-            "oppo" -> getOppoIntents(context)
-            "vivo" -> getVivoIntents(context)
-            "letv" -> getLetvIntents(context)
-            "honor" -> getHonorIntents(context)
-            "asus" -> getAsusIntents(context)
+            "xiaomi" -> getXiaomiIntents()
+            "huawei" -> getHuaweiIntents()
+            "oppo" -> getOppoIntents()
+            "vivo" -> getVivoIntents()
+            "letv" -> getLetvIntents()
+            "honor" -> getHonorIntents()
+            "asus" -> getAsusIntents()
             "meizu" -> getMeizuIntents(context)
-            "oneplus" -> getOnePlusIntents(context)
+            "oneplus" -> getOnePlusIntents()
             else -> emptyList()
         }
         
@@ -56,7 +56,7 @@ object AutostartHelper {
         return false
     }
     
-    private fun getXiaomiIntents(context: Context): List<Intent> {
+    private fun getXiaomiIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -74,7 +74,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getHuaweiIntents(context: Context): List<Intent> {
+    private fun getHuaweiIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -97,7 +97,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getOppoIntents(context: Context): List<Intent> {
+    private fun getOppoIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -120,7 +120,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getVivoIntents(context: Context): List<Intent> {
+    private fun getVivoIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -137,7 +137,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getLetvIntents(context: Context): List<Intent> {
+    private fun getLetvIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -148,7 +148,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getHonorIntents(context: Context): List<Intent> {
+    private fun getHonorIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -159,7 +159,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getAsusIntents(context: Context): List<Intent> {
+    private fun getAsusIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
@@ -185,7 +185,7 @@ object AutostartHelper {
         )
     }
     
-    private fun getOnePlusIntents(context: Context): List<Intent> {
+    private fun getOnePlusIntents(): List<Intent> {
         return listOf(
             Intent().apply {
                 component = ComponentName(
