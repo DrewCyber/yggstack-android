@@ -229,7 +229,11 @@ class YggstackService : Service() {
                         addLog(message.trim())
                     }
                 })
-                yggstack?.setLogLevel("info")
+                
+                // Use log level from config
+                val logLevel = config.logLevel
+                yggstack?.setLogLevel(logLevel)
+                addLog("Log level: $logLevel")
 
                 // Build config JSON (handles both new and existing private keys)
                 addLog("Loading configuration...")

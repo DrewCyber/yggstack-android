@@ -35,6 +35,7 @@ class ConfigRepository(private val context: Context) {
         private val THEME_KEY = stringPreferencesKey("theme")
         private val AUTOSTART_KEY = booleanPreferencesKey("autostart")
         private val MULTICAST_ENABLED = booleanPreferencesKey("multicast_enabled")
+        private val LOG_LEVEL = stringPreferencesKey("log_level")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
     }
 
@@ -58,7 +59,8 @@ class ConfigRepository(private val context: Context) {
                 json.decodeFromString<List<ForwardMapping>>(it)
             } ?: emptyList(),
             forwardEnabled = preferences[FORWARD_ENABLED] ?: false,
-            multicastEnabled = preferences[MULTICAST_ENABLED] ?: true
+            multicastEnabled = preferences[MULTICAST_ENABLED] ?: true,
+            logLevel = preferences[LOG_LEVEL] ?: "info"
         )
     }
 
@@ -77,6 +79,7 @@ class ConfigRepository(private val context: Context) {
             preferences[FORWARD_MAPPINGS] = json.encodeToString(config.forwardMappings)
             preferences[FORWARD_ENABLED] = config.forwardEnabled
             preferences[MULTICAST_ENABLED] = config.multicastEnabled
+            preferences[LOG_LEVEL] = config.logLevel
         }
     }
 

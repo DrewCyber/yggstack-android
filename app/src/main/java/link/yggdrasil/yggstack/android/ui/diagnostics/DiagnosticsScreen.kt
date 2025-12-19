@@ -455,10 +455,27 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
     val logs by viewModel.logs.collectAsState()
     val scrollState = rememberScrollState()
     val context = LocalContext.current
+    var userScrolled by remember { mutableStateOf(false) }
 
-    // Auto-scroll to bottom when new logs arrive
-    LaunchedEffect(logs.size) {
+    // Initial scroll to bottom when screen opens
+    LaunchedEffect(Unit) {
         if (logs.isNotEmpty()) {
+            scrollState.scrollTo(scrollState.maxValue)
+        }
+    }
+
+    // Track if user manually scrolled up
+    LaunchedEffect(scrollState.value) {
+        if (scrollState.value < scrollState.maxValue - 100) {
+            userScrolled = true
+        } else if (scrollState.value >= scrollState.maxValue - 50) {
+            userScrolled = false
+        }
+    }
+
+    // Auto-scroll to bottom when new logs arrive, unless user scrolled up
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty() && !userScrolled) {
             scrollState.animateScrollTo(scrollState.maxValue)
         }
     }

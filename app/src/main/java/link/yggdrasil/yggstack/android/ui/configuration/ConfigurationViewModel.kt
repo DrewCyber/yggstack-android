@@ -35,6 +35,9 @@ class ConfigurationViewModel(
     private val _showPrivateKey = MutableStateFlow(false)
     val showPrivateKey: StateFlow<Boolean> = _showPrivateKey.asStateFlow()
 
+    private val _scrollPosition = MutableStateFlow(0)
+    val scrollPosition: StateFlow<Int> = _scrollPosition.asStateFlow()
+
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
 
@@ -229,8 +232,16 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(multicastEnabled = enabled))
     }
 
+    fun setLogLevel(level: String) {
+        updateConfig(_config.value.copy(logLevel = level))
+    }
+
     fun toggleShowPrivateKey() {
         _showPrivateKey.value = !_showPrivateKey.value
+    }
+
+    fun saveScrollPosition(position: Int) {
+        _scrollPosition.value = position
     }
 
     fun startService() {

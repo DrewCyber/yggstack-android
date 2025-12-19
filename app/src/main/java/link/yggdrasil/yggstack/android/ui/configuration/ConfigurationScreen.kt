@@ -32,6 +32,7 @@ fun ConfigurationScreen(
     val serviceState by viewModel.serviceState.collectAsState()
     val yggdrasilIp by viewModel.yggdrasilIp.collectAsState()
     val showPrivateKey by viewModel.showPrivateKey.collectAsState()
+    val savedScrollPosition by viewModel.scrollPosition.collectAsState()
     val clipboardManager = LocalClipboardManager.current
 
     var peerInput by remember { mutableStateOf("") }
@@ -40,6 +41,13 @@ fun ConfigurationScreen(
     var editingExposeMapping by remember { mutableStateOf<ExposeMapping?>(null) }
     var showForwardDialog by remember { mutableStateOf(false) }
     var editingForwardMapping by remember { mutableStateOf<ForwardMapping?>(null) }
+
+    val scrollState = rememberScrollState(initial = savedScrollPosition)
+    
+    // Save scroll position when it changes
+    LaunchedEffect(scrollState.value) {
+        viewModel.saveScrollPosition(scrollState.value)
+    }
 
     val isServiceRunning = serviceState is ServiceState.Running
 
@@ -50,7 +58,7 @@ fun ConfigurationScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(12.dp)
                 .padding(bottom = 80.dp) // Space for button at bottom
         ) {
@@ -312,6 +320,42 @@ fun ConfigurationScreen(
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.add_mapping))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Log Level Section
+            ConfigSection(title = stringResource(R.string.log_level)) {
+                val logLevels = listOf("error", "warn", "info", "debug")
+                val logLevelLabels = mapOf(
+                    "error" to stringResource(R.string.log_level_error),
+                    "warn" to stringResource(R.string.log_level_warn),
+                    "info" to stringResource(R.string.log_level_info),
+                    "debug" to stringResource(R.string.log_level_debug)
+                )
+
+                Column {
+                    Text(
+                        text = stringResource(R.string.log_level_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        logLevels.forEach { level ->
+                            FilterChip(
+                                selected = config.logLevel == level,
+                                onClick = { viewModel.setLogLevel(level) },
+                                label = { Text(logLevelLabels[level] ?: level) },
+                                enabled = !isServiceRunning,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }

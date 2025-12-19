@@ -84,5 +84,12 @@
     <string name="permission_dialog_open_settings">Open Settings</string>
     <string name="permission_dialog_later">Later</string>
 
+    <!-- Log Level -->
+    <string name="log_level">Log Level</string>
+    <string name="log_level_description">Verbosity of Yggstack logging output</string>
+    <string name="log_level_error">Error</string>
+    <string name="log_level_warn">Warn</string>
+    <string name="log_level_info">Info</string>
+    <string name="log_level_debug">Debug</string>
 </resources>
 
