@@ -47,10 +47,11 @@ jobs:
           VERSION=${TAG#v}
           # Get short commit hash
           COMMIT=$(git rev-parse --short HEAD)
-          # Combine version and commit
+          # Combine version and commit for build metadata
           APP_VERSION="${VERSION}-${COMMIT}"
           echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
-          echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_with_commit=${APP_VERSION}" >> $GITHUB_OUTPUT
           echo "Building version: ${APP_VERSION}"
 
       - name: Build yggstack AAR
@@ -77,7 +78,7 @@ jobs:
 
       - name: Rename APKs
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="${{ github.ref_name }}"
           cd app/build/outputs/apk/release
           
           # Rename architecture-specific APKs
@@ -110,10 +111,7 @@ jobs:
           # Create the full release body
           cat > release_body.md << 'RELEASE_BODY_END'
           ## Yggstack Android ${{ steps.get_version.outputs.version }}
-          
-          **Version:** ${{ steps.get_version.outputs.version }}
-          **Commit:** ${{ github.sha }}
-          
+                    
           ### Changelog
           RELEASE_BODY_END
           
@@ -125,11 +123,11 @@ jobs:
           
           ### Download
           Choose the appropriate APK for your device:
-          - **[Universal APK](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ steps.get_version.outputs.version }}-universal.apk)** - Works on all devices (largest file)
-          - [ARM64 (arm64-v8a)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ steps.get_version.outputs.version }}-arm64-v8a.apk) - Most modern 64-bit ARM devices
-          - [ARM (armeabi-v7a)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ steps.get_version.outputs.version }}-armeabi-v7a.apk) - Older 32-bit ARM devices
-          - [x86_64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ steps.get_version.outputs.version }}-x86_64.apk) - x86 64-bit devices/emulators
-          - [x86](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ steps.get_version.outputs.version }}-x86.apk) - x86 32-bit devices/emulators
+          - **[Universal APK](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ github.ref_name }}-universal.apk)** - Works on all devices (largest file)
+          - [ARM64 (arm64-v8a)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ github.ref_name }}-arm64-v8a.apk) - Most modern 64-bit ARM devices
+          - [ARM (armeabi-v7a)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ github.ref_name }}-armeabi-v7a.apk) - Older 32-bit ARM devices
+          - [x86_64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ github.ref_name }}-x86_64.apk) - x86 64-bit devices/emulators
+          - [x86](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/yggstack-android-${{ github.ref_name }}-x86.apk) - x86 32-bit devices/emulators
           RELEASE_BODY_END
 
       - name: Create Release
@@ -137,11 +135,11 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}-arm64-v8a.apk
-            app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}-armeabi-v7a.apk
-            app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}-x86.apk
-            app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}-x86_64.apk
-            app/build/outputs/apk/release/yggstack-android-${{ steps.get_version.outputs.version }}-universal.apk
+            app/build/outputs/apk/release/yggstack-android-${{ github.ref_name }}-arm64-v8a.apk
+            app/build/outputs/apk/release/yggstack-android-${{ github.ref_name }}-armeabi-v7a.apk
+            app/build/outputs/apk/release/yggstack-android-${{ github.ref_name }}-x86.apk
+            app/build/outputs/apk/release/yggstack-android-${{ github.ref_name }}-x86_64.apk
+            app/build/outputs/apk/release/yggstack-android-${{ github.ref_name }}-universal.apk
           body_path: release_body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
