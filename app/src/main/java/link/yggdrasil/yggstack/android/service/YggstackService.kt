@@ -135,7 +135,6 @@ class YggstackService : Service() {
         persistentLogger = PersistentLogger(this)
         createNotificationChannel()
         acquireWakeLock()
-        registerNetworkCallback()
         
         // Load existing logs on startup
         serviceScope.launch {
@@ -150,6 +149,16 @@ class YggstackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                // Add Android build details if log is empty
+                if (_logs.value.isEmpty()) {
+                    addLog("=== Android Device Information ===")
+                    addLog("Manufacturer: ${Build.MANUFACTURER}")
+                    addLog("Model: ${Build.MODEL}")
+                    addLog("Device: ${Build.DEVICE}")
+                    addLog("Android Version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+                    addLog("Build ID: ${Build.ID}")
+                    addLog("=================================")
+                }
                 addLog("onStartCommand: ACTION_START received")
                 val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_CONFIG, YggstackConfigParcelable::class.java)
@@ -187,7 +196,6 @@ class YggstackService : Service() {
         super.onDestroy()
         stopYggstack()
         releaseMulticastLock()
-        unregisterNetworkCallback()
         releaseWakeLock()
         serviceScope.cancel()
     }
@@ -301,6 +309,9 @@ class YggstackService : Service() {
                 _peerCount.value = 0
                 _isTransitioning.value = false
 
+                // Register network callback to monitor WiFi/Cellular changes
+                registerNetworkCallback()
+
                 addLog("Yggstack started successfully")
                 updateNotification("Connected", 0, 0)
 
@@ -323,6 +334,9 @@ class YggstackService : Service() {
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
+                
+                // Unregister network callback on error
+                unregisterNetworkCallback()
                 
                 // Release MulticastLock on error
                 releaseMulticastLock()
@@ -378,6 +392,9 @@ class YggstackService : Service() {
                 peerStatsJob?.cancel()
                 peerStatsJob = null
                 
+                // Unregister network callback
+                unregisterNetworkCallback()
+                
                 // Release MulticastLock if held
                 releaseMulticastLock()
                 
@@ -414,6 +431,9 @@ class YggstackService : Service() {
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null
+                
+                // Unregister network callback on error too
+                unregisterNetworkCallback()
                 
                 // Release MulticastLock on error too
                 releaseMulticastLock()
@@ -873,17 +893,9 @@ class YggstackService : Service() {
                     addLog("Switched to WiFi - enabling multicast discovery")
                     isOnWifi = true
                     acquireMulticastLock()
-                    // Restart yggstack to apply multicast configuration
-                    yggstack?.let {
-                        addLog("Restarting multicast discovery...")
-                        // Note: In Go, we need to reload config to enable multicast
-                        // This is a simplified approach - alternatively we could expose
-                        // a method in the Go layer to enable/disable multicast dynamically
-                        lastConfig?.let { config -> 
-                            // Trigger peer retry to pick up multicast peers
-                            retryPeersNow()
-                        }
-                    }
+                    // Trigger peer retry to pick up multicast peers
+                    addLog("Restarting multicast discovery...")
+                    retryPeersNow()
                 } else if (!isWifi && isOnWifi) {
                     // Switched to Cellular - disable multicast
                     addLog("Switched to Cellular - disabling multicast discovery")
