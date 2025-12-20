@@ -135,6 +135,7 @@ class YggstackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         persistentLogger = PersistentLogger(this)
         createNotificationChannel()
         acquireWakeLock()
@@ -197,6 +198,7 @@ class YggstackService : Service() {
     override fun onDestroy() {
         addLog("=== YggstackService onDestroy - service being destroyed ===")
         super.onDestroy()
+        instance = null
         stopYggstack()
         releaseMulticastLock()
         releaseWakeLock()
@@ -329,6 +331,9 @@ class YggstackService : Service() {
                 // Start periodic peer stats update
                 startPeerStatsUpdater()
 
+                // Update Quick Settings tile
+                updateTileState(true)
+
             } catch (e: Exception) {
                 addLog("ERROR starting Yggstack: ${e.message}")
                 addLog("Stack trace: ${e.stackTraceToString().take(500)}")
@@ -427,6 +432,10 @@ class YggstackService : Service() {
                 _isTransitioning.value = false
                 
                 addLog("Yggstack stopped")
+                _isRunning.value = false
+                
+                // Update Quick Settings tile
+                updateTileState(false)
                 
                 // Cancel the notification
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -919,6 +928,13 @@ class YggstackService : Service() {
         }
     }
 
+    private fun updateTileState(isRunning: Boolean) {
+        val intent = Intent("link.yggdrasil.yggstack.android.UPDATE_TILE").apply {
+            putExtra("is_running", isRunning)
+        }
+        sendBroadcast(intent)
+    }
+
     private fun startVersionCheck() {
         versionCheckJob = serviceScope.launch(Dispatchers.IO) {
             // Initial delay to let service fully start
@@ -1148,6 +1164,11 @@ class YggstackService : Service() {
         const val EXTRA_CONFIG = "config"
         private const val MAX_LOG_ENTRIES = 500
         private const val MAX_CRASH_RESTART_ATTEMPTS = 3
+        
+        @Volatile
+        private var instance: YggstackService? = null
+        
+        fun isRunning(): Boolean = instance?._isRunning?.value ?: false
     }
 }
 
