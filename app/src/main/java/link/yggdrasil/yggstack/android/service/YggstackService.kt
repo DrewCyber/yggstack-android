@@ -48,6 +48,7 @@ class YggstackService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
     private var peerStatsJob: kotlinx.coroutines.Job? = null
+    private var versionCheckJob: kotlinx.coroutines.Job? = null
     
     // Operation state management
     private val _isTransitioning = MutableStateFlow(false)
@@ -319,6 +320,9 @@ class YggstackService : Service() {
                 // Register network callback to monitor WiFi/Cellular changes
                 registerNetworkCallback()
 
+                // Start version check
+                startVersionCheck()
+
                 addLog("Yggstack started successfully")
                 updateNotification("Connected", 0, 0)
 
@@ -398,6 +402,10 @@ class YggstackService : Service() {
                 // Cancel peer stats updater
                 peerStatsJob?.cancel()
                 peerStatsJob = null
+                
+                // Cancel version check
+                versionCheckJob?.cancel()
+                versionCheckJob = null
                 
                 // Unregister network callback
                 unregisterNetworkCallback()
@@ -909,6 +917,75 @@ class YggstackService : Service() {
         } catch (e: Exception) {
             addLog("Failed to release WiFi lock: ${e.message}")
         }
+    }
+
+    private fun startVersionCheck() {
+        versionCheckJob = serviceScope.launch(Dispatchers.IO) {
+            // Initial delay to let service fully start
+            kotlinx.coroutines.delay(2000)
+            
+            while (_isRunning.value) {
+                try {
+                    addLog("Starting version check...")
+                    val versionChecker = link.yggdrasil.yggstack.android.data.VersionChecker(this@YggstackService)
+                    if (versionChecker.shouldCheckForUpdate()) {
+                        addLog("Checking for app updates...")
+                        versionChecker.checkForUpdate()?.let { update ->
+                            addLog("Update available: ${update.latestVersion}")
+                            showUpdateNotification(update)
+                        } ?: addLog("No updates available")
+                    } else {
+                        addLog("Version check skipped (checked recently)")
+                    }
+                } catch (e: Exception) {
+                    addLog("Version check failed: ${e.message}")
+                    android.util.Log.e("YggstackService", "Version check error", e)
+                }
+                
+                // Wait 1 hour before next check
+                kotlinx.coroutines.delay(3600000)
+            }
+        }
+    }
+
+    private fun showUpdateNotification(update: link.yggdrasil.yggstack.android.data.VersionInfo) {
+        val notificationId = 2 // Different from service notification
+        val channelId = "yggstack_updates"
+        
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        // Create notification channel
+        val channel = NotificationChannel(
+            channelId,
+            "App Updates",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Notifications about new app versions"
+        }
+        notificationManager.createNotificationChannel(channel)
+        
+        // Create intent to open download URL
+        val downloadIntent = android.content.Intent(
+            android.content.Intent.ACTION_VIEW,
+            android.net.Uri.parse(update.downloadUrl)
+        )
+        val downloadPendingIntent = android.app.PendingIntent.getActivity(
+            this,
+            0,
+            downloadIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Update Available")
+            .setContentText("Version ${update.latestVersion} is ready to download")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setAutoCancel(true)
+            .setContentIntent(downloadPendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        
+        notificationManager.notify(notificationId, notification)
     }
 
     private fun checkNetworkType(): Boolean {

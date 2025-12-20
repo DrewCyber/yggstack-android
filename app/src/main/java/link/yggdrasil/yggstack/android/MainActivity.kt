@@ -9,11 +9,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -22,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.VersionChecker
 import link.yggdrasil.yggstack.android.data.VersionInfo
@@ -66,8 +71,6 @@ fun MainScreen() {
     var selectedScreen by remember { mutableStateOf(0) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var permissionsChecked by remember { mutableStateOf(false) }
-    var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     // Notification permission launcher for Android 13+
@@ -80,7 +83,7 @@ fun MainScreen() {
         }
     }
 
-    // Check permissions and version on startup
+    // Check permissions on startup
     LaunchedEffect(Unit) {
         // First, request notification permission if needed (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && 
@@ -90,17 +93,6 @@ fun MainScreen() {
             showPermissionDialog = true
         }
         permissionsChecked = true
-        
-        // Check for updates
-        coroutineScope.launch {
-            val versionChecker = VersionChecker(context)
-            if (versionChecker.shouldCheckForUpdate()) {
-                versionChecker.checkForUpdate()?.let { update ->
-                    versionInfo = update
-                    showUpdateDialog = true
-                }
-            }
-        }
     }
 
     // Permission dialog
@@ -137,24 +129,6 @@ fun MainScreen() {
         )
     }
     
-    // Update dialog
-    if (showUpdateDialog && versionInfo != null) {
-        UpdateAvailableDialog(
-            versionInfo = versionInfo!!,
-            onDismiss = {
-                showUpdateDialog = false
-                coroutineScope.launch {
-                    VersionChecker(context).postponeVersion(versionInfo!!.latestVersion)
-                }
-            },
-            onDownload = {
-                showUpdateDialog = false
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(versionInfo!!.downloadUrl))
-                context.startActivity(intent)
-            }
-        )
-    }
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
@@ -279,11 +253,16 @@ fun UpdateAvailableDialog(
                         style = MaterialTheme.typography.titleSmall
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = versionInfo.releaseNotes.take(300) + 
-                               if (versionInfo.releaseNotes.length > 300) "..." else "",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Box(
+                        modifier = Modifier
+                            .heightIn(max = 200.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        MarkdownText(
+                            markdown = versionInfo.releaseNotes,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         },
