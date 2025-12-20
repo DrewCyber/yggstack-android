@@ -43,6 +43,7 @@ class YggstackService : Service() {
     private val binder = YggstackBinder()
     private var yggstack: Yggstack? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
@@ -296,6 +297,11 @@ class YggstackService : Service() {
                     isOnWifi = false
                 }
 
+                // Acquire WiFi lock if on WiFi to prevent power-save
+                if (checkNetworkType()) {
+                    acquireWifiLock()
+                }
+
                 addLog("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
                 addLog("Start() completed successfully")
@@ -395,6 +401,9 @@ class YggstackService : Service() {
                 
                 // Unregister network callback
                 unregisterNetworkCallback()
+                
+                // Release WiFi lock if held
+                releaseWifiLock()
                 
                 // Release MulticastLock if held
                 releaseMulticastLock()
@@ -871,6 +880,37 @@ class YggstackService : Service() {
         }
     }
 
+    private fun acquireWifiLock() {
+        try {
+            if (wifiLock == null) {
+                wifiLock = wifiManager.createWifiLock(
+                    WifiManager.WIFI_MODE_FULL,
+                    "YggstackService::WifiLock"
+                )
+            }
+            if (wifiLock?.isHeld == false) {
+                wifiLock?.acquire()
+                addLog("WiFi lock acquired - preventing WiFi sleep")
+            }
+        } catch (e: Exception) {
+            addLog("Failed to acquire WiFi lock: ${e.message}")
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            wifiLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    addLog("WiFi lock released")
+                }
+            }
+            wifiLock = null
+        } catch (e: Exception) {
+            addLog("Failed to release WiFi lock: ${e.message}")
+        }
+    }
+
     private fun checkNetworkType(): Boolean {
         try {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
@@ -893,6 +933,7 @@ class YggstackService : Service() {
                     // Switched to WiFi - enable multicast
                     addLog("Switched to WiFi - enabling multicast discovery")
                     isOnWifi = true
+                    acquireWifiLock()
                     acquireMulticastLock()
                     // Trigger peer retry to pick up multicast peers
                     addLog("Restarting multicast discovery...")
@@ -901,6 +942,7 @@ class YggstackService : Service() {
                     // Switched to Cellular - disable multicast
                     addLog("Switched to Cellular - disabling multicast discovery")
                     isOnWifi = false
+                    releaseWifiLock()
                     releaseMulticastLock()
                     // Note: Multicast will be automatically stopped as it requires WiFi
                     // The Go layer should handle this gracefully
