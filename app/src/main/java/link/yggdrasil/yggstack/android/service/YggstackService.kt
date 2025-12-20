@@ -65,6 +65,7 @@ class YggstackService : Service() {
     private var lastNetworkChangeTime: Long = 0
     private val NETWORK_CHANGE_DEBOUNCE_MS = 5000L // 5 seconds to avoid flip-flop during transitions
     private var isOnWifi: Boolean = false
+    private var isInitialNetworkCallback: Boolean = true // Skip retry on first callback after registration
     
     // Store last config for automatic restart after crash
     private var lastConfig: YggstackConfig? = null
@@ -914,20 +915,40 @@ class YggstackService : Service() {
         try {
             // Initialize network state
             isOnWifi = checkNetworkType()
+            isInitialNetworkCallback = true // Mark first callback as initial
             
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     addLog("Network available: ${network}")
-                    // Trigger reconnection when network comes back (handles WiFi drop/restore)
-                    // Only if peers are actually disconnected (peerCount = 0)
-                    if (_isRunning.value && _peerCount.value == 0) {
-                        addLog("Network restored while disconnected - forcing reconnection")
-                        retryPeersNow()
+                    
+                    // Skip initial callback (fired immediately upon registration)
+                    if (isInitialNetworkCallback) {
+                        isInitialNetworkCallback = false
+                        addLog("Initial network callback - skipping peer retry")
+                        return
                     }
+                    
+                    // Just log availability, don't trigger retry here
+                    // Retry will be triggered in onLost() when old network disconnects
                 }
                 
                 override fun onLost(network: Network) {
                     addLog("Network lost: ${network}")
+                    
+                    // Check if a new network is already available before triggering retry
+                    // This handles network switching (WiFi↔Cellular) correctly
+                    val activeNetwork = connectivityManager.activeNetwork
+                    if (activeNetwork != null && _isRunning.value) {
+                        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+                        if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
+                            addLog("Switched to new network - forcing reconnection")
+                            retryPeersNow()
+                        } else {
+                            addLog("New network available but no internet capability")
+                        }
+                    } else {
+                        addLog("No alternative network available - waiting for connection")
+                    }
                 }
                 
                 override fun onCapabilitiesChanged(
@@ -954,8 +975,6 @@ class YggstackService : Service() {
                             addLog("Network switched: $lastNetworkType -> $transportType")
                             // Handle multicast based on network type
                             handleMulticastForNetwork(isWifi)
-                            // Force reconnection when transport type actually changes
-                            retryPeersNow()
                         } else {
                             addLog("Initial network: $transportType")
                         }
@@ -982,6 +1001,7 @@ class YggstackService : Service() {
                 addLog("Network monitoring unregistered")
             }
             networkCallback = null
+            isInitialNetworkCallback = true // Reset for next registration
         } catch (e: Exception) {
             addLog("Failed to unregister network callback: ${e.message}")
         }
