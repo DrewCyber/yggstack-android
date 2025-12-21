@@ -47,9 +47,29 @@ class ConfigurationViewModel(
             yggstackService = localBinder?.getService()
             serviceBound = true
 
-            // Sync initial state immediately
+            // Sync initial state immediately and check for state desync
             yggstackService?.let { service ->
-                _serviceState.value = if (service.isRunning.value) {
+                val isActuallyRunning = service.isRunning.value
+                val hasIpAddress = service.yggdrasilIp.value != null
+                
+                // Check for state desynchronization: service thinks it's running but Go isn't actually running
+                if (isActuallyRunning && !hasIpAddress) {
+                    // This indicates the Go part crashed or was killed without proper cleanup
+                    // The service state says running but there's no IP address
+                    android.util.Log.w("ConfigViewModel", "State desync detected: service reports running but no IP address")
+                    // Force state sync - service should handle this internally
+                }
+                
+                // If service isn't running but should be (e.g., after system restart with saved config)
+                // Start it with the current configuration
+                if (!isActuallyRunning && hasIpAddress == false) {
+                    // Check if there's a saved config that indicates we should be running
+                    // This will be handled by the service's onStartCommand when it gets null intent
+                    // UI just needs to reflect the current state
+                }
+                
+                // Set initial state based on actual service state
+                _serviceState.value = if (isActuallyRunning) {
                     ServiceState.Running
                 } else {
                     ServiceState.Stopped

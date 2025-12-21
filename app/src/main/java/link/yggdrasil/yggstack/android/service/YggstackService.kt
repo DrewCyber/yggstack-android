@@ -21,6 +21,9 @@ import link.yggdrasil.yggstack.android.MainActivity
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.data.PersistentLogger
+import link.yggdrasil.yggstack.android.data.ExposeMapping
+import link.yggdrasil.yggstack.android.data.ForwardMapping
+import link.yggdrasil.yggstack.android.data.Protocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +37,8 @@ import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
 import link.yggdrasil.yggstack.mobile.Yggstack
 import org.json.JSONArray
+import org.json.JSONObject
+import android.content.SharedPreferences
 
 /**
  * Foreground service for running Yggstack
@@ -48,6 +53,7 @@ class YggstackService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
     private var peerStatsJob: kotlinx.coroutines.Job? = null
+    private lateinit var sharedPreferences: SharedPreferences
     
     // Operation state management
     private val _isTransitioning = MutableStateFlow(false)
@@ -135,6 +141,7 @@ class YggstackService : Service() {
     override fun onCreate() {
         super.onCreate()
         persistentLogger = PersistentLogger(this)
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
         acquireWakeLock()
         
@@ -142,6 +149,10 @@ class YggstackService : Service() {
         serviceScope.launch {
             _logs.value = persistentLogger.readLogs()
         }
+        
+        // Load lastConfig from persistent storage
+        loadLastConfigFromPreferences()
+        addLog("Service onCreate: lastConfig ${if (lastConfig != null) "loaded" else "not found"}")
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -201,6 +212,43 @@ class YggstackService : Service() {
         releaseWakeLock()
         serviceScope.cancel()
     }
+    
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        addLog("=== onTaskRemoved called - app task removed from recent apps ===")
+        addLog("Reason: User swiped app away from recents or system cleared task")
+        addLog("Current state: isRunning=${_isRunning.value}, hasConfig=${lastConfig != null}")
+        
+        super.onTaskRemoved(rootIntent)
+        
+        // If service was running, restart it with the saved configuration
+        if (_isRunning.value && lastConfig != null) {
+            addLog("Service was running - scheduling restart with saved config")
+            addLog("Config has ${lastConfig!!.peers.size} peer(s), multicast=${lastConfig!!.multicastEnabled}")
+            
+            // Save running state to SharedPreferences
+            sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, true).apply()
+            
+            // Create restart intent
+            val restartIntent = Intent(applicationContext, YggstackService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_CONFIG, YggstackConfigParcelable.fromYggstackConfig(lastConfig!!))
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(restartIntent)
+            } else {
+                startService(restartIntent)
+            }
+            
+            addLog("Restart intent sent - service will be recreated by system")
+        } else if (!_isRunning.value && lastConfig != null) {
+            addLog("Service was stopped - will not restart (config preserved for manual restart)")
+            sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, false).apply()
+        } else {
+            addLog("No configuration available - service will remain stopped")
+            sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, false).apply()
+        }
+    }
 
     fun startYggstack(config: YggstackConfig) {
         serviceScope.launch {
@@ -218,8 +266,10 @@ class YggstackService : Service() {
                 
                 _isTransitioning.value = true
                 
-                // Store config for crash recovery
+                // Store config for crash recovery and persistence
                 lastConfig = config
+                saveLastConfigToPreferences(config)
+                addLog("Config saved to persistent storage")
                 crashRestartAttempts = 0
                 
                 // Force cleanup any zombie instance before starting
@@ -1063,6 +1113,133 @@ class YggstackService : Service() {
         }
     }
 
+    /**
+     * Save lastConfig to SharedPreferences for persistence across restarts
+     */
+    private fun saveLastConfigToPreferences(config: YggstackConfig) {
+        try {
+            val json = JSONObject().apply {
+                put("privateKey", config.privateKey)
+                put("peers", JSONArray(config.peers))
+                put("socksProxy", config.socksProxy)
+                put("dnsServer", config.dnsServer)
+                put("proxyEnabled", config.proxyEnabled)
+                put("multicastEnabled", config.multicastEnabled)
+                put("logLevel", config.logLevel)
+                put("exposeEnabled", config.exposeEnabled)
+                put("forwardEnabled", config.forwardEnabled)
+                
+                // Save expose mappings
+                val exposeMappingsArray = JSONArray()
+                config.exposeMappings.forEach { mapping ->
+                    exposeMappingsArray.put(JSONObject().apply {
+                        put("protocol", mapping.protocol.name)
+                        put("localPort", mapping.localPort)
+                        put("localIp", mapping.localIp)
+                        put("yggPort", mapping.yggPort)
+                    })
+                }
+                put("exposeMappings", exposeMappingsArray)
+                
+                // Save forward mappings
+                val forwardMappingsArray = JSONArray()
+                config.forwardMappings.forEach { mapping ->
+                    forwardMappingsArray.put(JSONObject().apply {
+                        put("protocol", mapping.protocol.name)
+                        put("localIp", mapping.localIp)
+                        put("localPort", mapping.localPort)
+                        put("remoteIp", mapping.remoteIp)
+                        put("remotePort", mapping.remotePort)
+                    })
+                }
+                put("forwardMappings", forwardMappingsArray)
+            }
+            
+            sharedPreferences.edit()
+                .putString(PREF_LAST_CONFIG, json.toString())
+                .apply()
+        } catch (e: Exception) {
+            addLog("ERROR saving config to SharedPreferences: ${e.message}")
+        }
+    }
+    
+    /**
+     * Load lastConfig from SharedPreferences on service startup
+     */
+    private fun loadLastConfigFromPreferences() {
+        try {
+            val configJson = sharedPreferences.getString(PREF_LAST_CONFIG, null)
+            if (configJson != null) {
+                val json = JSONObject(configJson)
+                
+                // Parse expose mappings
+                val exposeMappings = mutableListOf<ExposeMapping>()
+                val exposeMappingsArray = json.optJSONArray("exposeMappings")
+                if (exposeMappingsArray != null) {
+                    for (i in 0 until exposeMappingsArray.length()) {
+                        val mappingJson = exposeMappingsArray.getJSONObject(i)
+                        exposeMappings.add(
+                            ExposeMapping(
+                                protocol = Protocol.valueOf(mappingJson.getString("protocol")),
+                                localPort = mappingJson.getInt("localPort"),
+                                localIp = mappingJson.getString("localIp"),
+                                yggPort = mappingJson.getInt("yggPort")
+                            )
+                        )
+                    }
+                }
+                
+                // Parse forward mappings
+                val forwardMappings = mutableListOf<ForwardMapping>()
+                val forwardMappingsArray = json.optJSONArray("forwardMappings")
+                if (forwardMappingsArray != null) {
+                    for (i in 0 until forwardMappingsArray.length()) {
+                        val mappingJson = forwardMappingsArray.getJSONObject(i)
+                        forwardMappings.add(
+                            ForwardMapping(
+                                protocol = Protocol.valueOf(mappingJson.getString("protocol")),
+                                localIp = mappingJson.getString("localIp"),
+                                localPort = mappingJson.getInt("localPort"),
+                                remoteIp = mappingJson.getString("remoteIp"),
+                                remotePort = mappingJson.getInt("remotePort")
+                            )
+                        )
+                    }
+                }
+                
+                // Parse peers array
+                val peers = mutableListOf<String>()
+                val peersArray = json.optJSONArray("peers")
+                if (peersArray != null) {
+                    for (i in 0 until peersArray.length()) {
+                        peers.add(peersArray.getString(i))
+                    }
+                }
+                
+                lastConfig = YggstackConfig(
+                    privateKey = json.optString("privateKey", ""),
+                    peers = peers,
+                    socksProxy = json.optString("socksProxy", ""),
+                    dnsServer = json.optString("dnsServer", ""),
+                    proxyEnabled = json.optBoolean("proxyEnabled", false),
+                    multicastEnabled = json.optBoolean("multicastEnabled", true),
+                    logLevel = json.optString("logLevel", "info"),
+                    exposeEnabled = json.optBoolean("exposeEnabled", false),
+                    forwardEnabled = json.optBoolean("forwardEnabled", false),
+                    exposeMappings = exposeMappings,
+                    forwardMappings = forwardMappings
+                )
+                
+                addLog("Loaded config from SharedPreferences: ${peers.size} peer(s), key present=${lastConfig!!.privateKey.isNotBlank()}")
+            } else {
+                addLog("No saved config found in SharedPreferences")
+            }
+        } catch (e: Exception) {
+            addLog("ERROR loading config from SharedPreferences: ${e.message}")
+            lastConfig = null
+        }
+    }
+
     companion object {
         const val CHANNEL_ID = "yggstack_service_channel"
         const val NOTIFICATION_ID = 1
@@ -1071,6 +1248,9 @@ class YggstackService : Service() {
         const val EXTRA_CONFIG = "config"
         private const val MAX_LOG_ENTRIES = 500
         private const val MAX_CRASH_RESTART_ATTEMPTS = 3
+        private const val PREFS_NAME = "yggstack_service_prefs"
+        private const val PREF_LAST_CONFIG = "last_config"
+        private const val PREF_WAS_RUNNING = "was_running"
     }
 }
 
