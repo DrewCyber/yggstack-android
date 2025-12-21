@@ -45,10 +45,7 @@ jobs:
           TAG="${{ github.ref_name }}"
           # Remove 'v' prefix if present
           VERSION=${TAG#v}
-          # Get short commit hash
-          COMMIT=$(git rev-parse --short HEAD)
-          # Combine version and commit
-          APP_VERSION="${VERSION}-${COMMIT}"
+          APP_VERSION="${VERSION}"
           echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
           echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
           echo "Building version: ${APP_VERSION}"
@@ -110,10 +107,7 @@ jobs:
           # Create the full release body
           cat > release_body.md << 'RELEASE_BODY_END'
           ## Yggstack Android ${{ steps.get_version.outputs.version }}
-          
-          **Version:** ${{ steps.get_version.outputs.version }}
-          **Commit:** ${{ github.sha }}
-          
+                    
           ### Changelog
           RELEASE_BODY_END
           
