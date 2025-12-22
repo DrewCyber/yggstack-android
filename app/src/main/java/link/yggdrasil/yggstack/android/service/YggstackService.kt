@@ -164,13 +164,16 @@ class YggstackService : Service() {
             ACTION_START -> {
                 // Add Android build details if log is empty
                 if (_logs.value.isEmpty()) {
-                    addLog("=== Android Device Information ===")
-                    addLog("Manufacturer: ${Build.MANUFACTURER}")
-                    addLog("Model: ${Build.MODEL}")
-                    addLog("Device: ${Build.DEVICE}")
-                    addLog("Android Version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-                    addLog("Build ID: ${Build.ID}")
-                    addLog("=================================")
+                    val deviceInfo = buildString {
+                        appendLine("=== Android Device Information ===")
+                        appendLine("Manufacturer: ${Build.MANUFACTURER}")
+                        appendLine("Model: ${Build.MODEL}")
+                        appendLine("Device: ${Build.DEVICE}")
+                        appendLine("Android Version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+                        appendLine("Build ID: ${Build.ID}")
+                        append("=================================")
+                    }
+                    addLogBatch(deviceInfo)
                 }
                 addLog("onStartCommand: ACTION_START received")
                 val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -717,6 +720,23 @@ class YggstackService : Service() {
         // Also persist to file
         serviceScope.launch {
             persistentLogger.appendLog(message)
+        }
+    }
+
+    private fun addLogBatch(messages: String) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        
+        val lines = messages.lines()
+        val logEntries = lines.map { "[$timestamp] $it" }
+        
+        _logs.value = (_logs.value + logEntries).takeLast(MAX_LOG_ENTRIES)
+        
+        // Persist to file in one go
+        serviceScope.launch {
+            lines.forEach { line ->
+                persistentLogger.appendLog(line)
+            }
         }
     }
 

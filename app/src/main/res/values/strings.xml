@@ -51,6 +51,10 @@
     <string name="autostart_section">Autostart</string>
     <string name="autostart_enabled">Start service on boot</string>
     <string name="autostart_description">Note: Xiaomi, Huawei, Oppo may require additional autostart permission in their system settings.</string>
+    <string name="system_section">System</string>
+    <string name="auto_update_section">Check for updates</string>
+    <string name="auto_update_enabled">Check for updates</string>
+    <string name="auto_update_description">Automatically check for new versions on startup</string>
     <string name="log_management">Log Management</string>
     <string name="clear_logs">Clear Logs</string>
     <string name="export_logs">Export Logs</string>
@@ -60,7 +64,6 @@
     <string name="repository">GitHub Repository</string>
     <string name="telegram_chat">Telegram Chat (Ru/En)</string>
     <string name="download_logs">Download Logs</string>
-    <string name="check_updates">Check for Updates</string>
     <string name="new_version_available">New version available</string>
     <string name="update_later">Update Later</string>
     <string name="download_update">Download Update</string>

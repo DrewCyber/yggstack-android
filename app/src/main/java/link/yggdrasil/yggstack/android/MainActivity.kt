@@ -35,6 +35,7 @@ import link.yggdrasil.yggstack.android.ui.diagnostics.DiagnosticsScreen
 import link.yggdrasil.yggstack.android.ui.settings.SettingsScreen
 import link.yggdrasil.yggstack.android.ui.theme.YggstackAndroidTheme
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -95,13 +96,18 @@ fun MainScreen() {
         }
         permissionsChecked = true
         
-        // Check for updates
+        // Check for updates (only if auto-update is enabled)
         coroutineScope.launch {
-            val versionChecker = VersionChecker(context)
-            if (versionChecker.shouldCheckForUpdate()) {
-                versionChecker.checkForUpdate()?.let { update ->
-                    versionInfo = update
-                    showUpdateDialog = true
+            val configRepository = ConfigRepository(context)
+            val autoUpdateEnabled = configRepository.autoUpdateFlow.first()
+            
+            if (autoUpdateEnabled) {
+                val versionChecker = VersionChecker(context)
+                if (versionChecker.shouldCheckForUpdate()) {
+                    versionChecker.checkForUpdate()?.let { update ->
+                        versionInfo = update
+                        showUpdateDialog = true
+                    }
                 }
             }
         }

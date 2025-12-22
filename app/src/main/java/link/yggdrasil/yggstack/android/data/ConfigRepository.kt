@@ -34,6 +34,7 @@ class ConfigRepository(private val context: Context) {
         private val FORWARD_ENABLED = booleanPreferencesKey("forward_enabled")
         private val THEME_KEY = stringPreferencesKey("theme")
         private val AUTOSTART_KEY = booleanPreferencesKey("autostart")
+        private val AUTO_UPDATE_KEY = booleanPreferencesKey("auto_update")
         private val MULTICAST_ENABLED = booleanPreferencesKey("multicast_enabled")
         private val LOG_LEVEL = stringPreferencesKey("log_level")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
@@ -112,6 +113,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveAutostart(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTOSTART_KEY] = enabled
+        }
+    }
+
+    /**
+     * Get auto-update preference
+     */
+    val autoUpdateFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[AUTO_UPDATE_KEY] ?: true  // Default to enabled
+    }
+
+    /**
+     * Save auto-update preference
+     */
+    suspend fun saveAutoUpdate(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTO_UPDATE_KEY] = enabled
         }
     }
 

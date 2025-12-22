@@ -31,6 +31,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val repository = remember { ConfigRepository(context) }
     val selectedTheme by repository.themeFlow.collectAsState(initial = "system")
     val autostartEnabled by repository.autostartFlow.collectAsState(initial = false)
+    val autoUpdateEnabled by repository.autoUpdateFlow.collectAsState(initial = true)
     val coroutineScope = rememberCoroutineScope()
 
     Column(
@@ -82,15 +83,16 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Autostart Section
+        // System Section
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = stringResource(R.string.autostart_section),
+                    text = stringResource(R.string.system_section),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
+                // Autostart
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -171,6 +173,35 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Disable Battery Optimization")
                     }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Check for updates
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.auto_update_enabled),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.auto_update_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoUpdateEnabled,
+                        onCheckedChange = { enabled ->
+                            coroutineScope.launch {
+                                repository.saveAutoUpdate(enabled)
+                            }
+                        }
+                    )
                 }
             }
         }
