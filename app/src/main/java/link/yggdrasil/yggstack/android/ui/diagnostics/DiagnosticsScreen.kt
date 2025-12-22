@@ -520,22 +520,6 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
                                 contentDescription = "Download logs"
                             )
                         }
-                        IconButton(onClick = {
-                            // Export logs via share
-                            val logsText = logs.joinToString("\n")
-                            val sendIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_TEXT, logsText)
-                                type = "text/plain"
-                            }
-                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Export Logs")
-                            context.startActivity(shareIntent)
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Export logs"
-                            )
-                        }
                         IconButton(onClick = { viewModel.clearLogs() }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,

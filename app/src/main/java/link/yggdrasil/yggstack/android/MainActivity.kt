@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -262,28 +266,29 @@ fun UpdateAvailableDialog(
         icon = { Icon(Icons.Default.Info, contentDescription = null) },
         title = { Text(stringResource(R.string.new_version_available)) },
         text = {
-            Column {
-                Text(
-                    text = "Version ${versionInfo.latestVersion} is available",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Current version: ${BuildConfig.VERSION_NAME}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                if (versionInfo.releaseNotes.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(16.dp))
+            Box(modifier = Modifier.heightIn(min = 0.dp, max = 320.dp).verticalScroll(rememberScrollState())) {
+                Column {
                     Text(
-                        text = "Release Notes:",
-                        style = MaterialTheme.typography.titleSmall
+                        text = "Version ${versionInfo.latestVersion} is available",
+                        style = MaterialTheme.typography.bodyLarge
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = versionInfo.releaseNotes.take(300) + 
-                               if (versionInfo.releaseNotes.length > 300) "..." else "",
-                        style = MaterialTheme.typography.bodySmall
+                        text = "Current version: ${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodyMedium
                     )
+                    if (versionInfo.releaseNotes.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Release Notes:",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = versionInfo.releaseNotes,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         },

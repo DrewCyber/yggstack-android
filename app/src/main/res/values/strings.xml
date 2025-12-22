@@ -11,7 +11,7 @@
     <string name="peers_section">Peers</string>
     <string name="add_peer">Add Peer</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
-    <string name="multicast_discovery">Multicast discovery</string>
+    <string name="multicast_discovery">Wifi multicast discovery</string>
     <string name="multicast_description">Automatically discover peers on local network</string>
     <string name="private_key_section">Private Key</string>
     <string name="show_private_key">Show private key</string>
@@ -50,7 +50,7 @@
     <string name="theme_system">System Default</string>
     <string name="autostart_section">Autostart</string>
     <string name="autostart_enabled">Start service on boot</string>
-    <string name="autostart_description">Automatically start Yggstack when the device boots. Note: Some manufacturers (Xiaomi, Huawei, Oppo) may require additional autostart permission in their system settings.</string>
+    <string name="autostart_description">Note: Xiaomi, Huawei, Oppo may require additional autostart permission in their system settings.</string>
     <string name="log_management">Log Management</string>
     <string name="clear_logs">Clear Logs</string>
     <string name="export_logs">Export Logs</string>
