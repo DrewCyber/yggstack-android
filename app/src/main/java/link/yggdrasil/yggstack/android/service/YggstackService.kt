@@ -532,7 +532,12 @@ class YggstackService : Service() {
             if (extractedKey.isNotBlank()) {
                 addLog("Private key extracted (length: ${extractedKey.length}, key: ${truncatePrivateKey(extractedKey)})")
                 _generatedPrivateKey.value = extractedKey
-                addLog("Generated key will be saved to configuration")
+                
+                // CRITICAL FIX: Update lastConfig with the generated key and re-save to SharedPreferences
+                // This ensures the key persists across service restarts
+                lastConfig = lastConfig?.copy(privateKey = extractedKey)
+                lastConfig?.let { saveLastConfigToPreferences(it) }
+                addLog("Generated key saved to persistent storage")
             } else {
                 addLog("ERROR: Failed to extract generated private key from config!")
             }
