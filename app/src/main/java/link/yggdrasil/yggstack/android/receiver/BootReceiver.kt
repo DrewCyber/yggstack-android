@@ -4,8 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.PersistentLogger
 import link.yggdrasil.yggstack.android.service.YggstackService
 import link.yggdrasil.yggstack.android.service.YggstackConfigParcelable
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +23,8 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            Log.d(TAG, "BOOT_COMPLETED received")
+            val bootTime = SystemClock.elapsedRealtime()
+            Log.d(TAG, "BOOT_COMPLETED received at ${bootTime / 1000}s since system boot")
             
             // Use goAsync() to allow asynchronous work in broadcast receiver
             val pendingResult = goAsync()
@@ -29,10 +32,14 @@ class BootReceiver : BroadcastReceiver() {
             
             scope.launch {
                 try {
+                    val logger = PersistentLogger(context)
+                    logger.appendLog("BOOT_COMPLETED received at ${bootTime / 1000}s since system boot")
+                    
                     val repository = ConfigRepository(context)
                     val autostartEnabled = repository.autostartFlow.first()
                     
                     Log.d(TAG, "Autostart enabled: $autostartEnabled")
+                    logger.appendLog("Autostart enabled: $autostartEnabled")
                     
                     if (autostartEnabled) {
                         // Load config and start service
@@ -47,13 +54,18 @@ class BootReceiver : BroadcastReceiver() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             context.startForegroundService(serviceIntent)
                             Log.d(TAG, "Started foreground service")
+                            logger.appendLog("Started foreground service from boot")
                         } else {
                             context.startService(serviceIntent)
                             Log.d(TAG, "Started service")
+                            logger.appendLog("Started service from boot")
                         }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in boot receiver", e)
+                    try {
+                        PersistentLogger(context).appendLog("Error in boot receiver: ${e.message}")
+                    } catch (_: Exception) {}
                 } finally {
                     // Must call finish() on the pendingResult
                     pendingResult.finish()
