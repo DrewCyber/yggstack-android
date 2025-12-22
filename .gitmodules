@@ -1,3 +1,8 @@
 [submodule "lib/yggstack"]
 	path = lib/yggstack
 	url = ../yggstack
+	branch = mobile-bindings-ai
+[submodule "lib/yggdrasil-go"]
+	path = lib/yggdrasil-go
+	url = ../yggdrasil-go
+	branch = yggstack-android-fixes
