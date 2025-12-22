@@ -359,15 +359,26 @@ class YggstackService : Service() {
                 yggstack?.start(socksAddress, dnsServer)
                 addLog("Start() completed successfully")
 
-                // Get and store the Yggdrasil IP AFTER starting
+                // Get and store the Yggdrasil IP AFTER starting (with timeout to prevent hangs)
                 addLog("Getting Yggdrasil IP address...")
-                val address = yggstack?.address
-                _yggdrasilIp.value = address
-                addLog("Yggdrasil IP: $address")
+                try {
+                    val address = kotlinx.coroutines.withTimeout(5000L) {
+                        yggstack?.address
+                    }
+                    _yggdrasilIp.value = address
+                    addLog("Yggdrasil IP: $address")
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    addLog("WARNING: Timeout getting Yggdrasil IP (continuing anyway)")
+                    _yggdrasilIp.value = null
+                } catch (e: Exception) {
+                    addLog("WARNING: Failed to get Yggdrasil IP: ${e.message} (continuing anyway)")
+                    _yggdrasilIp.value = null
+                }
 
+                addLog("Setting service running state...")
                 _isRunning.value = true
                 _peerCount.value = 0
-                _isTransitioning.value = false
+                addLog("Service state updated: isRunning=true")
 
                 // Register network callback to monitor WiFi/Cellular changes
                 registerNetworkCallback()
@@ -377,6 +388,9 @@ class YggstackService : Service() {
 
                 // Start periodic peer stats update
                 startPeerStatsUpdater()
+                
+                addLog("Releasing operation lock...")
+                _isTransitioning.value = false
 
             } catch (e: Exception) {
                 addLog("ERROR starting Yggstack: ${e.message}")
@@ -419,7 +433,9 @@ class YggstackService : Service() {
                 
                 addLog("Service stopped due to error. Please check configuration and try again.")
             } finally {
+                addLog("Cleanup: Releasing operation mutex")
                 operationMutex.unlock()
+                addLog("Operation mutex released")
             }
         }
     }
@@ -505,7 +521,9 @@ class YggstackService : Service() {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
             } finally {
+                addLog("Cleanup: Releasing stop operation mutex")
                 operationMutex.unlock()
+                addLog("Stop operation mutex released")
             }
         }
     }
