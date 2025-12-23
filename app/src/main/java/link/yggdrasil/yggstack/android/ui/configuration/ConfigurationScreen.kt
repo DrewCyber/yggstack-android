@@ -321,22 +321,35 @@ fun ConfigurationScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Log Level Section
-            ConfigSection(title = stringResource(R.string.log_level)) {
-                val logLevels = listOf("error", "warn", "info", "debug")
-                val logLevelLabels = mapOf(
-                    "error" to stringResource(R.string.log_level_error),
-                    "warn" to stringResource(R.string.log_level_warn),
-                    "info" to stringResource(R.string.log_level_info),
-                    "debug" to stringResource(R.string.log_level_debug)
-                )
-
-                Column {
-                    Text(
-                        text = stringResource(R.string.log_level_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    val logsEnabled by viewModel.logsEnabled.collectAsState()
+                    val logLevels = listOf("error", "warn", "info", "debug")
+                    val logLevelLabels = mapOf(
+                        "error" to stringResource(R.string.log_level_error),
+                        "warn" to stringResource(R.string.log_level_warn),
+                        "info" to stringResource(R.string.log_level_info),
+                        "debug" to stringResource(R.string.log_level_debug)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Title with toggle on same row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.log_level),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Switch(
+                            checked = logsEnabled,
+                            onCheckedChange = { viewModel.setLogsEnabled(it) },
+                            enabled = !isServiceRunning
+                        )
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -345,7 +358,7 @@ fun ConfigurationScreen(
                         logLevels.forEachIndexed { index, level ->
                             Button(
                                 onClick = { viewModel.setLogLevel(level) },
-                                enabled = !isServiceRunning,
+                                enabled = !isServiceRunning && logsEnabled,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (config.logLevel == level) {
                                         // Use red color for debug level when selected

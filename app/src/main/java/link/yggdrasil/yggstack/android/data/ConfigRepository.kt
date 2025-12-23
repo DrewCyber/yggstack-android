@@ -37,6 +37,7 @@ class ConfigRepository(private val context: Context) {
         private val AUTO_UPDATE_KEY = booleanPreferencesKey("auto_update")
         private val MULTICAST_ENABLED = booleanPreferencesKey("multicast_enabled")
         private val LOG_LEVEL = stringPreferencesKey("log_level")
+        private val LOGS_ENABLED = booleanPreferencesKey("logs_enabled")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
     }
 
@@ -61,7 +62,7 @@ class ConfigRepository(private val context: Context) {
             } ?: emptyList(),
             forwardEnabled = preferences[FORWARD_ENABLED] ?: false,
             multicastEnabled = preferences[MULTICAST_ENABLED] ?: true,
-            logLevel = preferences[LOG_LEVEL] ?: "info"
+            logLevel = preferences[LOG_LEVEL] ?: "error"
         )
     }
 
@@ -129,6 +130,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveAutoUpdate(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_UPDATE_KEY] = enabled
+        }
+    }
+
+    /**
+     * Get logs enabled preference
+     */
+    val logsEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[LOGS_ENABLED] ?: true  // Default to enabled
+    }
+
+    /**
+     * Save logs enabled preference
+     */
+    suspend fun saveLogsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[LOGS_ENABLED] = enabled
         }
     }
 

@@ -11,7 +11,7 @@
     <string name="peers_section">Peers</string>
     <string name="add_peer">Add Peer</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
-    <string name="multicast_discovery">Wifi multicast discovery</string>
+    <string name="multicast_discovery">Wifi Multicast Discovery</string>
     <string name="multicast_description">Automatically discover peers on local network</string>
     <string name="private_key_section">Private Key</string>
     <string name="show_private_key">Show private key</string>
@@ -88,7 +88,7 @@
     <string name="permission_dialog_later">Later</string>
 
     <!-- Log Level -->
-    <string name="log_level">Log Level</string>
+    <string name="log_level">Logs</string>
     <string name="log_level_description">Verbosity of Yggstack logging output</string>
     <string name="log_level_error">Error</string>
     <string name="log_level_warn">Warn</string>

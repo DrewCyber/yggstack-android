@@ -37,6 +37,9 @@ class ConfigurationViewModel(
 
     private val _scrollPosition = MutableStateFlow(0)
     val scrollPosition: StateFlow<Int> = _scrollPosition.asStateFlow()
+    
+    private val _logsEnabled = MutableStateFlow(true)
+    val logsEnabled: StateFlow<Boolean> = _logsEnabled.asStateFlow()
 
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
@@ -132,6 +135,13 @@ class ConfigurationViewModel(
     init {
         loadConfig()
         bindToService()
+        
+        // Load logs enabled setting
+        viewModelScope.launch {
+            repository.logsEnabledFlow.collect { enabled ->
+                _logsEnabled.value = enabled
+            }
+        }
     }
 
     override fun onCleared() {
@@ -254,6 +264,12 @@ class ConfigurationViewModel(
 
     fun setLogLevel(level: String) {
         updateConfig(_config.value.copy(logLevel = level))
+    }
+    
+    fun setLogsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.saveLogsEnabled(enabled)
+        }
     }
 
     fun toggleShowPrivateKey() {

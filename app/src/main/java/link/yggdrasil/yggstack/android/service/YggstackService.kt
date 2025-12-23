@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import link.yggdrasil.yggstack.android.MainActivity
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.YggstackConfig
+import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.PersistentLogger
 import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
@@ -78,6 +79,10 @@ class YggstackService : Service() {
     // Store last config for automatic restart after crash
     private var lastConfig: YggstackConfig? = null
     private var crashRestartAttempts = 0
+    
+    // Logs enabled setting and current log level
+    private var logsEnabled: Boolean = true
+    private var currentLogLevel: String = "error"
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -146,6 +151,14 @@ class YggstackService : Service() {
         createNotificationChannel()
         acquireWakeLock()
         
+        // Load logs enabled setting
+        serviceScope.launch {
+            val repository = ConfigRepository(this@YggstackService)
+            repository.logsEnabledFlow.collect { enabled ->
+                logsEnabled = enabled
+            }
+        }
+        
         // Load existing logs on startup
         serviceScope.launch {
             _logs.value = persistentLogger.readLogs()
@@ -153,7 +166,7 @@ class YggstackService : Service() {
         
         // Load lastConfig from persistent storage
         loadLastConfigFromPreferences()
-        addLog("Service onCreate: lastConfig ${if (lastConfig != null) "loaded" else "not found"}")
+        logInfo("Service onCreate: lastConfig ${if (lastConfig != null) "loaded" else "not found"}")
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -164,7 +177,7 @@ class YggstackService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 // Add Android build details if log is empty
-                if (_logs.value.isEmpty()) {
+                if (_logs.value.isEmpty() && logsEnabled) {
                     val deviceInfo = buildString {
                         appendLine("=== Android Device Information ===")
                         appendLine("Manufacturer: ${Build.MANUFACTURER}")
@@ -176,7 +189,7 @@ class YggstackService : Service() {
                     }
                     addLogBatch(deviceInfo)
                 }
-                addLog("onStartCommand: ACTION_START received")
+                logInfo("onStartCommand: ACTION_START received")
                 val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_CONFIG, YggstackConfigParcelable::class.java)
                 } else {
@@ -186,21 +199,21 @@ class YggstackService : Service() {
                 config?.let { startYggstack(it.toYggstackConfig()) }
             }
             ACTION_STOP -> {
-                addLog("onStartCommand: ACTION_STOP received")
+                logInfo("onStartCommand: ACTION_STOP received")
                 stopYggstack()
             }
             null -> {
                 // Service was restarted by system after being killed
-                addLog("=== WARNING: Service restarted by system (intent=null) ===")
-                addLog("This indicates the app/service was killed by the system")
+                logWarn("=== WARNING: Service restarted by system (intent=null) ===")
+                logWarn("This indicates the app/service was killed by the system")
                 if (lastConfig != null && !_isRunning.value) {
-                    addLog("Attempting automatic restart with last config after system kill")
+                    logInfo("Attempting automatic restart with last config after system kill")
                     startYggstack(lastConfig!!)
                 } else if (_isRunning.value) {
-                    addLog("Service claims to be running - checking state consistency")
+                    logInfo("Service claims to be running - checking state consistency")
                 } else {
-                    addLog("No config available - service will remain stopped")
-                    addLog("User must manually restart the service")
+                    logInfo("No config available - service will remain stopped")
+                    logInfo("User must manually restart the service")
                 }
             }
         }
@@ -209,7 +222,7 @@ class YggstackService : Service() {
     }
 
     override fun onDestroy() {
-        addLog("=== YggstackService onDestroy - service being destroyed ===")
+        logInfo("=== YggstackService onDestroy - service being destroyed ===")
         super.onDestroy()
         stopYggstack()
         releaseMulticastLock()
@@ -218,16 +231,16 @@ class YggstackService : Service() {
     }
     
     override fun onTaskRemoved(rootIntent: Intent?) {
-        addLog("=== onTaskRemoved called - app task removed from recent apps ===")
-        addLog("Reason: User swiped app away from recents or system cleared task")
-        addLog("Current state: isRunning=${_isRunning.value}, hasConfig=${lastConfig != null}")
+        logInfo("=== onTaskRemoved called - app task removed from recent apps ===")
+        logInfo("Reason: User swiped app away from recents or system cleared task")
+        logInfo("Current state: isRunning=${_isRunning.value}, hasConfig=${lastConfig != null}")
         
         super.onTaskRemoved(rootIntent)
         
         // If service was running, restart it with the saved configuration
         if (_isRunning.value && lastConfig != null) {
-            addLog("Service was running - scheduling restart with saved config")
-            addLog("Config has ${lastConfig!!.peers.size} peer(s), multicast=${lastConfig!!.multicastEnabled}")
+            logInfo("Service was running - scheduling restart with saved config")
+            logInfo("Config has ${lastConfig!!.peers.size} peer(s), multicast=${lastConfig!!.multicastEnabled}")
             
             // Save running state to SharedPreferences
             sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, true).apply()
@@ -244,12 +257,12 @@ class YggstackService : Service() {
                 startService(restartIntent)
             }
             
-            addLog("Restart intent sent - service will be recreated by system")
+            logInfo("Restart intent sent - service will be recreated by system")
         } else if (!_isRunning.value && lastConfig != null) {
-            addLog("Service was stopped - will not restart (config preserved for manual restart)")
+            logInfo("Service was stopped - will not restart (config preserved for manual restart)")
             sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, false).apply()
         } else {
-            addLog("No configuration available - service will remain stopped")
+            logInfo("No configuration available - service will remain stopped")
             sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, false).apply()
         }
     }
@@ -258,13 +271,13 @@ class YggstackService : Service() {
         serviceScope.launch {
             // Use mutex to prevent concurrent start/stop operations
             if (!operationMutex.tryLock()) {
-                addLog("Operation already in progress - ignoring start request")
+                logInfo("Operation already in progress - ignoring start request")
                 return@launch
             }
             
             try {
                 if (_isRunning.value) {
-                    addLog("Yggstack is already running")
+                    logInfo("Yggstack is already running")
                     return@launch
                 }
                 
@@ -273,49 +286,54 @@ class YggstackService : Service() {
                 // Store config for crash recovery and persistence
                 lastConfig = config
                 saveLastConfigToPreferences(config)
-                addLog("Config saved to persistent storage")
+                logDebug("Config saved to persistent storage")
                 crashRestartAttempts = 0
                 
                 // Force cleanup any zombie instance before starting
                 if (yggstack != null) {
-                    addLog("Cleaning up existing Yggstack instance...")
+                    logInfo("Cleaning up existing Yggstack instance...")
                     try {
                         yggstack?.stop()
                     } catch (e: Exception) {
-                        addLog("Error cleaning up old instance: ${e.message}")
+                        logError("Error cleaning up old instance: ${e.message}")
                     }
                     yggstack = null
                     kotlinx.coroutines.delay(500) // Give it time to fully stop
                 }
                 
-                addLog("Starting Yggstack...")
-                addLog("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
-                addLog("Commit: ${link.yggdrasil.yggstack.android.BuildConfig.COMMIT_HASH}")
+                logInfo("Starting Yggstack...")
+                logInfo("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
+                logInfo("Commit: ${link.yggdrasil.yggstack.android.BuildConfig.COMMIT_HASH}")
                 startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
 
                 // Create Yggstack instance
                 yggstack = Mobile.newYggstack()
-                yggstack?.setLogCallback(object : LogCallback {
-                    override fun onLog(message: String) {
-                        addLog(message.trim())
-                    }
-                })
+                
+                // Only set log callback if logging is enabled
+                if (logsEnabled) {
+                    yggstack?.setLogCallback(object : LogCallback {
+                        override fun onLog(message: String) {
+                            addLog(message.trim())
+                        }
+                    })
+                }
                 
                 // Use log level from config
                 val logLevel = config.logLevel
+                currentLogLevel = logLevel
                 yggstack?.setLogLevel(logLevel)
-                addLog("Log level: $logLevel")
+                logInfo("Log level: $logLevel")
 
                 // Build config JSON (handles both new and existing private keys)
-                addLog("Loading configuration...")
+                logDebug("Loading configuration...")
                 val configJson = buildConfigJson(config)
                 
                 // Store SANITIZED config JSON for diagnostics display (private key truncated)
                 _fullConfigJSON.value = sanitizeConfigJson(configJson)
 
-                addLog("Calling loadConfigJSON...")
+                logDebug("Calling loadConfigJSON...")
                 yggstack?.loadConfigJSON(configJson)
-                addLog("Config loaded successfully")
+                logInfo("Config loaded successfully")
 
                 // Start with optional SOCKS proxy and DNS server
                 val socksAddress = if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
@@ -340,14 +358,14 @@ class YggstackService : Service() {
 
                 // Acquire MulticastLock if multicast is enabled and we're on WiFi
                 if (config.multicastEnabled && checkNetworkType()) {
-                    addLog("Multicast enabled and on WiFi - acquiring MulticastLock")
+                    logInfo("Multicast enabled and on WiFi - acquiring MulticastLock")
                     isOnWifi = true
                     acquireMulticastLock()
                 } else if (config.multicastEnabled) {
-                    addLog("Multicast enabled but not on WiFi - MulticastLock not acquired")
+                    logInfo("Multicast enabled but not on WiFi - MulticastLock not acquired")
                     isOnWifi = false
                 } else {
-                    addLog("Multicast disabled - skipping MulticastLock")
+                    logInfo("Multicast disabled - skipping MulticastLock")
                     isOnWifi = false
                 }
 
@@ -356,52 +374,52 @@ class YggstackService : Service() {
                     acquireWifiLock()
                 }
 
-                addLog("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
+                logDebug("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
-                addLog("Start() completed successfully")
+                logInfo("Start() completed successfully")
 
                 // Get and store the Yggdrasil IP AFTER starting (with timeout to prevent hangs)
-                addLog("Getting Yggdrasil IP address...")
+                logDebug("Getting Yggdrasil IP address...")
                 try {
                     val address = kotlinx.coroutines.withTimeout(5000L) {
                         yggstack?.address
                     }
                     _yggdrasilIp.value = address
-                    addLog("Yggdrasil IP: $address")
+                    logInfo("Yggdrasil IP: $address")
                 } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    addLog("WARNING: Timeout getting Yggdrasil IP (continuing anyway)")
+                    logWarn("WARNING: Timeout getting Yggdrasil IP (continuing anyway)")
                     _yggdrasilIp.value = null
                 } catch (e: Exception) {
-                    addLog("WARNING: Failed to get Yggdrasil IP: ${e.message} (continuing anyway)")
+                    logError("WARNING: Failed to get Yggdrasil IP: ${e.message} (continuing anyway)")
                     _yggdrasilIp.value = null
                 }
 
-                addLog("Setting service running state...")
+                logDebug("Setting service running state...")
                 _isRunning.value = true
                 _peerCount.value = 0
-                addLog("Service state updated: isRunning=true")
+                logInfo("Service state updated: isRunning=true")
 
                 // Register network callback to monitor WiFi/Cellular changes
                 registerNetworkCallback()
 
-                addLog("Yggstack started successfully")
+                logInfo("Yggstack started successfully")
                 updateNotification("Connected", 0, 0)
 
                 // Start periodic peer stats update
                 startPeerStatsUpdater()
                 
-                addLog("Releasing operation lock...")
+                logDebug("Releasing operation lock...")
                 _isTransitioning.value = false
 
             } catch (e: Exception) {
-                addLog("ERROR starting Yggstack: ${e.message}")
-                addLog("Stack trace: ${e.stackTraceToString().take(500)}")
+                logError("ERROR starting Yggstack: ${e.message}")
+                logError("Stack trace: ${e.stackTraceToString().take(500)}")
 
                 // Clean up properly on error
                 try {
                     yggstack?.stop()
                 } catch (stopError: Exception) {
-                    addLog("Error during cleanup: ${stopError.message}")
+                    logError("Error during cleanup: ${stopError.message}")
                 }
                 yggstack = null
                 _isRunning.value = false
@@ -432,11 +450,11 @@ class YggstackService : Service() {
                 val errorNotification = createNotification("Failed to start - check logs", 0, 0, showStopButton = false)
                 notificationManager.notify(NOTIFICATION_ID, errorNotification)
                 
-                addLog("Service stopped due to error. Please check configuration and try again.")
+                logError("Service stopped due to error. Please check configuration and try again.")
             } finally {
-                addLog("Cleanup: Releasing operation mutex")
+                logDebug("Cleanup: Releasing operation mutex")
                 operationMutex.unlock()
-                addLog("Operation mutex released")
+                logInfo("Operation mutex released")
             }
         }
     }
@@ -445,24 +463,24 @@ class YggstackService : Service() {
         serviceScope.launch {
             // Use mutex to prevent concurrent start/stop operations
             if (!operationMutex.tryLock()) {
-                addLog("Operation already in progress - ignoring stop request")
+                logInfo("Operation already in progress - ignoring stop request")
                 return@launch
             }
             
             try {
                 // Force cleanup even if _isRunning is false (handles desync state)
                 if (!_isRunning.value && yggstack == null) {
-                    addLog("Service already stopped")
+                    logInfo("Service already stopped")
                     return@launch
                 }
                 
                 if (!_isRunning.value && yggstack != null) {
-                    addLog("WARNING: State desync detected - forcing cleanup of zombie instance")
+                    logWarn("WARNING: State desync detected - forcing cleanup of zombie instance")
                 }
                 
                 _isTransitioning.value = true
 
-                addLog("Stopping Yggstack...")
+                logInfo("Stopping Yggstack...")
                 _isRunning.value = false  // Set this first to stop the peer updater
                 
                 // Cancel peer stats updater
@@ -484,7 +502,7 @@ class YggstackService : Service() {
                         yggstack?.stop()
                     }
                 } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    addLog("WARNING: Yggstack stop timed out after 5 seconds - forcing cleanup")
+                    logWarn("WARNING: Yggstack stop timed out after 5 seconds - forcing cleanup")
                 }
                 yggstack = null
                 
@@ -495,7 +513,7 @@ class YggstackService : Service() {
                 _isTransitioning.value = false
                 hasNoNetwork = false  // Reset network state
                 
-                addLog("Yggstack stopped")
+                logInfo("Yggstack stopped")
                 
                 // Cancel the notification
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -509,7 +527,7 @@ class YggstackService : Service() {
                 }
                 stopSelf()
             } catch (e: Exception) {
-                addLog("Error stopping Yggstack: ${e.message}")
+                logError("Error stopping Yggstack: ${e.message}")
                 // Force cleanup even on error
                 yggstack = null
                 _isRunning.value = false
@@ -530,9 +548,9 @@ class YggstackService : Service() {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
             } finally {
-                addLog("Cleanup: Releasing stop operation mutex")
+                logInfo("Cleanup: Releasing stop operation mutex")
                 operationMutex.unlock()
-                addLog("Stop operation mutex released")
+                logInfo("Stop operation mutex released")
             }
         }
     }
@@ -540,9 +558,9 @@ class YggstackService : Service() {
     private fun buildConfigJson(config: YggstackConfig): String {
         // If no private key is provided, generate a complete new config
         if (config.privateKey.isBlank()) {
-            addLog("No private key found - generating new configuration...")
+            logInfo("No private key found - generating new configuration...")
             val newConfigJson = Mobile.generateConfig()
-            addLog("Generated config length: ${newConfigJson.length} chars")
+            logInfo("Generated config length: ${newConfigJson.length} chars")
 
             // Add Certificate field if missing (required by core.New)
             val configWithCert = if (!newConfigJson.contains("\"Certificate\"")) {
@@ -560,23 +578,23 @@ class YggstackService : Service() {
             val extractedKey = keyMatch?.groupValues?.get(1) ?: ""
 
             if (extractedKey.isNotBlank()) {
-                addLog("Private key extracted (length: ${extractedKey.length}, key: ${truncatePrivateKey(extractedKey)})")
+                logDebug("Private key extracted (length: ${extractedKey.length}, key: ${truncatePrivateKey(extractedKey)})")
                 _generatedPrivateKey.value = extractedKey
                 
                 // CRITICAL FIX: Update lastConfig with the generated key and re-save to SharedPreferences
                 // This ensures the key persists across service restarts
                 lastConfig = lastConfig?.copy(privateKey = extractedKey)
                 lastConfig?.let { saveLastConfigToPreferences(it) }
-                addLog("Generated key saved to persistent storage")
+                logDebug("Generated key saved to persistent storage")
             } else {
-                addLog("ERROR: Failed to extract generated private key from config!")
+                logError("ERROR: Failed to extract generated private key from config!")
             }
 
             // Apply peers and multicast configuration
             var finalConfig = configWithCert
             
             if (config.peers.isNotEmpty()) {
-                addLog("Adding ${config.peers.size} peer(s) to config")
+                logInfo("Adding ${config.peers.size} peer(s) to config")
                 // Add ?maxbackoff=30s to each peer URI for mobile-friendly timeouts
                 val peersWithBackoff = config.peers.map { peer ->
                     if (peer.contains("?")) {
@@ -598,13 +616,13 @@ class YggstackService : Service() {
             
             // Handle multicast discovery switch
             if (!config.multicastEnabled) {
-                addLog("Multicast discovery disabled - removing MulticastInterfaces")
+                logInfo("Multicast discovery disabled - removing MulticastInterfaces")
                 finalConfig = finalConfig.replace(
                     Regex("\"MulticastInterfaces\":\\s*\\[[^\\]]*\\]"),
                     "\"MulticastInterfaces\": []"
                 )
             } else {
-                addLog("Multicast discovery enabled - using default configuration")
+                logInfo("Multicast discovery enabled - using default configuration")
             }
 
             return finalConfig
@@ -612,7 +630,7 @@ class YggstackService : Service() {
 
         // Build config with existing private key
         // IMPORTANT: Must match the structure from Mobile.generateConfig()
-        addLog("Using existing private key (length: ${config.privateKey.length}, key: ${truncatePrivateKey(config.privateKey)})")
+        logInfo("Using existing private key (length: ${config.privateKey.length}, key: ${truncatePrivateKey(config.privateKey)})")
         val peers = if (config.peers.isEmpty()) {
             "[]"
         } else {
@@ -632,7 +650,7 @@ class YggstackService : Service() {
         }
 
         val multicastInterfaces = if (config.multicastEnabled) {
-            addLog("Multicast discovery enabled - using default configuration")
+            logInfo("Multicast discovery enabled - using default configuration")
             """[
     {
       "Regex": ".*",
@@ -642,7 +660,7 @@ class YggstackService : Service() {
     }
   ]"""
         } else {
-            addLog("Multicast discovery disabled - using empty configuration")
+            logInfo("Multicast discovery disabled - using empty configuration")
             "[]"
         }
 
@@ -662,7 +680,7 @@ class YggstackService : Service() {
   "NodeInfo": null
 }"""
 
-        addLog("Built manual config matching generated structure")
+        logDebug("Built manual config matching generated structure")
         return manualConfig
     }
 
@@ -673,68 +691,92 @@ class YggstackService : Service() {
             
             // Setup Forward Remote Port (local mappings - forward from local to remote Yggdrasil)
             if (config.forwardEnabled && config.forwardMappings.isNotEmpty()) {
-                addLog("Setting up ${config.forwardMappings.size} forward port mapping(s)...")
+                logDebug("Setting up ${config.forwardMappings.size} forward port mapping(s)...")
                 config.forwardMappings.forEach { mapping ->
                     try {
                         val localAddr = "${mapping.localIp}:${mapping.localPort}"
                         val remoteAddr = "[${mapping.remoteIp}]:${mapping.remotePort}"
                         
-                        addLog("Configuring ${mapping.protocol} forward mapping: $localAddr -> $remoteAddr")
+                        logDebug("Configuring ${mapping.protocol} forward mapping: $localAddr -> $remoteAddr")
                         
                         when (mapping.protocol) {
                             link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
                                 yggstack?.addLocalTCPMapping(localAddr, remoteAddr)
-                                addLog("✓ Added TCP forward: $localAddr -> $remoteAddr")
+                                logInfo("✓ Added TCP forward: $localAddr -> $remoteAddr")
                             }
                             link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
                                 yggstack?.addLocalUDPMapping(localAddr, remoteAddr)
-                                addLog("✓ Added UDP forward: $localAddr -> $remoteAddr")
+                                logInfo("✓ Added UDP forward: $localAddr -> $remoteAddr")
                             }
                         }
                     } catch (e: Exception) {
-                        addLog("✗ Error adding forward mapping: ${e.message}")
-                        addLog("Stack trace: ${e.stackTraceToString().take(300)}")
+                        logError("✗ Error adding forward mapping: ${e.message}")
+                        logError("Stack trace: ${e.stackTraceToString().take(300)}")
                     }
                 }
             } else {
-                addLog("No forward mappings configured (enabled=${config.forwardEnabled}, count=${config.forwardMappings.size})")
+                logInfo("No forward mappings configured (enabled=${config.forwardEnabled}, count=${config.forwardMappings.size})")
             }
 
             // Setup Expose Local Port (remote mappings - expose local port on Yggdrasil)
             if (config.exposeEnabled && config.exposeMappings.isNotEmpty()) {
-                addLog("Setting up ${config.exposeMappings.size} expose port mapping(s)...")
+                logDebug("Setting up ${config.exposeMappings.size} expose port mapping(s)...")
                 config.exposeMappings.forEach { mapping ->
                     try {
                         val localAddr = "${mapping.localIp}:${mapping.localPort}"
                         
-                        addLog("Configuring ${mapping.protocol} expose mapping: Ygg port ${mapping.yggPort} -> $localAddr")
+                        logDebug("Configuring ${mapping.protocol} expose mapping: Ygg port ${mapping.yggPort} -> $localAddr")
                         
                         when (mapping.protocol) {
                             link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
                                 yggstack?.addRemoteTCPMapping(mapping.yggPort.toLong(), localAddr)
-                                addLog("✓ Exposed TCP port ${mapping.yggPort} -> $localAddr")
+                                logInfo("✓ Exposed TCP port ${mapping.yggPort} -> $localAddr")
                             }
                             link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
                                 yggstack?.addRemoteUDPMapping(mapping.yggPort.toLong(), localAddr)
-                                addLog("✓ Exposed UDP port ${mapping.yggPort} -> $localAddr")
+                                logInfo("✓ Exposed UDP port ${mapping.yggPort} -> $localAddr")
                             }
                         }
                     } catch (e: Exception) {
-                        addLog("✗ Error adding expose mapping: ${e.message}")
-                        addLog("Stack trace: ${e.stackTraceToString().take(300)}")
+                        logError("✗ Error adding expose mapping: ${e.message}")
+                        logError("Stack trace: ${e.stackTraceToString().take(300)}")
                     }
                 }
             } else {
-                addLog("No expose mappings configured (enabled=${config.exposeEnabled}, count=${config.exposeMappings.size})")
+                logInfo("No expose mappings configured (enabled=${config.exposeEnabled}, count=${config.exposeMappings.size})")
             }
 
             if (!config.forwardEnabled && !config.exposeEnabled) {
-                addLog("Port forwarding disabled - no mappings will be configured")
+                logInfo("Port forwarding disabled - no mappings will be configured")
             }
         } catch (e: Exception) {
-            addLog("✗ Error setting up port mappings: ${e.message}")
-            addLog("Stack trace: ${e.stackTraceToString().take(300)}")
+            logError("✗ Error setting up port mappings: ${e.message}")
+            logError("Stack trace: ${e.stackTraceToString().take(300)}")
         }
+    }
+    
+    // Log level helper functions
+    private fun logError(message: String) {
+        if (logsEnabled && shouldLog("error")) addLog("[E] $message")
+    }
+    
+    private fun logWarn(message: String) {
+        if (logsEnabled && shouldLog("warn")) addLog("[W] $message")
+    }
+    
+    private fun logInfo(message: String) {
+        if (logsEnabled && shouldLog("info")) addLog("[I] $message")
+    }
+    
+    private fun logDebug(message: String) {
+        if (logsEnabled && shouldLog("debug")) addLog("[D] $message")
+    }
+    
+    private fun shouldLog(level: String): Boolean {
+        val levels = listOf("error", "warn", "info", "debug")
+        val currentIndex = levels.indexOf(currentLogLevel)
+        val requestedIndex = levels.indexOf(level)
+        return currentIndex >= requestedIndex
     }
 
     private fun addLog(message: String) {
@@ -799,7 +841,7 @@ class YggstackService : Service() {
                                 updateNotification("Connected", connectedCount, totalCount)
                             }
                         } catch (e: Exception) {
-                            addLog("Error parsing peer JSON: ${e.message}")
+                            logError("Error parsing peer JSON: ${e.message}")
                             _peerCount.value = 0
                             _totalPeerCount.value = 0
                             if (_isRunning.value) {
@@ -808,9 +850,9 @@ class YggstackService : Service() {
                         }
                     } else {
                         // Yggstack returned null - instance crashed/corrupted
-                        addLog("ERROR: getPeersJSON returned null - Yggstack instance is corrupted")
+                        logError("ERROR: getPeersJSON returned null - Yggstack instance is corrupted")
                         if (_isRunning.value) {
-                            addLog("Detected Yggstack crash - attempting automatic restart...")
+                            logError("Detected Yggstack crash - attempting automatic restart...")
                             _isRunning.value = false
                             _peerCount.value = 0
                             _totalPeerCount.value = 0
@@ -819,7 +861,7 @@ class YggstackService : Service() {
                             if (lastConfig != null && crashRestartAttempts < MAX_CRASH_RESTART_ATTEMPTS) {
                                 crashRestartAttempts++
                                 val backoffDelay = (crashRestartAttempts * 2000L).coerceAtMost(10000L)
-                                addLog("Crash restart attempt $crashRestartAttempts/$MAX_CRASH_RESTART_ATTEMPTS (waiting ${backoffDelay}ms)...")
+                                logError("Crash restart attempt $crashRestartAttempts/$MAX_CRASH_RESTART_ATTEMPTS (waiting ${backoffDelay}ms)...")
                                 updateNotification("Restarting after crash...", 0, 0)
                                 
                                 kotlinx.coroutines.delay(backoffDelay)
@@ -828,30 +870,30 @@ class YggstackService : Service() {
                                 try {
                                     yggstack?.stop()
                                 } catch (e: Exception) {
-                                    addLog("Error stopping corrupted instance: ${e.message}")
+                                    logError("Error stopping corrupted instance: ${e.message}")
                                 }
                                 yggstack = null
                                 kotlinx.coroutines.delay(1000)
                                 
                                 // Restart with same config
-                                addLog("Restarting Yggstack after crash...")
+                                logError("Restarting Yggstack after crash...")
                                 startYggstack(lastConfig!!)
                             } else {
                                 val reason = if (lastConfig == null) "no config available" else "max restart attempts reached"
-                                addLog("ERROR: Cannot auto-restart - $reason")
+                                logError("ERROR: Cannot auto-restart - $reason")
                                 updateNotification("Crashed - manual restart required", 0, 0)
                             }
                         }
                         break
                     }
                 } catch (e: Exception) {
-                    addLog("Error fetching peer stats: ${e.message}")
+                    logError("Error fetching peer stats: ${e.message}")
                     // Don't break on transient errors, but log them
                 }
                 kotlinx.coroutines.delay(5000) // Update every 5 seconds
             }
             if (_isRunning.value) {
-                addLog("Peer stats updater stopped")
+                logInfo("Peer stats updater stopped")
             }
         }
     }
@@ -966,10 +1008,10 @@ class YggstackService : Service() {
             }
             if (multicastLock?.isHeld == false) {
                 multicastLock?.acquire()
-                addLog("MulticastLock acquired")
+                logInfo("MulticastLock acquired")
             }
         } catch (e: Exception) {
-            addLog("Failed to acquire MulticastLock: ${e.message}")
+            logError("Failed to acquire MulticastLock: ${e.message}")
         }
     }
 
@@ -978,12 +1020,12 @@ class YggstackService : Service() {
             multicastLock?.let {
                 if (it.isHeld) {
                     it.release()
-                    addLog("MulticastLock released")
+                    logInfo("MulticastLock released")
                 }
             }
             multicastLock = null
         } catch (e: Exception) {
-            addLog("Failed to release MulticastLock: ${e.message}")
+            logError("Failed to release MulticastLock: ${e.message}")
         }
     }
 
@@ -997,10 +1039,10 @@ class YggstackService : Service() {
             }
             if (wifiLock?.isHeld == false) {
                 wifiLock?.acquire()
-                addLog("WiFi lock acquired - preventing WiFi sleep")
+                logInfo("WiFi lock acquired - preventing WiFi sleep")
             }
         } catch (e: Exception) {
-            addLog("Failed to acquire WiFi lock: ${e.message}")
+            logError("Failed to acquire WiFi lock: ${e.message}")
         }
     }
 
@@ -1009,12 +1051,12 @@ class YggstackService : Service() {
             wifiLock?.let {
                 if (it.isHeld) {
                     it.release()
-                    addLog("WiFi lock released")
+                    logInfo("WiFi lock released")
                 }
             }
             wifiLock = null
         } catch (e: Exception) {
-            addLog("Failed to release WiFi lock: ${e.message}")
+            logError("Failed to release WiFi lock: ${e.message}")
         }
     }
 
@@ -1024,7 +1066,7 @@ class YggstackService : Service() {
             val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
             return networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         } catch (e: Exception) {
-            addLog("Failed to check network type: ${e.message}")
+            logError("Failed to check network type: ${e.message}")
             return false
         }
     }
@@ -1038,16 +1080,16 @@ class YggstackService : Service() {
 
                 if (isWifi && !isOnWifi) {
                     // Switched to WiFi - enable multicast
-                    addLog("Switched to WiFi - enabling multicast discovery")
+                    logInfo("Switched to WiFi - enabling multicast discovery")
                     isOnWifi = true
                     acquireWifiLock()
                     acquireMulticastLock()
                     // Trigger peer retry to pick up multicast peers
-                    addLog("Restarting multicast discovery...")
+                    logInfo("Restarting multicast discovery...")
                     retryPeersNow()
                 } else if (!isWifi && isOnWifi) {
                     // Switched to Cellular - disable multicast
-                    addLog("Switched to Cellular - disabling multicast discovery")
+                    logInfo("Switched to Cellular - disabling multicast discovery")
                     isOnWifi = false
                     releaseWifiLock()
                     releaseMulticastLock()
@@ -1055,7 +1097,7 @@ class YggstackService : Service() {
                     // The Go layer should handle this gracefully
                 }
             } catch (e: Exception) {
-                addLog("Error handling multicast for network change: ${e.message}")
+                logError("Error handling multicast for network change: ${e.message}")
             }
         }
     }
@@ -1068,19 +1110,19 @@ class YggstackService : Service() {
             
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    addLog("Network available: ${network}")
+                    logInfo("Network available: ${network}")
                     
                     // Skip initial callback (fired immediately upon registration)
                     if (isInitialNetworkCallback) {
                         isInitialNetworkCallback = false
-                        addLog("Initial network callback - skipping peer retry")
+                        logInfo("Initial network callback - skipping peer retry")
                         hasNoNetwork = false
                         return
                     }
                     
                     // If returning from no-network state, trigger reconnection immediately
                     if (hasNoNetwork && _isRunning.value && yggstack != null) {
-                        addLog("Network restored after outage - triggering immediate reconnection")
+                        logInfo("Network restored after outage - triggering immediate reconnection")
                         hasNoNetwork = false
                         retryPeersNow()
                     } else {
@@ -1089,7 +1131,7 @@ class YggstackService : Service() {
                 }
                 
                 override fun onLost(network: Network) {
-                    addLog("Network lost: ${network}")
+                    logInfo("Network lost: ${network}")
                     
                     // Check if a new network is already available before triggering retry
                     // This handles network switching (WiFi↔Cellular) correctly
@@ -1097,15 +1139,15 @@ class YggstackService : Service() {
                     if (activeNetwork != null && _isRunning.value) {
                         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
                         if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
-                            addLog("Switched to new network - forcing reconnection")
+                            logInfo("Switched to new network - forcing reconnection")
                             hasNoNetwork = false
                             retryPeersNow()
                         } else {
-                            addLog("New network available but no internet capability")
+                            logInfo("New network available but no internet capability")
                             hasNoNetwork = true
                         }
                     } else {
-                        addLog("No alternative network available - waiting for connection")
+                        logInfo("No alternative network available - waiting for connection")
                         hasNoNetwork = true
                     }
                 }
@@ -1131,11 +1173,11 @@ class YggstackService : Service() {
                     
                     if (lastNetworkType != transportType && timeSinceLastChange > NETWORK_CHANGE_DEBOUNCE_MS) {
                         if (lastNetworkType != null) {
-                            addLog("Network switched: $lastNetworkType -> $transportType")
+                            logInfo("Network switched: $lastNetworkType -> $transportType")
                             // Handle multicast based on network type
                             handleMulticastForNetwork(isWifi)
                         } else {
-                            addLog("Initial network: $transportType")
+                            logInfo("Initial network: $transportType")
                         }
                         lastNetworkType = transportType
                         lastNetworkChangeTime = now
@@ -1147,9 +1189,9 @@ class YggstackService : Service() {
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 .build()
             connectivityManager.registerNetworkCallback(request, networkCallback!!)
-            addLog("Network monitoring registered")
+            logInfo("Network monitoring registered")
         } catch (e: Exception) {
-            addLog("Failed to register network callback: ${e.message}")
+            logError("Failed to register network callback: ${e.message}")
         }
     }
 
@@ -1157,12 +1199,12 @@ class YggstackService : Service() {
         try {
             networkCallback?.let {
                 connectivityManager.unregisterNetworkCallback(it)
-                addLog("Network monitoring unregistered")
+                logInfo("Network monitoring unregistered")
             }
             networkCallback = null
             isInitialNetworkCallback = true // Reset for next registration
         } catch (e: Exception) {
-            addLog("Failed to unregister network callback: ${e.message}")
+            logError("Failed to unregister network callback: ${e.message}")
         }
     }
 
@@ -1170,11 +1212,11 @@ class YggstackService : Service() {
         serviceScope.launch {
             if (_isRunning.value) {
                 try {
-                    addLog("Forcing peer reconnection due to network change...")
+                    logInfo("Forcing peer reconnection due to network change...")
                     yggstack?.retryPeersNow()
-                    addLog("Peer retry triggered successfully")
+                    logInfo("Peer retry triggered successfully")
                 } catch (e: Exception) {
-                    addLog("Error triggering peer retry: ${e.message}")
+                    logError("Error triggering peer retry: ${e.message}")
                 }
             }
         }
@@ -1226,7 +1268,7 @@ class YggstackService : Service() {
                 .putString(PREF_LAST_CONFIG, json.toString())
                 .apply()
         } catch (e: Exception) {
-            addLog("ERROR saving config to SharedPreferences: ${e.message}")
+            logError("ERROR saving config to SharedPreferences: ${e.message}")
         }
     }
     
@@ -1297,12 +1339,12 @@ class YggstackService : Service() {
                     forwardMappings = forwardMappings
                 )
                 
-                addLog("Loaded config from SharedPreferences: ${peers.size} peer(s), key present=${lastConfig!!.privateKey.isNotBlank()}")
+                logInfo("Loaded config from SharedPreferences: ${peers.size} peer(s), key present=${lastConfig!!.privateKey.isNotBlank()}")
             } else {
-                addLog("No saved config found in SharedPreferences")
+                logInfo("No saved config found in SharedPreferences")
             }
         } catch (e: Exception) {
-            addLog("ERROR loading config from SharedPreferences: ${e.message}")
+            logError("ERROR loading config from SharedPreferences: ${e.message}")
             lastConfig = null
         }
     }
