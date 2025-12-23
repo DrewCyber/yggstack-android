@@ -878,11 +878,16 @@ class YggstackService : Service() {
 
     private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int, showStopButton: Boolean = true): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE
+        } else {
+            0
+        }
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
             notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE
+            pendingIntentFlags
         )
 
         val contentText = buildString {
@@ -917,7 +922,7 @@ class YggstackService : Service() {
                 this,
                 0,
                 stopIntent,
-                PendingIntent.FLAG_IMMUTABLE
+                pendingIntentFlags
             )
             builder.addAction(
                 android.R.drawable.ic_delete,

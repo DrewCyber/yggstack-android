@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,7 +24,9 @@ import link.yggdrasil.yggstack.android.service.YggstackService
 /**
  * Quick Settings Tile for Yggstack
  * Allows users to quickly start/stop the service from the notification shade
+ * Requires Android 7.0+ (API 24) for Quick Settings Tile support
  */
+@RequiresApi(Build.VERSION_CODES.N)
 class YggstackTileService : TileService() {
 
     private var yggstackService: YggstackService? = null
@@ -93,6 +96,15 @@ class YggstackTileService : TileService() {
         super.onClick()
         Log.d(TAG, "onClick - current state: ${qsTile?.state}")
         
+        // Immediately update tile to show transitioning
+        qsTile?.apply {
+            state = Tile.STATE_UNAVAILABLE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                subtitle = "Transitioning..."
+            }
+            updateTile()
+        }
+        
         val isCurrentlyRunning = yggstackService?.isRunning?.value ?: false
         
         if (isCurrentlyRunning) {
@@ -120,10 +132,20 @@ class YggstackTileService : TileService() {
 
     private fun observeServiceState() {
         stateObserverJob?.cancel()
+        
+        // Observe both isRunning and isTransitioning states
         stateObserverJob = tileScope.launch {
-            yggstackService?.isRunning?.collect { isRunning ->
-                Log.d(TAG, "Service state changed: isRunning=$isRunning")
-                updateTileState()
+            launch {
+                yggstackService?.isRunning?.collect { isRunning ->
+                    Log.d(TAG, "Service isRunning changed: $isRunning")
+                    updateTileState()
+                }
+            }
+            launch {
+                yggstackService?.isTransitioning?.collect { isTransitioning ->
+                    Log.d(TAG, "Service isTransitioning changed: $isTransitioning")
+                    updateTileState()
+                }
             }
         }
     }
@@ -177,25 +199,19 @@ class YggstackTileService : TileService() {
                     )
                 }
                 
-                startForegroundService(intent)
-                
-                // Give service time to start and bind, then update tile
-                kotlinx.coroutines.delay(500)
-                
-                launch(Dispatchers.Main) {
-                    if (isBound && yggstackService?.isRunning?.value == true) {
-                        val tile = qsTile
-                        tile?.state = Tile.STATE_ACTIVE
-                        tile?.updateTile()
-                    } else {
-                        // Fallback if not bound yet - assume it's running
-                        val tile = qsTile
-                        tile?.state = Tile.STATE_ACTIVE
-                        tile?.updateTile()
-                    }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
                 }
+                
+                // State will be updated automatically via observers
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start service", e)
+                // Reset tile on error
+                launch(Dispatchers.Main) {
+                    updateTileState()
+                }
             }
         }
     }
@@ -211,20 +227,13 @@ class YggstackTileService : TileService() {
                 
                 startService(intent)
                 
-                // Give service time to process stop command, then force update
-                kotlinx.coroutines.delay(500)
-                
-                // If service is stopped, it will unbind, so we need to handle that
-                // Update tile to inactive state after a brief delay
-                launch(Dispatchers.Main) {
-                    if (!isBound || yggstackService?.isRunning?.value == false) {
-                        val tile = qsTile
-                        tile?.state = Tile.STATE_INACTIVE
-                        tile?.updateTile()
-                    }
-                }
+                // State will be updated automatically via observers
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to stop service", e)
+                // Reset tile on error
+                launch(Dispatchers.Main) {
+                    updateTileState()
+                }
             }
         }
     }
