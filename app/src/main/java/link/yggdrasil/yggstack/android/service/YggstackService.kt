@@ -73,6 +73,7 @@ class YggstackService : Service() {
     private val NETWORK_CHANGE_DEBOUNCE_MS = 5000L // 5 seconds to avoid flip-flop during transitions
     private var isOnWifi: Boolean = false
     private var isInitialNetworkCallback: Boolean = true // Skip retry on first callback after registration
+    private var hasNoNetwork: Boolean = false // Track if we're in no-network state
     
     // Store last config for automatic restart after crash
     private var lastConfig: YggstackConfig? = null
@@ -477,8 +478,14 @@ class YggstackService : Service() {
                 // Release MulticastLock if held
                 releaseMulticastLock()
                 
-                // Stop yggstack and wait for it to complete
-                yggstack?.stop()
+                // Stop yggstack with 5-second timeout
+                try {
+                    kotlinx.coroutines.withTimeout(5000L) {
+                        yggstack?.stop()
+                    }
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    addLog("WARNING: Yggstack stop timed out after 5 seconds - forcing cleanup")
+                }
                 yggstack = null
                 
                 _yggdrasilIp.value = null
@@ -486,6 +493,7 @@ class YggstackService : Service() {
                 _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null  // Reset generated key state
                 _isTransitioning.value = false
+                hasNoNetwork = false  // Reset network state
                 
                 addLog("Yggstack stopped")
                 
@@ -510,6 +518,7 @@ class YggstackService : Service() {
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null
+                hasNoNetwork = false
                 
                 // Unregister network callback on error too
                 unregisterNetworkCallback()
@@ -1060,11 +1069,18 @@ class YggstackService : Service() {
                     if (isInitialNetworkCallback) {
                         isInitialNetworkCallback = false
                         addLog("Initial network callback - skipping peer retry")
+                        hasNoNetwork = false
                         return
                     }
                     
-                    // Just log availability, don't trigger retry here
-                    // Retry will be triggered in onLost() when old network disconnects
+                    // If returning from no-network state, trigger reconnection immediately
+                    if (hasNoNetwork && _isRunning.value && yggstack != null) {
+                        addLog("Network restored after outage - triggering immediate reconnection")
+                        hasNoNetwork = false
+                        retryPeersNow()
+                    } else {
+                        hasNoNetwork = false
+                    }
                 }
                 
                 override fun onLost(network: Network) {
@@ -1077,12 +1093,15 @@ class YggstackService : Service() {
                         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
                         if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
                             addLog("Switched to new network - forcing reconnection")
+                            hasNoNetwork = false
                             retryPeersNow()
                         } else {
                             addLog("New network available but no internet capability")
+                            hasNoNetwork = true
                         }
                     } else {
                         addLog("No alternative network available - waiting for connection")
+                        hasNoNetwork = true
                     }
                 }
                 
