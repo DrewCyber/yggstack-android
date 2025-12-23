@@ -137,7 +137,7 @@ class ConfigRepository(private val context: Context) {
      * Get logs enabled preference
      */
     val logsEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[LOGS_ENABLED] ?: true  // Default to enabled
+        preferences[LOGS_ENABLED] ?: false  // Default to disabled for production
     }
 
     /**

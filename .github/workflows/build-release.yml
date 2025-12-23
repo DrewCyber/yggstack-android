@@ -54,7 +54,10 @@ jobs:
         run: |
           cd lib/yggstack
           chmod +x build-android.sh
+          echo "Building production AAR with stripped symbols..."
           ./build-android.sh
+          echo "AAR built successfully:"
+          ls -lh android-build/yggstack.aar
           cp android-build/yggstack.aar ../../app/libs/
 
       - name: Grant execute permission for gradlew

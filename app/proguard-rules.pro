@@ -22,4 +22,38 @@
 
 # Keep yggstack mobile bindings
 -keep class yggstack.** { *; }
+-keep interface yggstack.** { *; }
+
+# Keep Kotlin serialization
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** {
+    *** Companion;
+}
+-keepclasseswithmembers class kotlinx.serialization.json.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep,includedescriptorclasses class link.yggdrasil.yggstack.android.**$$serializer { *; }
+-keepclassmembers class link.yggdrasil.yggstack.android.** {
+    *** Companion;
+}
+-keepclasseswithmembers class link.yggdrasil.yggstack.android.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# Keep data classes used with DataStore
+-keep class link.yggdrasil.yggstack.android.data.** { *; }
+
+# Keep Parcelable implementations
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final ** CREATOR;
+}
+
+# Keep Service and BroadcastReceiver
+-keep class * extends android.app.Service
+-keep class * extends android.content.BroadcastReceiver
+
+# Compose
+-keep class androidx.compose.** { *; }
+-dontwarn androidx.compose.**
 
