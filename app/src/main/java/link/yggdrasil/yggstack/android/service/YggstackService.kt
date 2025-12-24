@@ -413,9 +413,6 @@ class YggstackService : Service() {
 
                 // Start monitoring for peer details subscriptions (lazy-load)
                 startPeerStatsSubscriptionMonitor()
-                
-                logDebug("Releasing operation lock...")
-                _isTransitioning.value = false
 
             } catch (e: Exception) {
                 logError("ERROR starting Yggstack: ${e.message}")
@@ -429,7 +426,6 @@ class YggstackService : Service() {
                 }
                 yggstack = null
                 _isRunning.value = false
-                _isTransitioning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
@@ -458,9 +454,10 @@ class YggstackService : Service() {
                 
                 logError("Service stopped due to error. Please check configuration and try again.")
             } finally {
-                logDebug("Cleanup: Releasing operation mutex")
+                logDebug("Cleanup: Releasing operation mutex and resetting transitioning state")
+                _isTransitioning.value = false
                 operationMutex.unlock()
-                logInfo("Operation mutex released")
+                logInfo("Operation mutex released, transitioning state reset")
             }
         }
     }
@@ -517,9 +514,7 @@ class YggstackService : Service() {
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
-                _generatedPrivateKey.value = null  // Reset generated key state
-                _isTransitioning.value = false
-                hasNoNetwork = false  // Reset network state
+                _generatedPrivateKey.value = null
                 
                 logInfo("Yggstack stopped")
                 
@@ -539,7 +534,6 @@ class YggstackService : Service() {
                 // Force cleanup even on error
                 yggstack = null
                 _isRunning.value = false
-                _isTransitioning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
@@ -556,9 +550,11 @@ class YggstackService : Service() {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
             } finally {
-                logInfo("Cleanup: Releasing stop operation mutex")
+                logInfo("Cleanup: Releasing stop operation mutex and resetting transitioning state")
+                _isTransitioning.value = false
+                hasNoNetwork = false  // Reset network state
                 operationMutex.unlock()
-                logInfo("Stop operation mutex released")
+                logInfo("Stop operation mutex released, transitioning state reset")
             }
         }
     }

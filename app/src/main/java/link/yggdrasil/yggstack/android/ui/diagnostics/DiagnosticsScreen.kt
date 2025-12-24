@@ -193,12 +193,6 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
     val peerCount by viewModel.peerCount.collectAsState()
     val totalPeerCount by viewModel.totalPeerCount.collectAsState()
     val peerDetails by viewModel.peerDetails.collectAsState()
-    val isDarkTheme = isSystemInDarkTheme()
-    val successColor = if (isDarkTheme) {
-        MaterialTheme.colorScheme.secondary
-    } else {
-        MaterialTheme.colorScheme.secondary
-    }
 
     Column(
         modifier = Modifier
