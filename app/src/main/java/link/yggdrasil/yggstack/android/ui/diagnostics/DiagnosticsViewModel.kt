@@ -98,7 +98,7 @@ class DiagnosticsViewModel(
                 _logs.value = service.logs.value
                 _isServiceRunning.value = service.isRunning.value
                 _peerCount.value = service.peerCount.value
-                _peerDetails.value = parsePeerDetails(service.peerDetailsJSON.value)
+                // peerDetailsJSON is a SharedFlow - will be loaded when collected
                 _currentConfig.value = service.fullConfigJSON.value
             }
         }

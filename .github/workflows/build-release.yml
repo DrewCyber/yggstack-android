@@ -58,6 +58,7 @@ jobs:
           ./build-android.sh
           echo "AAR built successfully:"
           ls -lh android-build/yggstack.aar
+          mkdir -p ../../app/libs/
           cp android-build/yggstack.aar ../../app/libs/
 
       - name: Grant execute permission for gradlew

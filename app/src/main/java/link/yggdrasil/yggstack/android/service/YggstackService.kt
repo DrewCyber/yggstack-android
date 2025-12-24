@@ -32,6 +32,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import link.yggdrasil.yggstack.mobile.LogCallback
@@ -55,6 +58,9 @@ class YggstackService : Service() {
     private lateinit var persistentLogger: PersistentLogger
     private var peerStatsJob: kotlinx.coroutines.Job? = null
     private lateinit var sharedPreferences: SharedPreferences
+    
+    // Subscription monitoring for peer stats
+    private var peerStatsSubscriptionJob: kotlinx.coroutines.Job? = null
     
     // Operation state management
     private val _isTransitioning = MutableStateFlow(false)
@@ -99,8 +105,8 @@ class YggstackService : Service() {
     private val _totalPeerCount = MutableStateFlow(0)
     val totalPeerCount: StateFlow<Int> = _totalPeerCount.asStateFlow()
 
-    private val _peerDetailsJSON = MutableStateFlow<String>("[]")
-    val peerDetailsJSON: StateFlow<String> = _peerDetailsJSON.asStateFlow()
+    private val _peerDetailsJSON = MutableSharedFlow<String>(replay = 1)
+    val peerDetailsJSON: SharedFlow<String> = _peerDetailsJSON.asSharedFlow()
 
     private val _generatedPrivateKey = MutableStateFlow<String?>(null)
     val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
@@ -405,8 +411,8 @@ class YggstackService : Service() {
                 logInfo("Yggstack started successfully")
                 updateNotification("Connected", 0, 0)
 
-                // Start periodic peer stats update
-                startPeerStatsUpdater()
+                // Start monitoring for peer details subscriptions (lazy-load)
+                startPeerStatsSubscriptionMonitor()
                 
                 logDebug("Releasing operation lock...")
                 _isTransitioning.value = false
@@ -483,9 +489,11 @@ class YggstackService : Service() {
                 logInfo("Stopping Yggstack...")
                 _isRunning.value = false  // Set this first to stop the peer updater
                 
-                // Cancel peer stats updater
+                // Cancel peer stats jobs
                 peerStatsJob?.cancel()
                 peerStatsJob = null
+                peerStatsSubscriptionJob?.cancel()
+                peerStatsSubscriptionJob = null
                 
                 // Unregister network callback
                 unregisterNetworkCallback()
@@ -809,6 +817,32 @@ class YggstackService : Service() {
         }
     }
 
+    private fun startPeerStatsSubscriptionMonitor() {
+        peerStatsSubscriptionJob?.cancel()
+        peerStatsSubscriptionJob = serviceScope.launch {
+            _peerDetailsJSON.subscriptionCount.collect { count ->
+                // Only react to subscriptions if service is running
+                if (!_isRunning.value) {
+                    logDebug("Service not running, ignoring subscription changes")
+                    return@collect
+                }
+                
+                if (count > 0) {
+                    logDebug("Peer details subscriber active, starting stats updater")
+                    startPeerStatsUpdater()
+                } else {
+                    logDebug("No peer details subscribers, stopping stats updater")
+                    stopPeerStatsUpdater()
+                }
+            }
+        }
+    }
+
+    private fun stopPeerStatsUpdater() {
+        peerStatsJob?.cancel()
+        peerStatsJob = null
+    }
+
     private fun startPeerStatsUpdater() {
         // Cancel any existing updater first
         peerStatsJob?.cancel()
@@ -820,7 +854,7 @@ class YggstackService : Service() {
                     
                     val peersJson = yggstack?.getPeersJSON()
                     if (peersJson != null) {
-                        _peerDetailsJSON.value = peersJson
+                        _peerDetailsJSON.emit(peersJson)
                         // Update peer count from actual connected peers
                         try {
                             val jsonArray = JSONArray(peersJson)
