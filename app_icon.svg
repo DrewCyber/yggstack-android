@@ -1,6 +1,14 @@
 <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <!-- Green background -->
-  <rect width="200" height="200" fill="#6cdb9c" rx="20"/>
+  <defs>
+    <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#5eefb8;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#55ddad;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4dcba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Gradient background -->
+  <rect width="200" height="200" fill="url(#backgroundGradient)" rx="20"/>
   
   <!-- White "Ys" text -->
   <text x="103" y="160" font-family="Garamond, sans-serif" font-size="170" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="-30">Ys</text>

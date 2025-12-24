@@ -96,12 +96,6 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val currentConfig by viewModel.currentConfig.collectAsState()
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
     val clipboardManager = LocalClipboardManager.current
-    val isDarkTheme = isSystemInDarkTheme()
-    val successColor = if (isDarkTheme) {
-        MaterialTheme.colorScheme.secondary
-    } else {
-        MaterialTheme.colorScheme.secondary
-    }
 
     Column(
         modifier = Modifier
@@ -129,7 +123,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     Text(
                         text = if (isServiceRunning) "Service Running" else "Service Stopped",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isServiceRunning) successColor else Color.Gray
+                        color = if (isServiceRunning) MaterialTheme.colorScheme.primary else Color.Gray
                     )
                 }
                 Row(
@@ -150,7 +144,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     Icon(
                         imageVector = if (isServiceRunning) Icons.Default.CheckCircle else Icons.Default.Cancel,
                         contentDescription = null,
-                        tint = if (isServiceRunning) successColor else Color.Gray
+                        tint = if (isServiceRunning) MaterialTheme.colorScheme.primary else Color.Gray
                     )
                 }
             }
@@ -233,7 +227,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
                     Text(
                         text = if (isServiceRunning) "Monitoring active" else "Start service to monitor",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isServiceRunning) successColor else Color.Gray
+                        color = if (isServiceRunning) MaterialTheme.colorScheme.primary else Color.Gray
                     )
                 }
             }
@@ -297,7 +291,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
                             Text(
                                 text = if (totalPeerCount > 0) "$peerCount/$totalPeerCount" else "0",
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = if (peerCount > 0) successColor else Color.Gray
+                                color = if (peerCount > 0) MaterialTheme.colorScheme.primary else Color.Gray
                             )
                         }
                         
@@ -305,7 +299,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
                             imageVector = if (peerCount > 0) Icons.Default.CheckCircle else Icons.Default.Cancel,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
-                            tint = if (peerCount > 0) successColor else Color.Gray
+                            tint = if (peerCount > 0) MaterialTheme.colorScheme.primary else Color.Gray
                         )
                     }
 
@@ -359,7 +353,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
                             Icon(
                                 imageVector = if (peer.up) Icons.Default.CheckCircle else Icons.Default.Cancel,
                                 contentDescription = null,
-                                tint = if (peer.up) successColor else Color.Gray,
+                                tint = if (peer.up) MaterialTheme.colorScheme.primary else Color.Gray,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
