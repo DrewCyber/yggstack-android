@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import link.yggdrasil.yggstack.android.BuildConfig
 import link.yggdrasil.yggstack.android.MainActivity
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.YggstackConfig
@@ -761,18 +762,30 @@ class YggstackService : Service() {
     
     // Log level helper functions
     private fun logError(message: String) {
+        // Always write errors to logcat (even in release builds)
+        android.util.Log.e(LOG_TAG, message)
         if (logsEnabled && shouldLog("error")) addLog("[E] $message")
     }
     
     private fun logWarn(message: String) {
+        // Always write warnings to logcat (even in release builds)
+        android.util.Log.w(LOG_TAG, message)
         if (logsEnabled && shouldLog("warn")) addLog("[W] $message")
     }
     
     private fun logInfo(message: String) {
+        // Only write info to logcat in debug builds
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i(LOG_TAG, message)
+        }
         if (logsEnabled && shouldLog("info")) addLog("[I] $message")
     }
     
     private fun logDebug(message: String) {
+        // Only write debug to logcat in debug builds
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d(LOG_TAG, message)
+        }
         if (logsEnabled && shouldLog("debug")) addLog("[D] $message")
     }
     
@@ -1380,6 +1393,7 @@ class YggstackService : Service() {
     }
 
     companion object {
+        private const val LOG_TAG = "YggstackService"
         const val CHANNEL_ID = "yggstack_service_channel"
         const val NOTIFICATION_ID = 1
         const val ACTION_START = "link.yggdrasil.yggstack.android.action.START"
