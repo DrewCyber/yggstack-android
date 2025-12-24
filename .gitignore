@@ -95,3 +95,5 @@ gradlew.bat
 # Build output documentation (optional, can be regenerated)
 BUILD_SUCCESS.md
 
+#Mobile bindings library
+app/libs/yggstack.aar
