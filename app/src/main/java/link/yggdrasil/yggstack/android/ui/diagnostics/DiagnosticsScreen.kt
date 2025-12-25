@@ -523,6 +523,13 @@ fun PeerStatus(viewModel: DiagnosticsViewModel) {
     val totalPeerCount by viewModel.totalPeerCount.collectAsState()
     val peerDetails by viewModel.peerDetails.collectAsState()
 
+    // Only collect peer details when this tab is visible
+    LaunchedEffect(Unit) {
+        viewModel.getPeerDetailsFlow()?.collect { json ->
+            viewModel.updatePeerDetails(json)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

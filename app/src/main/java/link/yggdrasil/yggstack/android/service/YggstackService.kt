@@ -87,6 +87,9 @@ class YggstackService : Service() {
     private var lastConfig: YggstackConfig? = null
     private var crashRestartAttempts = 0
     
+    // Pending action to execute after current operation completes
+    private var pendingAction: (() -> Unit)? = null
+    
     // Logs enabled setting and current log level
     private var logsEnabled: Boolean = true
     private var currentLogLevel: String = "error"
@@ -278,7 +281,8 @@ class YggstackService : Service() {
         serviceScope.launch {
             // Use mutex to prevent concurrent start/stop operations
             if (!operationMutex.tryLock()) {
-                logInfo("Operation already in progress - ignoring start request")
+                logInfo("Operation already in progress - queueing start request")
+                pendingAction = { startYggstack(config) }
                 return@launch
             }
             
@@ -459,6 +463,14 @@ class YggstackService : Service() {
                 _isTransitioning.value = false
                 operationMutex.unlock()
                 logInfo("Operation mutex released, transitioning state reset")
+                
+                // Execute pending action if any
+                val action = pendingAction
+                pendingAction = null
+                if (action != null) {
+                    logInfo("Executing pending action")
+                    action()
+                }
             }
         }
     }
@@ -467,7 +479,8 @@ class YggstackService : Service() {
         serviceScope.launch {
             // Use mutex to prevent concurrent start/stop operations
             if (!operationMutex.tryLock()) {
-                logInfo("Operation already in progress - ignoring stop request")
+                logInfo("Operation already in progress - queueing stop request")
+                pendingAction = { stopYggstack() }
                 return@launch
             }
             
@@ -556,6 +569,14 @@ class YggstackService : Service() {
                 hasNoNetwork = false  // Reset network state
                 operationMutex.unlock()
                 logInfo("Stop operation mutex released, transitioning state reset")
+                
+                // Execute pending action if any
+                val action = pendingAction
+                pendingAction = null
+                if (action != null) {
+                    logInfo("Executing pending action")
+                    action()
+                }
             }
         }
     }
