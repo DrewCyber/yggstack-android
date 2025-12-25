@@ -88,11 +88,8 @@ class DiagnosticsViewModel(
                         _totalPeerCount.value = count
                     }
                 }
-                viewModelScope.launch {
-                    service.peerDetailsJSON.collect { json ->
-                        _peerDetails.value = parsePeerDetails(json)
-                    }
-                }
+                // Note: peerDetailsJSON is collected directly in PeerStatus composable
+                // to only subscribe when the Peers tab is visible
                 viewModelScope.launch {
                     service.fullConfigJSON.collect { configJson ->
                         _currentConfig.value = configJson
@@ -246,6 +243,14 @@ class DiagnosticsViewModel(
         } catch (e: JSONException) {
             emptyList()
         }
+    }
+
+    // Expose peerDetailsJSON flow for lazy subscription (only when Peers tab is visible)
+    fun getPeerDetailsFlow(): Flow<String>? = yggstackService?.peerDetailsJSON
+
+    // Update peer details in StateFlow (called from composable)
+    fun updatePeerDetails(json: String) {
+        _peerDetails.value = parsePeerDetails(json)
     }
 
     class Factory(
