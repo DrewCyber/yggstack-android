@@ -1,5 +1,8 @@
 package link.yggdrasil.yggstack.android.ui.diagnostics
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -20,11 +23,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
+import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -94,14 +102,106 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
 @Composable
 fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val currentConfig by viewModel.currentConfig.collectAsState()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsState()
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    var showImportPreview by remember { mutableStateOf(false) }
+    var importedBackup by remember { mutableStateOf<BackupConfig?>(null) }
+    
+    // Get current backup JSON
+    val backupJson = remember(yggstackConfig) {
+        yggstackConfig?.let { BackupConfig.fromYggstackConfig(it).toJson() } ?: ""
+    }
+    
+    // Export launcher
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                try {
+                    context.contentResolver.openOutputStream(it)?.use { output ->
+                        output.write(backupJson.toByteArray())
+                    }
+                    Toast.makeText(context, "Configuration exported successfully", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    // Import launcher
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                try {
+                    val jsonString = context.contentResolver.openInputStream(it)?.use { input ->
+                        input.bufferedReader().readText()
+                    }
+                    
+                    if (jsonString != null) {
+                        val result = BackupConfig.fromJson(jsonString)
+                        result.fold(
+                            onSuccess = { backup ->
+                                val validation = backup.validate()
+                                validation.fold(
+                                    onSuccess = {
+                                        importedBackup = backup
+                                        showImportPreview = true
+                                    },
+                                    onFailure = { error ->
+                                        Toast.makeText(context, "Invalid backup: ${error.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            },
+                            onFailure = { error ->
+                                Toast.makeText(context, "Failed to parse backup: ${error.message}", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    // Import preview dialog
+    if (showImportPreview && importedBackup != null) {
+        ImportPreviewDialog(
+            backup = importedBackup!!,
+            onConfirm = {
+                scope.launch {
+                    try {
+                        viewModel.importBackup(importedBackup!!)
+                        Toast.makeText(context, "Configuration imported successfully", Toast.LENGTH_SHORT).show()
+                        showImportPreview = false
+                        importedBackup = null
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to apply backup: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = {
+                showImportPreview = false
+                importedBackup = null
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
+        // Yggdrasil Configuration Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -117,7 +217,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Current Configuration",
+                        text = "Yggdrasil Configuration",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
@@ -150,17 +250,14 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
                     .padding(16.dp)
             ) {
                 if (currentConfig.isNotEmpty()) {
@@ -172,7 +269,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     )
                 } else {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -180,6 +277,238 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Backup Configuration Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Backup Configuration",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "Export/Import proxy and port settings",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Export button
+                    IconButton(
+                        onClick = {
+                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                            exportLauncher.launch("yggstack_backup_$timestamp.json")
+                        },
+                        enabled = yggstackConfig != null
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Upload,
+                            contentDescription = "Export configuration",
+                            tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
+                        )
+                    }
+                    // Import button
+                    IconButton(onClick = {
+                        importLauncher.launch(arrayOf("application/json"))
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Import configuration",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (backupJson.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = backupJson,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ImportPreviewDialog(
+    backup: BackupConfig,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "Import Configuration?",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                Text(
+                    text = "This will import the following settings:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Proxy settings
+                Text(
+                    text = "Proxy Settings:",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "• Enabled: ${backup.proxy.enabled}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                if (backup.proxy.socksAddress.isNotEmpty()) {
+                    Text(
+                        text = "• SOCKS: ${backup.proxy.socksAddress}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                if (backup.proxy.dnsServer.isNotEmpty()) {
+                    Text(
+                        text = "• DNS: ${backup.proxy.dnsServer}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Expose mappings
+                Text(
+                    text = "Expose Mappings:",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "• Enabled: ${backup.expose.enabled}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "• Mappings: ${backup.expose.mappings.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                backup.expose.mappings.take(3).forEach { mapping ->
+                    Text(
+                        text = "  - ${mapping.protocol} ${mapping.localPort} → ${mapping.yggPort}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                if (backup.expose.mappings.size > 3) {
+                    Text(
+                        text = "  - ... and ${backup.expose.mappings.size - 3} more",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Forward mappings
+                Text(
+                    text = "Forward Mappings:",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "• Enabled: ${backup.forward.enabled}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "• Mappings: ${backup.forward.mappings.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                backup.forward.mappings.take(3).forEach { mapping ->
+                    Text(
+                        text = "  - ${mapping.protocol} ${mapping.remoteIp}:${mapping.remotePort} → ${mapping.localPort}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                if (backup.forward.mappings.size > 3) {
+                    Text(
+                        text = "  - ... and ${backup.forward.mappings.size - 3} more",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Note: This will replace your current proxy and port forwarding settings. Other settings (peers, private key, multicast) will not be affected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onConfirm) {
+                        Text("Import")
                     }
                 }
             }

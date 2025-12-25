@@ -11,7 +11,9 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.service.YggstackService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -37,6 +39,9 @@ class DiagnosticsViewModel(
 
     private val _currentConfig = MutableStateFlow<String>("")
     val currentConfig: StateFlow<String> = _currentConfig.asStateFlow()
+    
+    private val _yggstackConfig = MutableStateFlow<YggstackConfig?>(null)
+    val yggstackConfig: StateFlow<YggstackConfig?> = _yggstackConfig.asStateFlow()
 
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning: StateFlow<Boolean> = _isServiceRunning.asStateFlow()
@@ -112,6 +117,13 @@ class DiagnosticsViewModel(
     init {
         loadConfig()
         bindToService()
+        
+        // Load current config from repository
+        viewModelScope.launch {
+            repository.configFlow.collect { config ->
+                _yggstackConfig.value = config
+            }
+        }
     }
 
     override fun onCleared() {
@@ -141,6 +153,22 @@ class DiagnosticsViewModel(
         yggstackService?.clearLogs()
         // Also clear local state immediately for responsive UI
         _logs.value = emptyList()
+    }
+    
+    fun importBackup(backup: BackupConfig) {
+        viewModelScope.launch {
+            // Get current config
+            val currentConfig = _yggstackConfig.value ?: return@launch
+            
+            // Apply backup to current config
+            val updatedConfig = backup.applyTo(currentConfig)
+            
+            // Save updated config
+            repository.saveConfig(updatedConfig)
+            
+            // Update local state
+            _yggstackConfig.value = updatedConfig
+        }
     }
     
     fun downloadLogs(context: Context) {
