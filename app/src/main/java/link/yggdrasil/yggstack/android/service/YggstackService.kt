@@ -389,17 +389,12 @@ class YggstackService : Service() {
                 yggstack?.start(socksAddress, dnsServer)
                 logInfo("Start() completed successfully")
 
-                // Get and store the Yggdrasil IP AFTER starting (with timeout to prevent hangs)
+                // Get and store the Yggdrasil IP AFTER starting
                 logDebug("Getting Yggdrasil IP address...")
                 try {
-                    val address = kotlinx.coroutines.withTimeout(5000L) {
-                        yggstack?.address
-                    }
+                    val address = yggstack?.getAddress()
                     _yggdrasilIp.value = address
                     logInfo("Yggdrasil IP: $address")
-                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    logWarn("WARNING: Timeout getting Yggdrasil IP (continuing anyway)")
-                    _yggdrasilIp.value = null
                 } catch (e: Exception) {
                     logError("WARNING: Failed to get Yggdrasil IP: ${e.message} (continuing anyway)")
                     _yggdrasilIp.value = null
