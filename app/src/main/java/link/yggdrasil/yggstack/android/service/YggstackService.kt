@@ -118,6 +118,21 @@ class YggstackService : Service() {
     private val _fullConfigJSON = MutableStateFlow<String>("")
     val fullConfigJSON: StateFlow<String> = _fullConfigJSON.asStateFlow()
 
+    // Low Power Mode state
+    private val _isInLowPowerMode = MutableStateFlow(false)
+    val isInLowPowerMode: StateFlow<Boolean> = _isInLowPowerMode.asStateFlow()
+
+    private val _connectionCount = MutableStateFlow(0)
+    val connectionCount: StateFlow<Int> = _connectionCount.asStateFlow()
+
+    private val _idleSeconds = MutableStateFlow(0)
+    val idleSeconds: StateFlow<Int> = _idleSeconds.asStateFlow()
+
+    // Low Power Mode components
+    private val connectionMonitor = ConnectionMonitor()
+    private val proxyServer = ProxySocketServer(serviceScope)
+    private lateinit var lowPowerModeManager: LowPowerModeManager
+
     /**
      * Truncate private key for security - shows only first 8 and last 8 characters
      */
@@ -160,6 +175,38 @@ class YggstackService : Service() {
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
         acquireWakeLock()
+        
+        // Initialize low power mode manager
+        lowPowerModeManager = LowPowerModeManager(connectionMonitor, proxyServer, serviceScope)
+        
+        // Set up low power mode callbacks
+        lowPowerModeManager.setOnStartNode {
+            // Start node without config (will use last config)
+            lastConfig?.let { config ->
+                startYggstack(config)
+            }
+        }
+        
+        lowPowerModeManager.setOnStopNode {
+            // Stop node for low power mode
+            stopYggstackForLowPower()
+        }
+        
+        lowPowerModeManager.setOnStateChanged { isInLowPower ->
+            // Update notification icon based on state
+            updateNotificationForPowerState(isInLowPower)
+            // Update state flow
+            _isInLowPowerMode.value = isInLowPower
+        }
+        
+        // Monitor connection count and idle time
+        serviceScope.launch {
+            while (true) {
+                _connectionCount.value = connectionMonitor.getActiveConnectionCount()
+                _idleSeconds.value = connectionMonitor.getIdleTimeSeconds().toInt()
+                kotlinx.coroutines.delay(1000)
+            }
+        }
         
         // Load logs enabled setting
         serviceScope.launch {
@@ -206,7 +253,11 @@ class YggstackService : Service() {
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra<YggstackConfigParcelable>(EXTRA_CONFIG)
                 }
-                config?.let { startYggstack(it.toYggstackConfig()) }
+                config?.let { 
+                    val yggConfig = it.toYggstackConfig()
+                    logInfo("Received config: lowPowerModeEnabled=${yggConfig.lowPowerModeEnabled}, lowPowerTimeoutSeconds=${yggConfig.lowPowerTimeoutSeconds}")
+                    startYggstack(yggConfig)
+                }
             }
             ACTION_STOP -> {
                 logInfo("onStartCommand: ACTION_STOP received")
@@ -334,6 +385,38 @@ class YggstackService : Service() {
                 currentLogLevel = logLevel
                 yggstack?.setLogLevel(logLevel)
                 logInfo("Log level: $logLevel")
+                
+                // Reset connection monitor for fresh start
+                connectionMonitor.clearAll()
+                
+                // Set up activity callback for connection tracking (always enabled for UI display)
+                yggstack?.setActivityCallback(object : link.yggdrasil.yggstack.mobile.ActivityCallback {
+                    override fun onConnectionCreated(connId: String, protocol: String) {
+                        serviceScope.launch {
+                            val protocolEnum = when (protocol.uppercase()) {
+                                "TCP" -> link.yggdrasil.yggstack.android.data.Protocol.TCP
+                                "UDP" -> link.yggdrasil.yggstack.android.data.Protocol.UDP
+                                else -> link.yggdrasil.yggstack.android.data.Protocol.TCP
+                            }
+                            connectionMonitor.trackConnection(connId, protocolEnum)
+                            logDebug("Connection created: $connId ($protocol)")
+                        }
+                    }
+                    
+                    override fun onDataTransferred(connId: String, bytesRx: Long, bytesTx: Long) {
+                        serviceScope.launch {
+                            connectionMonitor.updateActivity(connId, bytesRx, bytesTx)
+                        }
+                    }
+                    
+                    override fun onConnectionClosed(connId: String) {
+                        serviceScope.launch {
+                            connectionMonitor.closeConnection(connId)
+                            logDebug("Connection closed: $connId")
+                        }
+                    }
+                })
+                logInfo("Activity callback configured for connection tracking")
 
                 // Build config JSON (handles both new and existing private keys)
                 logDebug("Loading configuration...")
@@ -413,6 +496,11 @@ class YggstackService : Service() {
 
                 // Start monitoring for peer details subscriptions (lazy-load)
                 startPeerStatsSubscriptionMonitor()
+                
+                // Initialize low power mode if enabled
+                if (config.lowPowerModeEnabled) {
+                    initializeLowPowerMode(config)
+                }
 
             } catch (e: Exception) {
                 logError("ERROR starting Yggstack: ${e.message}")
@@ -493,6 +581,12 @@ class YggstackService : Service() {
                 _isTransitioning.value = true
 
                 logInfo("Stopping Yggstack...")
+                
+                // Disable low power mode if active
+                if (::lowPowerModeManager.isInitialized) {
+                    lowPowerModeManager.disable()
+                }
+                
                 _isRunning.value = false  // Set this first to stop the peer updater
                 
                 // Cancel peer stats jobs
@@ -524,6 +618,12 @@ class YggstackService : Service() {
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
                 _generatedPrivateKey.value = null
+                
+                // Clear connection monitor
+                connectionMonitor.clearAll()
+                
+                // Stop proxy server
+                proxyServer.shutdown()
                 
                 logInfo("Yggstack stopped")
                 
@@ -977,7 +1077,7 @@ class YggstackService : Service() {
         }
     }
 
-    private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int, showStopButton: Boolean = true): Notification {
+    private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int, showStopButton: Boolean = true, isLowPower: Boolean = false): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PendingIntent.FLAG_IMMUTABLE
@@ -1000,12 +1100,19 @@ class YggstackService : Service() {
                 append("\nPeers: $peerCount/$totalPeerCount")
             }
         }
+        
+        // Use different icon based on power state
+        val iconResource = if (isLowPower) {
+            R.drawable.ic_qs_tile_low_power  // Will create this
+        } else {
+            R.drawable.ic_qs_tile
+        }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Yggstack")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setSmallIcon(R.drawable.ic_qs_tile)
+            .setSmallIcon(iconResource)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -1035,8 +1142,8 @@ class YggstackService : Service() {
         return builder.build()
     }
 
-    private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
-        val notification = createNotification(status, peerCount, totalPeerCount)
+    private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int, isLowPower: Boolean = false) {
+        val notification = createNotification(status, peerCount, totalPeerCount, isLowPower = isLowPower)
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
@@ -1321,6 +1428,10 @@ class YggstackService : Service() {
                     })
                 }
                 put("forwardMappings", forwardMappingsArray)
+                
+                // Save low power mode settings
+                put("lowPowerModeEnabled", config.lowPowerModeEnabled)
+                put("lowPowerTimeoutSeconds", config.lowPowerTimeoutSeconds)
             }
             
             sharedPreferences.edit()
@@ -1395,7 +1506,9 @@ class YggstackService : Service() {
                     exposeEnabled = json.optBoolean("exposeEnabled", false),
                     forwardEnabled = json.optBoolean("forwardEnabled", false),
                     exposeMappings = exposeMappings,
-                    forwardMappings = forwardMappings
+                    forwardMappings = forwardMappings,
+                    lowPowerModeEnabled = json.optBoolean("lowPowerModeEnabled", false),
+                    lowPowerTimeoutSeconds = json.optInt("lowPowerTimeoutSeconds", 120)
                 )
                 
                 logInfo("Loaded config from SharedPreferences: ${peers.size} peer(s), key present=${lastConfig!!.privateKey.isNotBlank()}")
@@ -1405,6 +1518,78 @@ class YggstackService : Service() {
         } catch (e: Exception) {
             logError("ERROR loading config from SharedPreferences: ${e.message}")
             lastConfig = null
+        }
+    }
+    
+    /**
+     * Stop yggstack for low power mode transition (lightweight stop)
+     */
+    private suspend fun stopYggstackForLowPower() {
+        try {
+            logInfo("Stopping yggstack for low power mode")
+            
+            // Stop peer stats monitoring
+            peerStatsJob?.cancel()
+            peerStatsJob = null
+            peerStatsSubscriptionJob?.cancel()
+            peerStatsSubscriptionJob = null
+            
+            // Stop yggstack node
+            yggstack?.stop()
+            
+            // Set running to false so startYggstack can work
+            _isRunning.value = false
+            _peerCount.value = 0
+            _totalPeerCount.value = 0
+            
+            // Don't release locks - we want to wake quickly
+            // Don't unregister network callback - we want to detect changes
+            
+            logInfo("Yggstack stopped for low power mode")
+            
+        } catch (e: Exception) {
+            logError("Error stopping yggstack for low power mode: ${e.message}")
+            throw e
+        }
+    }
+    
+    /**
+     * Update notification icon based on power state
+     */
+    private fun updateNotificationForPowerState(isInLowPower: Boolean) {
+        val text = if (isInLowPower) {
+            "Waiting for connections (Low Power)"
+        } else {
+            _yggdrasilIp.value?.let { "Connected: $it" } ?: "Connected"
+        }
+        
+        val activeConnections = connectionMonitor.getActiveConnectionCount()
+        val queuedConnections = proxyServer.getQueuedConnectionCount()
+        
+        updateNotification(text, activeConnections, queuedConnections, isInLowPower)
+    }
+    
+    /**
+     * Initialize low power mode after service starts
+     */
+    private suspend fun initializeLowPowerMode(config: YggstackConfig) {
+        if (!config.lowPowerModeEnabled) {
+            return
+        }
+        
+        try {
+            logInfo("Initializing low power mode (timeout: ${config.lowPowerTimeoutSeconds}s)")
+            
+            // Enable low power mode (this starts idle monitoring)
+            lowPowerModeManager.enable(config.lowPowerTimeoutSeconds, config)
+            
+            // Note: Proxy listening will start automatically when transitioning to low power
+            // Don't start it here because ports are already in use by yggstack
+            
+            logInfo("Low power mode initialized successfully")
+            
+        } catch (e: Exception) {
+            logError("Failed to initialize low power mode: ${e.message}")
         }
     }
 

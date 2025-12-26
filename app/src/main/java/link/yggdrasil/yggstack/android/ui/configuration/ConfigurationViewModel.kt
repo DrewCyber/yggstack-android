@@ -41,6 +41,21 @@ class ConfigurationViewModel(
     private val _logsEnabled = MutableStateFlow(true)
     val logsEnabled: StateFlow<Boolean> = _logsEnabled.asStateFlow()
 
+    private val _lowPowerModeEnabled = MutableStateFlow(false)
+    val lowPowerModeEnabled: StateFlow<Boolean> = _lowPowerModeEnabled.asStateFlow()
+
+    private val _lowPowerTimeoutSeconds = MutableStateFlow(120)
+    val lowPowerTimeoutSeconds: StateFlow<Int> = _lowPowerTimeoutSeconds.asStateFlow()
+
+    private val _connectionCount = MutableStateFlow(0)
+    val connectionCount: StateFlow<Int> = _connectionCount.asStateFlow()
+
+    private val _idleSeconds = MutableStateFlow(0)
+    val idleSeconds: StateFlow<Int> = _idleSeconds.asStateFlow()
+
+    private val _isInLowPowerMode = MutableStateFlow(false)
+    val isInLowPowerMode: StateFlow<Boolean> = _isInLowPowerMode.asStateFlow()
+
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
 
@@ -82,8 +97,22 @@ class ConfigurationViewModel(
                 // Observe service state changes
                 viewModelScope.launch {
                     service.isRunning.collect { running ->
-                        // Update state based on actual service state
-                        _serviceState.value = if (running) {
+                        // Consider service running if node is running OR if in low power mode
+                        val isServiceActive = running || service.isInLowPowerMode.value
+                        _serviceState.value = if (isServiceActive) {
+                            ServiceState.Running
+                        } else {
+                            ServiceState.Stopped
+                        }
+                    }
+                }
+                
+                // Also observe low power mode changes
+                viewModelScope.launch {
+                    service.isInLowPowerMode.collect { isLowPower ->
+                        // Update service state when low power mode changes
+                        val isServiceActive = service.isRunning.value || isLowPower
+                        _serviceState.value = if (isServiceActive) {
                             ServiceState.Running
                         } else {
                             ServiceState.Stopped
@@ -119,6 +148,27 @@ class ConfigurationViewModel(
                             // Save the generated key to config
                             updateConfig(_config.value.copy(privateKey = key))
                         }
+                    }
+                }
+
+                // Observe low power mode state
+                viewModelScope.launch {
+                    service.isInLowPowerMode.collect { isLowPower ->
+                        _isInLowPowerMode.value = isLowPower
+                    }
+                }
+
+                // Observe connection count
+                viewModelScope.launch {
+                    service.connectionCount.collect { count ->
+                        _connectionCount.value = count
+                    }
+                }
+
+                // Observe idle time
+                viewModelScope.launch {
+                    service.idleSeconds.collect { seconds ->
+                        _idleSeconds.value = seconds
                     }
                 }
             }
@@ -212,6 +262,11 @@ class ConfigurationViewModel(
         val currentMappings = _config.value.exposeMappings.toMutableList()
         currentMappings.add(mapping)
         updateConfig(_config.value.copy(exposeMappings = currentMappings))
+        
+        // Disable low power mode if it was enabled
+        if (_config.value.lowPowerModeEnabled) {
+            setLowPowerModeEnabled(false)
+        }
     }
 
     fun removeExposeMapping(mapping: ExposeMapping) {
@@ -272,6 +327,19 @@ class ConfigurationViewModel(
         }
     }
 
+    fun setLowPowerModeEnabled(enabled: Boolean) {
+        val newConfig = _config.value.copy(
+            lowPowerModeEnabled = enabled,
+            // If enabling low power mode and expose local port is enabled, disable expose
+            exposeEnabled = if (enabled && _config.value.exposeEnabled) false else _config.value.exposeEnabled
+        )
+        updateConfig(newConfig)
+    }
+
+    fun setLowPowerTimeout(seconds: Int) {
+        updateConfig(_config.value.copy(lowPowerTimeoutSeconds = seconds))
+    }
+
     fun toggleShowPrivateKey() {
         _showPrivateKey.value = !_showPrivateKey.value
     }
@@ -284,6 +352,9 @@ class ConfigurationViewModel(
         viewModelScope.launch {
             _serviceState.value = ServiceState.Starting
             try {
+                // Log the config being passed to service
+                android.util.Log.d("ConfigViewModel", "Starting service with config: lowPowerModeEnabled=${_config.value.lowPowerModeEnabled}, lowPowerTimeoutSeconds=${_config.value.lowPowerTimeoutSeconds}")
+                
                 val intent = Intent(context, YggstackService::class.java).apply {
                     action = YggstackService.ACTION_START
                     putExtra(

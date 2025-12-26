@@ -94,5 +94,18 @@
     <string name="log_level_warn">Warn</string>
     <string name="log_level_info">Info</string>
     <string name="log_level_debug">Debug</string>
+
+    <!-- Power Management -->
+    <string name="power_management">Power Management</string>
+    <string name="idle_timeout">Idle Timeout</string>
+    <string name="power_state">Power State</string>
+    <string name="low_power">Low Power</string>
+    <string name="full_power">Full Power</string>
+    <string name="active_connections">Active Connections</string>
+    <string name="idle_time">Idle Time</string>
+    <string name="stopping_in">Stopping in %ds</string>
+    <string name="idle_for">Idle for %ds</string>
+    <string name="low_power_not_available_with_expose">Low Power Mode is not available when Expose Local Port is enabled</string>
 </resources>
+
 
