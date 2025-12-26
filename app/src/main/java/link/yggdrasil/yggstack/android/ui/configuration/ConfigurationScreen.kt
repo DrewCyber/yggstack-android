@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -120,7 +121,7 @@ fun ConfigurationScreen(
             // Peers Section with clickable header
             val context = LocalContext.current
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     // Clickable header
                     Surface(
                         onClick = {
@@ -200,29 +201,60 @@ fun ConfigurationScreen(
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    // Multicast Discovery Switch
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // Multicast Discovery title
+                    Text(
+                        text = stringResource(R.string.multicast_discovery),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    
+                    // Multicast switches - closer together
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.multicast_discovery),
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = config.multicastEnabled,
-                            onCheckedChange = { viewModel.setMulticastEnabled(it) },
-                            enabled = !isServiceRunning
-                        )
+                        // Discover Switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.multicast_discover),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Switch(
+                                checked = config.multicastListen,
+                                onCheckedChange = { viewModel.setMulticastListen(it) },
+                                enabled = !isServiceRunning,
+                                modifier = Modifier.scale(0.6f)
+                            )
+                        }
+                        
+                        // Advertise Switch
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .offset(y = (-8).dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.multicast_advertise),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Switch(
+                                checked = config.multicastBeacon,
+                                onCheckedChange = { viewModel.setMulticastBeacon(it) },
+                                enabled = !isServiceRunning,
+                                modifier = Modifier.scale(0.6f)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Proxy Configuration Section
             ConfigSectionWithToggle(
@@ -252,7 +284,7 @@ fun ConfigurationScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Expose Local Port Section
             ConfigSectionWithToggle(
@@ -285,7 +317,7 @@ fun ConfigurationScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Forward Remote Port Section
             ConfigSectionWithToggle(
@@ -318,7 +350,7 @@ fun ConfigurationScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Log Level Section
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -411,7 +443,7 @@ fun ConfigurationScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         // Start/Stop Button - Sticky at bottom

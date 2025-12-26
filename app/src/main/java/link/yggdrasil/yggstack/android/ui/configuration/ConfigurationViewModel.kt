@@ -258,8 +258,12 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(forwardEnabled = !_config.value.forwardEnabled))
     }
 
-    fun setMulticastEnabled(enabled: Boolean) {
-        updateConfig(_config.value.copy(multicastEnabled = enabled))
+    fun setMulticastBeacon(enabled: Boolean) {
+        updateConfig(_config.value.copy(multicastBeacon = enabled))
+    }
+
+    fun setMulticastListen(enabled: Boolean) {
+        updateConfig(_config.value.copy(multicastListen = enabled))
     }
 
     fun setLogLevel(level: String) {

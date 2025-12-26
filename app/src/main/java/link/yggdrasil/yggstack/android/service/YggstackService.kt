@@ -247,7 +247,7 @@ class YggstackService : Service() {
         // If service was running, restart it with the saved configuration
         if (_isRunning.value && lastConfig != null) {
             logInfo("Service was running - scheduling restart with saved config")
-            logInfo("Config has ${lastConfig!!.peers.size} peer(s), multicast=${lastConfig!!.multicastEnabled}")
+            logInfo("Config has ${lastConfig!!.peers.size} peer(s), beacon=${lastConfig!!.multicastBeacon}, listen=${lastConfig!!.multicastListen}")
             
             // Save running state to SharedPreferences
             sharedPreferences.edit().putBoolean(PREF_WAS_RUNNING, true).apply()
@@ -364,11 +364,11 @@ class YggstackService : Service() {
                 setupPortMappings(config)
 
                 // Acquire MulticastLock if multicast is enabled and we're on WiFi
-                if (config.multicastEnabled && checkNetworkType()) {
-                    logInfo("Multicast enabled and on WiFi - acquiring MulticastLock")
+                if ((config.multicastBeacon || config.multicastListen) && checkNetworkType()) {
+                    logInfo("Multicast enabled (beacon=${config.multicastBeacon}, listen=${config.multicastListen}) and on WiFi - acquiring MulticastLock")
                     isOnWifi = true
                     acquireMulticastLock()
-                } else if (config.multicastEnabled) {
+                } else if (config.multicastBeacon || config.multicastListen) {
                     logInfo("Multicast enabled but not on WiFi - MulticastLock not acquired")
                     isOnWifi = false
                 } else {
@@ -620,14 +620,25 @@ class YggstackService : Service() {
             }
             
             // Handle multicast discovery switch
-            if (!config.multicastEnabled) {
+            if (!config.multicastBeacon && !config.multicastListen) {
                 logInfo("Multicast discovery disabled - removing MulticastInterfaces")
                 finalConfig = finalConfig.replace(
                     Regex("\"MulticastInterfaces\":\\s*\\[[^\\]]*\\]"),
                     "\"MulticastInterfaces\": []"
                 )
             } else {
-                logInfo("Multicast discovery enabled - using default configuration")
+                logInfo("Multicast discovery enabled (beacon=${config.multicastBeacon}, listen=${config.multicastListen}) - using configured settings")
+                // Update the generated config with specific beacon/listen values
+                val beaconValue = config.multicastBeacon.toString().lowercase()
+                val listenValue = config.multicastListen.toString().lowercase()
+                finalConfig = finalConfig.replace(
+                    Regex("\"Beacon\":\\s*(true|false)"),
+                    "\"Beacon\": $beaconValue"
+                )
+                finalConfig = finalConfig.replace(
+                    Regex("\"Listen\":\\s*(true|false)"),
+                    "\"Listen\": $listenValue"
+                )
             }
 
             return finalConfig
@@ -654,13 +665,13 @@ class YggstackService : Service() {
             peersWithBackoff.joinToString("\", \"", "[\"", "\"]")
         }
 
-        val multicastInterfaces = if (config.multicastEnabled) {
-            logInfo("Multicast discovery enabled - using default configuration")
+        val multicastInterfaces = if (config.multicastBeacon || config.multicastListen) {
+            logInfo("Multicast discovery enabled (beacon=${config.multicastBeacon}, listen=${config.multicastListen})")
             """[
     {
       "Regex": ".*",
-      "Beacon": true,
-      "Listen": true,
+      "Beacon": ${config.multicastBeacon.toString().lowercase()},
+      "Listen": ${config.multicastListen.toString().lowercase()},
       "Password": ""
     }
   ]"""
@@ -1117,7 +1128,7 @@ class YggstackService : Service() {
     private fun handleMulticastForNetwork(isWifi: Boolean) {
         serviceScope.launch {
             try {
-                if (!_isRunning.value || lastConfig?.multicastEnabled != true) {
+                if (!_isRunning.value || (lastConfig?.multicastBeacon != true && lastConfig?.multicastListen != true)) {
                     return@launch
                 }
 
@@ -1276,7 +1287,8 @@ class YggstackService : Service() {
                 put("socksProxy", config.socksProxy)
                 put("dnsServer", config.dnsServer)
                 put("proxyEnabled", config.proxyEnabled)
-                put("multicastEnabled", config.multicastEnabled)
+                put("multicastBeacon", config.multicastBeacon)
+                put("multicastListen", config.multicastListen)
                 put("logLevel", config.logLevel)
                 put("exposeEnabled", config.exposeEnabled)
                 put("forwardEnabled", config.forwardEnabled)
@@ -1374,7 +1386,8 @@ class YggstackService : Service() {
                     socksProxy = json.optString("socksProxy", ""),
                     dnsServer = json.optString("dnsServer", ""),
                     proxyEnabled = json.optBoolean("proxyEnabled", false),
-                    multicastEnabled = json.optBoolean("multicastEnabled", true),
+                    multicastBeacon = json.optBoolean("multicastBeacon", true),
+                    multicastListen = json.optBoolean("multicastListen", true),
                     logLevel = json.optString("logLevel", "info"),
                     exposeEnabled = json.optBoolean("exposeEnabled", false),
                     forwardEnabled = json.optBoolean("forwardEnabled", false),

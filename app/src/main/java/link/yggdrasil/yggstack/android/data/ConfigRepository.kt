@@ -35,7 +35,8 @@ class ConfigRepository(private val context: Context) {
         private val THEME_KEY = stringPreferencesKey("theme")
         private val AUTOSTART_KEY = booleanPreferencesKey("autostart")
         private val AUTO_UPDATE_KEY = booleanPreferencesKey("auto_update")
-        private val MULTICAST_ENABLED = booleanPreferencesKey("multicast_enabled")
+        private val MULTICAST_BEACON = booleanPreferencesKey("multicast_beacon")
+        private val MULTICAST_LISTEN = booleanPreferencesKey("multicast_listen")
         private val LOG_LEVEL = stringPreferencesKey("log_level")
         private val LOGS_ENABLED = booleanPreferencesKey("logs_enabled")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
@@ -61,7 +62,8 @@ class ConfigRepository(private val context: Context) {
                 json.decodeFromString<List<ForwardMapping>>(it)
             } ?: emptyList(),
             forwardEnabled = preferences[FORWARD_ENABLED] ?: false,
-            multicastEnabled = preferences[MULTICAST_ENABLED] ?: true,
+            multicastBeacon = preferences[MULTICAST_BEACON] ?: false,
+            multicastListen = preferences[MULTICAST_LISTEN] ?: false,
             logLevel = preferences[LOG_LEVEL] ?: "error"
         )
     }
@@ -80,7 +82,8 @@ class ConfigRepository(private val context: Context) {
             preferences[EXPOSE_ENABLED] = config.exposeEnabled
             preferences[FORWARD_MAPPINGS] = json.encodeToString(config.forwardMappings)
             preferences[FORWARD_ENABLED] = config.forwardEnabled
-            preferences[MULTICAST_ENABLED] = config.multicastEnabled
+            preferences[MULTICAST_BEACON] = config.multicastBeacon
+            preferences[MULTICAST_LISTEN] = config.multicastListen
             preferences[LOG_LEVEL] = config.logLevel
         }
     }

@@ -18,7 +18,8 @@ data class YggstackConfig(
     val exposeEnabled: Boolean = false,
     val forwardMappings: List<ForwardMapping> = emptyList(),
     val forwardEnabled: Boolean = false,
-    val multicastEnabled: Boolean = false,
+    val multicastBeacon: Boolean = false,
+    val multicastListen: Boolean = false,
     val logLevel: String = "info"
 )
 
