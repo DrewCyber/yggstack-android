@@ -19,7 +19,11 @@ data class YggstackConfig(
     val forwardMappings: List<ForwardMapping> = emptyList(),
     val forwardEnabled: Boolean = false,
     val multicastEnabled: Boolean = false,
-    val logLevel: String = "info"
+    val logLevel: String = "info",
+    
+    // Low Power Mode settings
+    val lowPowerModeEnabled: Boolean = false,
+    val lowPowerTimeoutSeconds: Int = 120 // Default: 2 minutes
 )
 
 /**

@@ -39,6 +39,8 @@ class ConfigRepository(private val context: Context) {
         private val LOG_LEVEL = stringPreferencesKey("log_level")
         private val LOGS_ENABLED = booleanPreferencesKey("logs_enabled")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
+        private val LOW_POWER_MODE_ENABLED = booleanPreferencesKey("low_power_mode_enabled")
+        private val LOW_POWER_TIMEOUT_SECONDS = intPreferencesKey("low_power_timeout_seconds")
     }
 
     /**
@@ -62,7 +64,9 @@ class ConfigRepository(private val context: Context) {
             } ?: emptyList(),
             forwardEnabled = preferences[FORWARD_ENABLED] ?: false,
             multicastEnabled = preferences[MULTICAST_ENABLED] ?: true,
-            logLevel = preferences[LOG_LEVEL] ?: "error"
+            logLevel = preferences[LOG_LEVEL] ?: "error",
+            lowPowerModeEnabled = preferences[LOW_POWER_MODE_ENABLED] ?: false,
+            lowPowerTimeoutSeconds = preferences[LOW_POWER_TIMEOUT_SECONDS] ?: 120
         )
     }
 
@@ -82,6 +86,8 @@ class ConfigRepository(private val context: Context) {
             preferences[FORWARD_ENABLED] = config.forwardEnabled
             preferences[MULTICAST_ENABLED] = config.multicastEnabled
             preferences[LOG_LEVEL] = config.logLevel
+            preferences[LOW_POWER_MODE_ENABLED] = config.lowPowerModeEnabled
+            preferences[LOW_POWER_TIMEOUT_SECONDS] = config.lowPowerTimeoutSeconds
         }
     }
 

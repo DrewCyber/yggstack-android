@@ -19,7 +19,9 @@ data class YggstackConfigParcelable(
     val forwardMappings: List<ForwardMapping>,
     val forwardEnabled: Boolean,
     val multicastEnabled: Boolean,
-    val logLevel: String
+    val logLevel: String,
+    val lowPowerModeEnabled: Boolean,
+    val lowPowerTimeoutSeconds: Int
 ) : Parcelable {
 
     fun toYggstackConfig(): YggstackConfig {
@@ -34,7 +36,9 @@ data class YggstackConfigParcelable(
             forwardMappings = forwardMappings,
             forwardEnabled = forwardEnabled,
             multicastEnabled = multicastEnabled,
-            logLevel = logLevel
+            logLevel = logLevel,
+            lowPowerModeEnabled = lowPowerModeEnabled,
+            lowPowerTimeoutSeconds = lowPowerTimeoutSeconds
         )
     }
 
@@ -51,7 +55,9 @@ data class YggstackConfigParcelable(
                 forwardMappings = config.forwardMappings,
                 forwardEnabled = config.forwardEnabled,
                 multicastEnabled = config.multicastEnabled,
-                logLevel = config.logLevel
+                logLevel = config.logLevel,
+                lowPowerModeEnabled = config.lowPowerModeEnabled,
+                lowPowerTimeoutSeconds = config.lowPowerTimeoutSeconds
             )
         }
     }

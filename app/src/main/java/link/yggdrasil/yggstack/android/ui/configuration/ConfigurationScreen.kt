@@ -412,6 +412,208 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Power Management Section
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    val connectionCount by viewModel.connectionCount.collectAsState()
+                    val idleSeconds by viewModel.idleSeconds.collectAsState()
+                    val isInLowPower by viewModel.isInLowPowerMode.collectAsState()
+                    
+                    // Title with toggle on same row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.power_management),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Switch(
+                            checked = config.lowPowerModeEnabled,
+                            onCheckedChange = { viewModel.setLowPowerModeEnabled(it) },
+                            enabled = !isServiceRunning
+                        )
+                    }
+                    
+                    // Timeout selector buttons
+                    if (config.lowPowerModeEnabled) {
+                        Text(
+                            text = stringResource(R.string.idle_timeout),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                        ) {
+                            val timeouts = listOf(10, 60, 120, 180, 300)
+                            val timeoutLabels = mapOf(
+                                10 to "10s",
+                                60 to "1m",
+                                120 to "2m",
+                                180 to "3m",
+                                300 to "5m"
+                            )
+                            
+                            timeouts.forEachIndexed { index, timeout ->
+                                Button(
+                                    onClick = { viewModel.setLowPowerTimeout(timeout) },
+                                    enabled = !isServiceRunning,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (config.lowPowerTimeoutSeconds == timeout) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        },
+                                        contentColor = if (config.lowPowerTimeoutSeconds == timeout) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        disabledContainerColor = if (config.lowPowerTimeoutSeconds == timeout) {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        },
+                                        disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
+                                    ),
+                                    shape = when (index) {
+                                        0 -> MaterialTheme.shapes.small.copy(
+                                            topEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
+                                            bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp)
+                                        )
+                                        timeouts.size - 1 -> MaterialTheme.shapes.small.copy(
+                                            topStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+                                            bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp)
+                                        )
+                                        else -> androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(
+                                        text = timeoutLabels[timeout] ?: "${timeout}s",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Status display
+                        if (isServiceRunning) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isInLowPower) {
+                                        MaterialTheme.colorScheme.tertiaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    }
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.power_state),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Text(
+                                            text = if (isInLowPower) {
+                                                stringResource(R.string.low_power)
+                                            } else {
+                                                stringResource(R.string.full_power)
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isInLowPower) {
+                                                MaterialTheme.colorScheme.tertiary
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
+                                            }
+                                        )
+                                    }
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.active_connections),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Text(
+                                            text = "$connectionCount",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    
+                                    if (!isInLowPower && connectionCount == 0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.idle_time),
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            val remainingSeconds = config.lowPowerTimeoutSeconds - idleSeconds
+                                            Text(
+                                                text = if (remainingSeconds > 0) {
+                                                    stringResource(R.string.stopping_in, remainingSeconds)
+                                                } else {
+                                                    stringResource(R.string.idle_for, idleSeconds)
+                                                },
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Warning if expose local port is enabled
+                        if (config.exposeEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.low_power_not_available_with_expose),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         // Start/Stop Button - Sticky at bottom
