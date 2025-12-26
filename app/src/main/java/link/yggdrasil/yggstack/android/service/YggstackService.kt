@@ -1086,14 +1086,27 @@ class YggstackService : Service() {
     private fun acquireWifiLock() {
         try {
             if (wifiLock == null) {
+                // Use high-performance mode if multicast is enabled (beacon or listen)
+                // to prevent WiFi power-save from dropping multicast packets
+                val lockMode = if (lastConfig?.multicastBeacon == true || lastConfig?.multicastListen == true) {
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                } else {
+                    WifiManager.WIFI_MODE_FULL
+                }
+                
                 wifiLock = wifiManager.createWifiLock(
-                    WifiManager.WIFI_MODE_FULL,
+                    lockMode,
                     "YggstackService::WifiLock"
                 )
             }
             if (wifiLock?.isHeld == false) {
                 wifiLock?.acquire()
-                logInfo("WiFi lock acquired - preventing WiFi sleep")
+                val mode = if (lastConfig?.multicastBeacon == true || lastConfig?.multicastListen == true) {
+                    "high-performance mode for multicast"
+                } else {
+                    "standard mode"
+                }
+                logInfo("WiFi lock acquired ($mode) - preventing WiFi sleep")
             }
         } catch (e: Exception) {
             logError("Failed to acquire WiFi lock: ${e.message}")
