@@ -13,10 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -31,10 +29,8 @@ fun ConfigurationScreen(
 ) {
     val config by viewModel.config.collectAsState()
     val serviceState by viewModel.serviceState.collectAsState()
-    val yggdrasilIp by viewModel.yggdrasilIp.collectAsState()
     val showPrivateKey by viewModel.showPrivateKey.collectAsState()
     val savedScrollPosition by viewModel.scrollPosition.collectAsState()
-    val clipboardManager = LocalClipboardManager.current
 
     var peerInput by remember { mutableStateOf("") }
     var editingPeer by remember { mutableStateOf<String?>(null) }
@@ -90,27 +86,6 @@ fun ConfigurationScreen(
                                 else
                                     stringResource(R.string.show_private_key)
                             )
-                        }
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Yggdrasil IP Section
-            ConfigSection(title = stringResource(R.string.yggdrasil_ip_section)) {
-                OutlinedTextField(
-                    value = yggdrasilIp ?: stringResource(R.string.not_connected),
-                    onValueChange = { },
-                    modifier = Modifier.fillMaxWidth(),
-                    readOnly = true,
-                    trailingIcon = {
-                        if (yggdrasilIp != null) {
-                            IconButton(onClick = {
-                                clipboardManager.setText(AnnotatedString(yggdrasilIp!!))
-                            }) {
-                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.copy_ip))
-                            }
                         }
                     }
                 )

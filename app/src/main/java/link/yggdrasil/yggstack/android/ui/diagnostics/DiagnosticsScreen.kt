@@ -525,6 +525,8 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val peerCount by viewModel.peerCount.collectAsState()
     val totalPeerCount by viewModel.totalPeerCount.collectAsState()
     val peerDetails by viewModel.peerDetails.collectAsState()
+    val yggdrasilIp by viewModel.yggdrasilIp.collectAsState()
+    val context = LocalContext.current
 
     // Only collect peer details when this tab is visible and service is running
     LaunchedEffect(isVisible, isServiceRunning) {
@@ -539,6 +541,26 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        // Yggdrasil IP Section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = stringResource(R.string.yggdrasil_ip_section),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = yggdrasilIp ?: context.getString(R.string.not_connected),
+                    onValueChange = { },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    singleLine = true,
+                    isError = yggdrasilIp == null && isServiceRunning
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(

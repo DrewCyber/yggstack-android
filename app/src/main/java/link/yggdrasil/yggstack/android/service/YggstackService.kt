@@ -891,6 +891,14 @@ class YggstackService : Service() {
                     // Double-check service is still running before updating
                     if (!_isRunning.value) break
                     
+                    // Update Yggdrasil IP address
+                    try {
+                        val address = yggstack?.address
+                        _yggdrasilIp.value = address
+                    } catch (e: Exception) {
+                        logError("Error fetching Yggdrasil IP: ${e.message}")
+                    }
+                    
                     val peersJson = yggstack?.getPeersJSON()
                     if (peersJson != null) {
                         _peerDetailsJSON.emit(peersJson)

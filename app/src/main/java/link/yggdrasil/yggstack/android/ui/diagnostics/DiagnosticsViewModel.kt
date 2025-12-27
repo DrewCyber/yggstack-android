@@ -55,6 +55,9 @@ class DiagnosticsViewModel(
     private val _peerDetails = MutableStateFlow<List<link.yggdrasil.yggstack.android.data.PeerDetail>>(emptyList())
     val peerDetails: StateFlow<List<link.yggdrasil.yggstack.android.data.PeerDetail>> = _peerDetails.asStateFlow()
 
+    private val _yggdrasilIp = MutableStateFlow<String?>(null)
+    val yggdrasilIp: StateFlow<String?> = _yggdrasilIp.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -86,6 +89,11 @@ class DiagnosticsViewModel(
                 viewModelScope.launch {
                     service.totalPeerCount.collect { count ->
                         _totalPeerCount.value = count
+                    }
+                }
+                viewModelScope.launch {
+                    service.yggdrasilIp.collect { ip ->
+                        _yggdrasilIp.value = ip
                     }
                 }
                 // Note: peerDetailsJSON collection moved to PeerStatus composable

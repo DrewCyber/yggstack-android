@@ -41,7 +41,7 @@
 
     <!-- Diagnostics Screen -->
     <string name="tab_config">Config</string>
-    <string name="tab_peers">Peers</string>
+    <string name="tab_peers">Status</string>
     <string name="tab_logs">Logs</string>
 
     <!-- Settings Screen -->
