@@ -485,39 +485,47 @@ class YggstackService : Service() {
                 _isTransitioning.value = true
 
                 logInfo("Stopping Yggstack...")
-                _isRunning.value = false  // Set this first to stop the peer updater
+                // NOTE: Keep _isRunning = true during stop so UI shows correct state
+                // It will be set to false in the finally block after everything completes
                 
-                // Cancel peer stats jobs
-                peerStatsJob?.cancel()
-                peerStatsJob = null
-                peerStatsSubscriptionJob?.cancel()
-                peerStatsSubscriptionJob = null
-                
-                // Unregister network callback
-                unregisterNetworkCallback()
-                
-                // Release WiFi lock if held
-                releaseWifiLock()
-                
-                // Release MulticastLock if held
-                releaseMulticastLock()
-                
-                // Stop yggstack with 5-second timeout
+                // Wrap entire stop operation with safety timeout
                 try {
-                    kotlinx.coroutines.withTimeout(5000L) {
+                    kotlinx.coroutines.withTimeout(3000L) {
+                        // Cancel peer stats jobs
+                        peerStatsJob?.cancel()
+                        peerStatsJob = null
+                        peerStatsSubscriptionJob?.cancel()
+                        peerStatsSubscriptionJob = null
+                        
+                        // Unregister network callback
+                        unregisterNetworkCallback()
+                        
+                        // Release WiFi lock if held
+                        releaseWifiLock()
+                        
+                        // Release MulticastLock if held
+                        releaseMulticastLock()
+                        
+                        // Stop yggstack
                         yggstack?.stop()
+                        yggstack = null
+                        
+                        _yggdrasilIp.value = null
+                        _peerCount.value = 0
+                        _totalPeerCount.value = 0
+                        _generatedPrivateKey.value = null
+                        
+                        logInfo("Yggstack stopped")
                     }
                 } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    logWarn("WARNING: Yggstack stop timed out after 5 seconds - forcing cleanup")
+                    logWarn("WARNING: Stop operation timed out after 3 seconds - forcing cleanup")
+                    // Force cleanup on timeout
+                    yggstack = null
+                    _yggdrasilIp.value = null
+                    _peerCount.value = 0
+                    _totalPeerCount.value = 0
+                    _generatedPrivateKey.value = null
                 }
-                yggstack = null
-                
-                _yggdrasilIp.value = null
-                _peerCount.value = 0
-                _totalPeerCount.value = 0
-                _generatedPrivateKey.value = null
-                
-                logInfo("Yggstack stopped")
                 
                 // Cancel the notification
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -534,7 +542,6 @@ class YggstackService : Service() {
                 logError("Error stopping Yggstack: ${e.message}")
                 // Force cleanup even on error
                 yggstack = null
-                _isRunning.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
@@ -551,11 +558,14 @@ class YggstackService : Service() {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
             } finally {
-                logInfo("Cleanup: Releasing stop operation mutex and resetting transitioning state")
+                // IMPORTANT: Set _isRunning = false here, AFTER everything is truly stopped
+                // This ensures UI doesn't show "Start" button until stop is complete
+                _isRunning.value = false
                 _isTransitioning.value = false
                 hasNoNetwork = false  // Reset network state
+                logInfo("Cleanup: Releasing stop operation mutex and resetting transitioning state")
                 operationMutex.unlock()
-                logInfo("Stop operation mutex released, transitioning state reset")
+                logInfo("Stop operation complete - state set to stopped")
             }
         }
     }
