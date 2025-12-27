@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -67,6 +69,9 @@ class YggstackService : Service() {
     private val _isTransitioning = MutableStateFlow(false)
     val isTransitioning: StateFlow<Boolean> = _isTransitioning.asStateFlow()
     private val operationMutex = kotlinx.coroutines.sync.Mutex()
+    
+    // Screen state monitoring
+    private var screenStateReceiver: BroadcastReceiver? = null
     
     // Network connectivity monitoring
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -157,6 +162,8 @@ class YggstackService : Service() {
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
         acquireWakeLock()
+        registerScreenStateReceiver()
+        verifyPermissions()
         
         // Load logs enabled setting
         serviceScope.launch {
@@ -231,6 +238,8 @@ class YggstackService : Service() {
     override fun onDestroy() {
         logInfo("=== YggstackService onDestroy - service being destroyed ===")
         super.onDestroy()
+        unregisterScreenStateReceiver()
+        unregisterNetworkCallback()
         stopYggstack()
         releaseMulticastLock()
         releaseWakeLock()
@@ -1426,6 +1435,81 @@ class YggstackService : Service() {
             logError("ERROR loading config from SharedPreferences: ${e.message}")
             lastConfig = null
         }
+    }
+
+    private fun registerScreenStateReceiver() {
+        try {
+            screenStateReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    when (intent?.action) {
+                        Intent.ACTION_SCREEN_OFF -> {
+                            logDebug("Screen off - device screen locked")
+                        }
+                        Intent.ACTION_SCREEN_ON -> {
+                            logDebug("Screen on - device screen unlocked")
+                        }
+                    }
+                }
+            }
+            
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            }
+            
+            registerReceiver(screenStateReceiver, filter)
+            logInfo("Screen state receiver registered")
+        } catch (e: Exception) {
+            logError("Failed to register screen state receiver: ${e.message}")
+        }
+    }
+
+    private fun unregisterScreenStateReceiver() {
+        try {
+            screenStateReceiver?.let {
+                unregisterReceiver(it)
+                screenStateReceiver = null
+                logInfo("Screen state receiver unregistered")
+            }
+        } catch (e: Exception) {
+            logError("Error unregistering screen state receiver: ${e.message}")
+        }
+    }
+
+    private fun verifyPermissions() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        // Check battery optimization
+        val batteryOptimized = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            !powerManager.isIgnoringBatteryOptimizations(packageName)
+        } else {
+            false
+        }
+        
+        // Check notification permission
+        val notificationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            notificationManager.areNotificationsEnabled()
+        } else {
+            true // Assume enabled on older versions
+        }
+        
+        // Log permission status
+        logInfo("=== Permission Verification ===")
+        if (batteryOptimized) {
+            logWarn("⚠️ Battery optimization is ENABLED - service may be killed when screen is off")
+            logWarn("   Please disable battery optimization for this app in Settings")
+        } else {
+            logInfo("✓ Battery optimization is disabled - service can run unrestricted")
+        }
+        
+        if (!notificationsEnabled) {
+            logWarn("⚠️ Notifications are DISABLED - user won't see service status")
+            logWarn("   Please enable notifications for this app in Settings")
+        } else {
+            logInfo("✓ Notifications are enabled")
+        }
+        logInfo("================================")
     }
 
     companion object {
