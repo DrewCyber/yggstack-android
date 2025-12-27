@@ -90,7 +90,10 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
             ) { page ->
                 when (page) {
                     0 -> ConfigViewer(viewModel)
-                    1 -> PeerStatus(viewModel)
+                    1 -> PeerStatus(
+                        viewModel = viewModel,
+                        isVisible = pagerState.currentPage == 1
+                    )
                     2 -> LogsViewer(viewModel)
                 }
             }
@@ -517,11 +520,18 @@ fun ImportPreviewDialog(
 }
 
 @Composable
-fun PeerStatus(viewModel: DiagnosticsViewModel) {
+fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val isServiceRunning by viewModel.isServiceRunning.collectAsState()
     val peerCount by viewModel.peerCount.collectAsState()
     val totalPeerCount by viewModel.totalPeerCount.collectAsState()
     val peerDetails by viewModel.peerDetails.collectAsState()
+
+    // Only collect peer details when this tab is visible and service is running
+    LaunchedEffect(isVisible, isServiceRunning) {
+        if (isVisible && isServiceRunning) {
+            viewModel.collectPeerDetails()
+        }
+    }
 
     Column(
         modifier = Modifier

@@ -88,11 +88,8 @@ class DiagnosticsViewModel(
                         _totalPeerCount.value = count
                     }
                 }
-                viewModelScope.launch {
-                    service.peerDetailsJSON.collect { json ->
-                        _peerDetails.value = parsePeerDetails(json)
-                    }
-                }
+                // Note: peerDetailsJSON collection moved to PeerStatus composable
+                // to make it lifecycle-aware (only collect when Peers tab is visible)
                 viewModelScope.launch {
                     service.fullConfigJSON.collect { configJson ->
                         _currentConfig.value = configJson
@@ -245,6 +242,16 @@ class DiagnosticsViewModel(
             peers.sortedBy { it.uri }
         } catch (e: JSONException) {
             emptyList()
+        }
+    }
+
+    /**
+     * Collects peer details from service. Should be called from composables with LaunchedEffect
+     * to tie subscription lifecycle to composable visibility.
+     */
+    suspend fun collectPeerDetails() {
+        yggstackService?.peerDetailsJSON?.collect { json ->
+            _peerDetails.value = parsePeerDetails(json)
         }
     }
 
