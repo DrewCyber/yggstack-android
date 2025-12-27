@@ -1502,6 +1502,13 @@ class YggstackService : Service() {
             true // Assume enabled on older versions
         }
         
+        // Check MIUI autostart permission
+        val miuiAutostart = try {
+            xyz.kumaraswamy.autostart.Autostart.getSafeState(this)
+        } catch (e: Exception) {
+            null // Not MIUI or error checking
+        }
+        
         // Log permission status
         logInfo("=== Permission Verification ===")
         if (batteryOptimized) {
@@ -1516,6 +1523,15 @@ class YggstackService : Service() {
             logWarn("   Please enable notifications for this app in Settings")
         } else {
             logInfo("✓ Notifications are enabled")
+        }
+        
+        if (miuiAutostart != null) {
+            if (miuiAutostart) {
+                logInfo("✓ MIUI Autostart is ENABLED")
+            } else {
+                logWarn("⚠️ MIUI Autostart is DISABLED - service may not restart after reboot")
+                logWarn("   Please enable autostart for this app in MIUI Security settings")
+            }
         }
         logInfo("================================")
     }

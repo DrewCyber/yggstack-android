@@ -170,6 +170,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // Disable dependencies info reporting for Google Play policy
+    // (MIUI autostart library uses hidden APIs)
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 dependencies {
@@ -199,6 +206,9 @@ dependencies {
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
+    // MIUI Autostart permission check
+    implementation("com.github.XomaDev:MIUI-autostart:v1.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
