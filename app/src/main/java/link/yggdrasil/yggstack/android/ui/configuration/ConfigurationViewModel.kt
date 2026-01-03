@@ -195,6 +195,10 @@ class ConfigurationViewModel(
     fun updatePrivateKey(privateKey: String) {
         updateConfig(_config.value.copy(privateKey = privateKey))
     }
+    
+    fun updatePeerSelectionMode(mode: link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode) {
+        updateConfig(_config.value.copy(peerSelectionMode = mode))
+    }
 
     fun updateSocksProxy(proxy: String) {
         updateConfig(_config.value.copy(socksProxy = proxy))
