@@ -67,8 +67,12 @@ fun MainScreen() {
     val configViewModel: ConfigurationViewModel = viewModel(
         factory = ConfigurationViewModel.Factory(repository, context)
     )
+    
+    // Create PeerRepository as remember to persist across recompositions
+    val peerRepository = remember { link.yggdrasil.yggstack.android.data.peer.PeerRepository(context) }
 
     var selectedScreen by remember { mutableStateOf(0) }
+    var showPeerDiscovery by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var permissionsChecked by remember { mutableStateOf(false) }
     var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
@@ -196,10 +200,25 @@ fun MainScreen() {
                 .padding(innerPadding),
             color = MaterialTheme.colorScheme.background
         ) {
-            when (selectedScreen) {
-                0 -> ConfigurationScreen(viewModel = configViewModel)
-                1 -> DiagnosticsScreen()
-                2 -> SettingsScreen()
+            if (showPeerDiscovery) {
+                val peerViewModel: link.yggdrasil.yggstack.android.ui.peers.PeerDiscoveryViewModel = viewModel(
+                    factory = link.yggdrasil.yggstack.android.ui.peers.PeerDiscoveryViewModel.Factory(
+                        context, peerRepository, repository
+                    )
+                )
+                link.yggdrasil.yggstack.android.ui.peers.PeerDiscoveryScreen(
+                    viewModel = peerViewModel,
+                    onNavigateBack = { showPeerDiscovery = false }
+                )
+            } else {
+                when (selectedScreen) {
+                    0 -> ConfigurationScreen(
+                        viewModel = configViewModel,
+                        onNavigateToPeerDiscovery = { showPeerDiscovery = true }
+                    )
+                    1 -> DiagnosticsScreen()
+                    2 -> SettingsScreen()
+                }
             }
         }
     }

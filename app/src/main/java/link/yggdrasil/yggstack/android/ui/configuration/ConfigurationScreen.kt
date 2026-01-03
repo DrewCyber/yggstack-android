@@ -25,6 +25,7 @@ import link.yggdrasil.yggstack.android.data.*
 @Composable
 fun ConfigurationScreen(
     viewModel: ConfigurationViewModel,
+    onNavigateToPeerDiscovery: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val config by viewModel.config.collectAsState()
@@ -125,65 +126,176 @@ fun ConfigurationScreen(
                         }
                     }
                     
-                    config.peers.forEach { peer ->
-                        PeerItem(
-                            peer = peer,
-                            enabled = !isServiceRunning,
-                            onEdit = {
-                                editingPeer = peer
-                                peerInput = peer
-                            },
-                            onDelete = { viewModel.removePeer(peer) }
-                        )
-                    }
-
-                    if (!isServiceRunning) {
-                        OutlinedTextField(
-                            value = peerInput,
-                            onValueChange = { peerInput = it },
-                            label = { Text(if (editingPeer != null) "Edit Peer" else stringResource(R.string.peer_uri_hint)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            trailingIcon = {
-                                Row {
-                                    if (editingPeer != null) {
-                                        IconButton(onClick = {
-                                            editingPeer = null
-                                            peerInput = ""
-                                        }) {
-                                            Icon(Icons.Default.Close, contentDescription = "Cancel")
-                                        }
-                                    }
-                                    IconButton(onClick = {
-                                        if (peerInput.isNotBlank()) {
-                                            if (editingPeer != null) {
-                                                viewModel.updatePeer(editingPeer!!, peerInput)
-                                                editingPeer = null
-                                            } else {
-                                                viewModel.addPeer(peerInput)
-                                            }
-                                            peerInput = ""
-                                        }
-                                    }) {
-                                        Icon(
-                                            if (editingPeer != null) Icons.Default.Check else Icons.Default.Add,
-                                            contentDescription = if (editingPeer != null) "Update" else stringResource(R.string.add_peer)
-                                        )
-                                    }
-                                }
-                            }
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Multicast Discovery title
+                    // Peer Selection Mode
                     Text(
-                        text = stringResource(R.string.multicast_discovery),
+                        text = "Peer Selection Mode",
                         style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                     
-                    // Multicast switches - closer together
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.AUTO,
+                            onClick = { 
+                                if (!isServiceRunning) {
+                                    viewModel.updatePeerSelectionMode(link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.AUTO)
+                                }
+                            },
+                            label = { Text("AUTO") },
+                            enabled = !isServiceRunning,
+                            leadingIcon = if (config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.AUTO) {
+                                { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                            } else null,
+                            modifier = Modifier.weight(1f)
+                        )
+                        
+                        FilterChip(
+                            selected = config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.MANUAL,
+                            onClick = { 
+                                if (!isServiceRunning) {
+                                    viewModel.updatePeerSelectionMode(link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.MANUAL)
+                                }
+                            },
+                            label = { Text("MANUAL") },
+                            enabled = !isServiceRunning,
+                            leadingIcon = if (config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.MANUAL) {
+                                { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                            } else null,
+                            modifier = Modifier.weight(1f)
+                        )
+                        
+                        FilterChip(
+                            selected = config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.CUSTOM,
+                            onClick = { 
+                                if (!isServiceRunning) {
+                                    viewModel.updatePeerSelectionMode(link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.CUSTOM)
+                                }
+                            },
+                            label = { Text("CUSTOM") },
+                            enabled = !isServiceRunning,
+                            leadingIcon = if (config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.CUSTOM) {
+                                { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                            } else null,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Show button to peer discovery in MANUAL mode
+                    if (config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.MANUAL) {
+                        Button(
+                            onClick = onNavigateToPeerDiscovery,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isServiceRunning
+                        ) {
+                            Icon(Icons.Default.List, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Manage Public Peers")
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    
+                    // Show AUTO mode info
+                    if (config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.AUTO) {
+                        config.lastAutoSelectedPeer?.let { peer ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        "Auto-selected peer:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        peer,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                    
+                    // Show peer list only in CUSTOM mode
+                    if (config.peerSelectionMode == link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode.CUSTOM) {
+                        config.peers.forEach { peer ->
+                            PeerItem(
+                                peer = peer,
+                                enabled = !isServiceRunning,
+                                onEdit = {
+                                    editingPeer = peer
+                                    peerInput = peer
+                                },
+                                onDelete = { viewModel.removePeer(peer) }
+                            )
+                        }
+
+                        if (!isServiceRunning) {
+                            OutlinedTextField(
+                                value = peerInput,
+                                onValueChange = { peerInput = it },
+                                label = { Text(if (editingPeer != null) "Edit Peer" else stringResource(R.string.peer_uri_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = {
+                                    Row {
+                                        if (editingPeer != null) {
+                                            IconButton(onClick = {
+                                                editingPeer = null
+                                                peerInput = ""
+                                            }) {
+                                                Icon(Icons.Default.Close, contentDescription = "Cancel")
+                                            }
+                                        }
+                                        IconButton(onClick = {
+                                            if (peerInput.isNotBlank()) {
+                                                if (editingPeer != null) {
+                                                    viewModel.updatePeer(editingPeer!!, peerInput)
+                                                    editingPeer = null
+                                                } else {
+                                                    viewModel.addPeer(peerInput)
+                                                }
+                                                peerInput = ""
+                                            }
+                                        }) {
+                                            Icon(
+                                                if (editingPeer != null) Icons.Default.Check else Icons.Default.Add,
+                                                contentDescription = if (editingPeer != null) "Update" else stringResource(R.string.add_peer)
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Local Link Section
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Local Link",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Multicast switches
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -196,13 +308,13 @@ fun ConfigurationScreen(
                         ) {
                             Text(
                                 text = stringResource(R.string.multicast_discover),
-                                style = MaterialTheme.typography.bodySmall
+                                style = MaterialTheme.typography.bodyMedium
                             )
                             Switch(
                                 checked = config.multicastListen,
                                 onCheckedChange = { viewModel.setMulticastListen(it) },
                                 enabled = !isServiceRunning,
-                                modifier = Modifier.scale(0.6f)
+                                modifier = Modifier.scale(0.7f)
                             )
                         }
                         
@@ -216,13 +328,13 @@ fun ConfigurationScreen(
                         ) {
                             Text(
                                 text = stringResource(R.string.multicast_advertise),
-                                style = MaterialTheme.typography.bodySmall
+                                style = MaterialTheme.typography.bodyMedium
                             )
                             Switch(
                                 checked = config.multicastBeacon,
                                 onCheckedChange = { viewModel.setMulticastBeacon(it) },
                                 enabled = !isServiceRunning,
-                                modifier = Modifier.scale(0.6f)
+                                modifier = Modifier.scale(0.7f)
                             )
                         }
                     }

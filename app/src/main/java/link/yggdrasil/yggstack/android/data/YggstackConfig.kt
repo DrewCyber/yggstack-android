@@ -3,6 +3,7 @@ package link.yggdrasil.yggstack.android.data
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
+import link.yggdrasil.yggstack.android.data.peer.PeerSelectionMode
 
 /**
  * Configuration model for Yggstack
@@ -20,7 +21,11 @@ data class YggstackConfig(
     val forwardEnabled: Boolean = false,
     val multicastBeacon: Boolean = false,
     val multicastListen: Boolean = false,
-    val logLevel: String = "info"
+    val logLevel: String = "info",
+    
+    // Peer discovery settings
+    val peerSelectionMode: PeerSelectionMode = PeerSelectionMode.CUSTOM,
+    val lastAutoSelectedPeer: String? = null
 )
 
 /**
