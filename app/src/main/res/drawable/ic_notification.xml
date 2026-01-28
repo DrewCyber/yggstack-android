@@ -2,17 +2,52 @@
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
-    android:viewportHeight="24">
-    <!-- Background circle -->
+    android:viewportHeight="24"
+    android:tint="?android:attr/colorControlNormal">
+
+    <!-- Frame (outline only) -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2z"/>
-    <!-- Y letter -->
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.5"
+        android:strokeLineJoin="round"
+        android:pathData="
+            M4,2
+            H14
+            A2,2 0 0 1 16,4
+            V8
+            H20
+            A2,2 0 0 1 22,10
+            V20
+            A2,2 0 0 1 20,22
+            H10
+            A2,2 0 0 1 8,20
+            V16
+            H4
+            A2,2 0 0 1 2,14
+            V4
+            A2,2 0 0 1 4,2
+            Z" />
+
+    <!-- Y -->
     <path
-        android:fillColor="#000000"
-        android:pathData="M8,7 L10,7 L12,10 L14,7 L16,7 L12.5,12 L12.5,17 L11.5,17 L11.5,12 Z"/>
-    <!-- S letter -->
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="
+            M6,6 L9,9 L12,6
+            M9,9 L9,13" />
+
+    <!-- S (ещё левее) -->
     <path
-        android:fillColor="#000000"
-        android:pathData="M15,11 Q15,10 16,10 Q17,10 17,11 Q17,12 16,12 Q17,12 17,13 Q17,14 16,14 Q15,14 15,13 L16,13 Q16,13.5 16,13.5 Q16.5,13.5 16.5,13 Q16.5,12.5 16,12.5 Q15.5,12.5 15.5,12 Q15.5,11.5 16,11.5 Q16.5,11.5 16.5,12 L15.5,12 Q15.5,11.5 15.5,11.5 Q15,11.5 15,11 Z"/>
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="
+            M16.7,13
+            C16.7,11.7 13.7,11.7 13.7,13
+            C13.7,15 16.7,15.5 16.7,17
+            C16.7,18.3 13.7,18.3 13.7,17" />
+
 </vector>

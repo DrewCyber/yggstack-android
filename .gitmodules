@@ -2,3 +2,6 @@
 	path = lib/yggstack
 	url = ../yggstack
 	branch = mobile-bindings-ai
+[submodule "lib/yggdrasil-go"]
+	path = lib/yggdrasil-go
+	url = git@github.com:yggdrasil-network/yggdrasil-go.git

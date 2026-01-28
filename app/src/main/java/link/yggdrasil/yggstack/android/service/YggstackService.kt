@@ -169,6 +169,27 @@ class YggstackService : Service() {
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
     }
+    
+    /**
+     * Callback implementation for peer state changes from yggstack
+     */
+    inner class PeerChangeCallbackImpl : link.yggdrasil.yggstack.mobile.PeerChangeCallback {
+        override fun onPeerCountChanged(connected: Long, total: Long) {
+            serviceScope.launch {
+                val connectedInt = connected.toInt()
+                val totalInt = total.toInt()
+                
+                logDebug("Peer count changed: connected=$connectedInt, total=$totalInt")
+                
+                _peerCount.value = connectedInt
+                _totalPeerCount.value = totalInt
+                
+                if (_isRunning.value) {
+                    updateNotificationWithIcon(connectedInt, totalInt)
+                }
+            }
+        }
+    }
 
     fun clearLogs() {
         serviceScope.launch {
@@ -266,6 +287,22 @@ class YggstackService : Service() {
         stopYggstack()
         releaseMulticastLock()
         releaseWakeLock()
+        
+        // Ensure all notifications are removed
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(NOTIFICATION_ID)
+            notificationManager.cancelAll()
+        } catch (e: Exception) {
+            logError("Error canceling notifications in onDestroy: ${e.message}")
+        }
+        
         serviceScope.cancel()
     }
     
@@ -348,6 +385,10 @@ class YggstackService : Service() {
                 // Create Yggstack instance
                 yggstack = Mobile.newYggstack()
                 
+                // Set up peer change callback before starting
+                yggstack?.setPeerChangeCallback(PeerChangeCallbackImpl())
+                logDebug("Peer change callback registered")
+                
                 // Only set log callback if logging is enabled
                 if (logsEnabled) {
                     yggstack?.setLogCallback(object : LogCallback {
@@ -417,6 +458,11 @@ class YggstackService : Service() {
                 logDebug("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
                 logInfo("Start() completed successfully")
+
+                // Trigger initial peer update now that Start() has completed
+                logDebug("Triggering initial peer update...")
+                yggstack?.triggerPeerUpdate()
+                logDebug("TriggerPeerUpdate() called")
 
                 // Get and store the Yggdrasil IP AFTER starting (with timeout to prevent hangs)
                 logDebug("Getting Yggdrasil IP address...")
@@ -569,16 +615,23 @@ class YggstackService : Service() {
                     _generatedPrivateKey.value = null
                 }
                 
-                // Cancel the notification
+                // Update notification to non-ongoing before stopping
+                val stoppingNotification = createNotification("Stopping...", 0, 0, showStopButton = false)
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(NOTIFICATION_ID)
+                notificationManager.notify(NOTIFICATION_ID, stoppingNotification)
                 
+                // Stop foreground service and remove notification
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
                     @Suppress("DEPRECATION")
                     stopForeground(true)
                 }
+                
+                // Explicitly cancel all notifications from this service
+                notificationManager.cancel(NOTIFICATION_ID)
+                notificationManager.cancelAll()
+                
                 stopSelf()
             } catch (e: Exception) {
                 logError("Error stopping Yggstack: ${e.message}")
@@ -599,9 +652,19 @@ class YggstackService : Service() {
                 // Release MulticastLock on error too
                 releaseMulticastLock()
                 
-                // Cancel notification on error too
+                // Stop foreground and remove notification on error too
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
+                notificationManager.cancelAll()
+                
+                stopSelf()
             } finally {
                 // IMPORTANT: Set _isRunning = false here, AFTER everything is truly stopped
                 // This ensures UI doesn't show "Start" button until stop is complete
@@ -1236,6 +1299,13 @@ class YggstackService : Service() {
     }
 
     private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int, showStopButton: Boolean = true): Notification {
+        // Choose icon based on peer count
+        val iconRes = if (peerCount > 0) {
+            R.drawable.ic_notification  // Normal icon when connected
+        } else {
+            R.drawable.ic_notification_disconnected  // Disconnected icon when no peers
+        }
+        
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PendingIntent.FLAG_IMMUTABLE
@@ -1263,7 +1333,7 @@ class YggstackService : Service() {
             .setContentTitle("Yggstack")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setSmallIcon(R.drawable.ic_qs_tile)
+            .setSmallIcon(iconRes)  // Use dynamic icon
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -1296,7 +1366,20 @@ class YggstackService : Service() {
     private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
         val notification = createNotification(status, peerCount, totalPeerCount)
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        // Cancel and repost to force icon update
+        notificationManager.cancel(NOTIFICATION_ID)
         notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+    
+    /**
+     * Update notification with icon based on peer count
+     */
+    private fun updateNotificationWithIcon(peerCount: Int, totalPeerCount: Int) {
+        if (!_isRunning.value) return
+        
+        val status = "Connected"
+        updateNotification(status, peerCount, totalPeerCount)
     }
 
     private fun acquireWakeLock() {
