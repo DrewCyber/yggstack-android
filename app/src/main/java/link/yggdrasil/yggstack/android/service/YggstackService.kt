@@ -533,29 +533,32 @@ class YggstackService : Service() {
                 // Wrap entire stop operation with safety timeout
                 try {
                     kotlinx.coroutines.withTimeout(3000L) {
+                        // Cancel network retry job first to prevent new operations
+                        networkRetryJob?.cancel()
+                        networkRetryJob = null
+                        
+                        // Cancel peer cache updater
+                        peerCacheUpdateJob?.cancel()
+                        peerCacheUpdateJob = null
+                        
                         // Cancel peer stats jobs
                         peerStatsJob?.cancel()
                         peerStatsJob = null
                         peerStatsSubscriptionJob?.cancel()
                         peerStatsSubscriptionJob = null
                         
-                        // Unregister network callback
+                        // Unregister network callback before stopping to prevent new events
                         unregisterNetworkCallback()
                         
-                        // Release WiFi lock if held
+                        // Release locks
                         releaseWifiLock()
-                        
-                        // Release MulticastLock if held
                         releaseMulticastLock()
                         
-                        // Stop yggstack
+                        // Stop yggstack and clear state
                         yggstack?.stop()
                         yggstack = null
                         
-                        _yggdrasilIp.value = null
-                        _peerCount.value = 0
-                        _totalPeerCount.value = 0
-                        _generatedPrivateKey.value = null
+                        clearServiceState()
                         
                         logInfo("Yggstack stopped")
                     }
@@ -563,10 +566,7 @@ class YggstackService : Service() {
                     logWarn("WARNING: Stop operation timed out after 3 seconds - forcing cleanup")
                     // Force cleanup on timeout
                     yggstack = null
-                    _yggdrasilIp.value = null
-                    _peerCount.value = 0
-                    _totalPeerCount.value = 0
-                    _generatedPrivateKey.value = null
+                    clearServiceState()
                 }
                 
                 // Cancel the notification
@@ -584,22 +584,17 @@ class YggstackService : Service() {
                 logError("Error stopping Yggstack: ${e.message}")
                 // Force cleanup even on error
                 yggstack = null
-                _yggdrasilIp.value = null
-                _peerCount.value = 0
-                _totalPeerCount.value = 0
-                _generatedPrivateKey.value = null
-                hasNoNetwork = false
+                clearServiceState()
                 
-                // Unregister network callback on error too
+                // Ensure cleanup of all resources on error
+                networkRetryJob?.cancel()
+                networkRetryJob = null
                 unregisterNetworkCallback()
-                
-                // Stop peer cache updater on error
                 stopPeerCacheUpdater()
-                
-                // Release MulticastLock on error too
                 releaseMulticastLock()
+                releaseWifiLock()
                 
-                // Cancel notification on error too
+                // Cancel notification
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
             } finally {
@@ -902,6 +897,18 @@ class YggstackService : Service() {
         val requestedIndex = levels.indexOf(level)
         return currentIndex >= requestedIndex
     }
+    
+    /**
+     * Clear service state variables
+     */
+    private fun clearServiceState() {
+        _yggdrasilIp.value = null
+        _yggdrasilPublicKey.value = null
+        _peerCount.value = 0
+        _totalPeerCount.value = 0
+        _generatedPrivateKey.value = null
+        hasNoNetwork = false
+    }
 
     private fun addLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
@@ -937,9 +944,9 @@ class YggstackService : Service() {
         peerStatsSubscriptionJob?.cancel()
         peerStatsSubscriptionJob = serviceScope.launch {
             _peerDetailsJSON.subscriptionCount.collect { count ->
-                // Only react to subscriptions if service is running
-                if (!_isRunning.value) {
-                    logDebug("Service not running, ignoring subscription changes")
+                // Only react to subscriptions if service is running and not transitioning
+                if (!_isRunning.value || _isTransitioning.value) {
+                    logDebug("Service not ready (running=${_isRunning.value}, transitioning=${_isTransitioning.value}), ignoring subscription changes")
                     return@collect
                 }
                 
@@ -965,8 +972,8 @@ class YggstackService : Service() {
         peerStatsJob = serviceScope.launch {
             while (_isRunning.value) {
                 try {
-                    // Double-check service is still running before updating
-                    if (!_isRunning.value) break
+                    // Double-check service is still running and instance exists
+                    if (!_isRunning.value || yggstack == null) break
                     
                     // Update Yggdrasil IP address and public key
                     try {
@@ -983,6 +990,7 @@ class YggstackService : Service() {
                         logError("Error fetching Yggdrasil public key: ${e.message}")
                     }
                     
+                    // Null check before accessing yggstack
                     val peersJson = yggstack?.getPeersJSON()
                     if (peersJson != null) {
                         _peerDetailsJSON.emit(peersJson)
