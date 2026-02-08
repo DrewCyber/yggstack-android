@@ -287,7 +287,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         
         // Backup Configuration Card
         Card(
@@ -493,7 +493,7 @@ fun ImportPreviewDialog(
                     )
                 }
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
                     text = "Note: This will replace your current proxy and port forwarding settings. Other settings (peers, private key, multicast) will not be affected.",
@@ -548,14 +548,10 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
         // Yggdrasil IP and Public Key Section
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = stringResource(R.string.yggdrasil_ip_section),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
                 OutlinedTextField(
                     value = yggdrasilIp ?: context.getString(R.string.not_connected),
                     onValueChange = { },
+                    label = { Text(stringResource(R.string.yggdrasil_ip_section)) },
                     modifier = Modifier.fillMaxWidth(),
                     readOnly = true,
                     singleLine = true,
@@ -575,14 +571,10 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                Text(
-                    text = "Public Key",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
                 OutlinedTextField(
                     value = yggdrasilPublicKey ?: context.getString(R.string.not_connected),
                     onValueChange = { },
+                    label = { Text("Public Key") },
                     modifier = Modifier.fillMaxWidth(),
                     readOnly = true,
                     singleLine = true,
@@ -601,7 +593,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 )
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (!isServiceRunning) {
             Card(
@@ -620,7 +612,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Start the service to view peer status",
                             style = MaterialTheme.typography.bodyLarge,
@@ -642,9 +634,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    Divider()
-
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -671,7 +661,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     if (peerCount == 0) {
                         Text(
@@ -688,6 +678,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(4.dp))
         }
         
         // Display each peer's details as separate cards
@@ -904,7 +895,7 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Card(
             modifier = Modifier

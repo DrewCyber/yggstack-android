@@ -61,7 +61,7 @@ fun ConfigurationScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(12.dp)
-                .padding(bottom = 80.dp) // Space for button at bottom
+                .padding(bottom = 50.dp) // Space for button at bottom
         ) {
             // App title as part of scrollable content
             Text(
@@ -72,11 +72,14 @@ fun ConfigurationScreen(
             )
             
             // Private Key Section
-            ConfigSection(title = stringResource(R.string.private_key_section)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = config.privateKey,
                     onValueChange = { viewModel.updatePrivateKey(it) },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.private_key_section)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
                     enabled = !isServiceRunning,
                     visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
                     singleLine = !showPrivateKey,
@@ -99,7 +102,7 @@ fun ConfigurationScreen(
 
             // Peers Section with clickable header
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                     // Header with title and manage button
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -215,12 +218,19 @@ fun ConfigurationScreen(
                             onDismiss = { showMaxBackoffDialog = false }
                         )
                     }
-                    
+                }
+            }
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // Multicast Discovery Card
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                     // Multicast Discovery title
                     Text(
                         text = stringResource(R.string.multicast_discovery),
                         style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        modifier = Modifier.padding(vertical = 8.dp)
                     )
                     
                     // Multicast switches - closer together
@@ -248,9 +258,7 @@ fun ConfigurationScreen(
                         
                         // Advertise Switch
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .offset(y = (-8).dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -297,6 +305,9 @@ fun ConfigurationScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isServiceRunning && config.proxyEnabled
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -330,6 +341,9 @@ fun ConfigurationScreen(
                         Text(stringResource(R.string.add_mapping))
                     }
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -363,13 +377,16 @@ fun ConfigurationScreen(
                         Text(stringResource(R.string.add_mapping))
                     }
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
             // Log Level Section
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                     val logsEnabled by viewModel.logsEnabled.collectAsState()
                     val logLevels = listOf("error", "warn", "info", "debug")
                     val logLevelLabels = mapOf(
@@ -382,8 +399,7 @@ fun ConfigurationScreen(
                     // Title with toggle on same row
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
+                            .fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -394,14 +410,17 @@ fun ConfigurationScreen(
                         Switch(
                             checked = logsEnabled,
                             onCheckedChange = { viewModel.setLogsEnabled(it) },
-                            enabled = !isServiceRunning
+                            enabled = !isServiceRunning,
+                            modifier = Modifier.scale(0.8f)
                         )
                     }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                    ) {
+                    
+                    if (logsEnabled) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                        ) {
                         logLevels.forEachIndexed { index, level ->
                             Button(
                                 onClick = { viewModel.setLogLevel(level) },
@@ -455,8 +474,12 @@ fun ConfigurationScreen(
                             }
                         }
                     }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 }
             }
+        }
 
             Spacer(modifier = Modifier.height(12.dp))
         }
@@ -560,7 +583,7 @@ fun ConfigSection(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(horizontal = 12.dp)
         ) {
             Text(
                 text = title,
@@ -585,7 +608,7 @@ fun ConfigSectionWithToggle(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(horizontal = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -599,7 +622,8 @@ fun ConfigSectionWithToggle(
                 Switch(
                     checked = enabled,
                     onCheckedChange = { onToggle() },
-                    enabled = !isServiceRunning
+                    enabled = !isServiceRunning,
+                    modifier = Modifier.scale(0.8f)
                 )
             }
 

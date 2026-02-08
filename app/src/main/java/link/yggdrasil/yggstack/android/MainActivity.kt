@@ -243,7 +243,7 @@ fun BackgroundPermissionDialog(
         text = {
             Column {
                 Text(stringResource(R.string.permission_dialog_message))
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 
                 if (needsNotification) {
                     Text(
@@ -264,7 +264,7 @@ fun BackgroundPermissionDialog(
                     )
                 }
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.permission_dialog_instructions),
                     style = MaterialTheme.typography.bodySmall
@@ -307,7 +307,7 @@ fun UpdateAvailableDialog(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     if (versionInfo.releaseNotes.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Release Notes:",
                             style = MaterialTheme.typography.titleSmall

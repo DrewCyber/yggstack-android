@@ -47,7 +47,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 Text(
                     text = stringResource(R.string.theme_section),
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
 
                 Column {
@@ -82,7 +82,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // System Section
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -176,7 +176,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Check for updates
                 Row(
@@ -207,7 +207,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // About Section
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -251,7 +251,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Force Stop Button
         Button(
@@ -295,7 +295,8 @@ fun ThemeOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(
             selected = selected,
