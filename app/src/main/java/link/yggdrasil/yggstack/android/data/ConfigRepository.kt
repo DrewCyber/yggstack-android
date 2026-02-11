@@ -185,7 +185,7 @@ class ConfigRepository(private val context: Context) {
      * Get language preference
      */
     val languageFlow: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[LANGUAGE_KEY] ?: "system"
+        preferences[LANGUAGE_KEY] ?: "en"
     }
 
     /**
