@@ -11,5 +11,5 @@
   <rect width="200" height="200" fill="url(#backgroundGradient)" rx="20"/>
   
   <!-- White "Ys" text -->
-  <text x="103" y="160" font-family="Garamond, sans-serif" font-size="170" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="-30">Ys</text>
+  <text x="103" y="157" font-family="Garamond, sans-serif" font-size="160" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="-30">Ys</text>
 </svg>
