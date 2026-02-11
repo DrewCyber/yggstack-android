@@ -297,13 +297,28 @@ fun ConfigurationScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                val context = LocalContext.current
                 OutlinedTextField(
                     value = config.dnsServer,
                     onValueChange = { viewModel.updateDnsServer(it) },
                     label = { Text(stringResource(R.string.dns_server)) },
                     placeholder = { Text(stringResource(R.string.dns_server_hint)) },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isServiceRunning && config.proxyEnabled
+                    enabled = !isServiceRunning && config.proxyEnabled,
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dns.r3v.dev/"))
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Icon(
+                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_alfis),
+                                contentDescription = "Open DNS service",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
