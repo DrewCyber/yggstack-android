@@ -46,6 +46,7 @@ class ConfigRepository(private val context: Context) {
         private val PUBLIC_PEERS_CACHE = stringPreferencesKey("public_peers_cache")
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
+        private val LANGUAGE_KEY = stringPreferencesKey("language")
     }
 
     /**
@@ -177,6 +178,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveDiagnosticsTab(tabIndex: Int) {
         context.dataStore.edit { preferences ->
             preferences[DIAGNOSTICS_TAB_KEY] = tabIndex
+        }
+    }
+
+    /**
+     * Get language preference
+     */
+    val languageFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[LANGUAGE_KEY] ?: "system"
+    }
+
+    /**
+     * Save language preference
+     */
+    suspend fun saveLanguage(language: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LANGUAGE_KEY] = language
         }
     }
 

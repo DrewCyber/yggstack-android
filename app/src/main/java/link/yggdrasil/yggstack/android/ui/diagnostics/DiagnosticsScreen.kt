@@ -221,11 +221,11 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Yggdrasil Configuration",
+                        text = "yggdrasil.conf",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (isServiceRunning) "Service Running" else "Service Stopped",
+                        text = if (isServiceRunning) stringResource(R.string.service_running) else stringResource(R.string.service_stopped_status),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (isServiceRunning) MaterialTheme.colorScheme.primary else Color.Gray
                     )
@@ -278,7 +278,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No configuration available",
+                            text = stringResource(R.string.no_config_available),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -305,11 +305,11 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Backup Configuration",
+                        text = stringResource(R.string.backup_configuration),
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = "Backup/Restore proxy and port settings",
+                        text = stringResource(R.string.backup_restore_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -388,13 +388,13 @@ fun ImportPreviewDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "Import Configuration?",
+                    text = stringResource(R.string.import_config_title),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 
                 Text(
-                    text = "This will import the following settings:",
+                    text = stringResource(R.string.import_config_description),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -403,25 +403,25 @@ fun ImportPreviewDialog(
                 
                 // Proxy settings
                 Text(
-                    text = "Proxy Settings:",
+                    text = stringResource(R.string.proxy_settings),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
-                    text = "• Enabled: ${backup.proxy.enabled}",
+                    text = stringResource(R.string.enabled_label, backup.proxy.enabled),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
                 if (backup.proxy.socksAddress.isNotEmpty()) {
                     Text(
-                        text = "• SOCKS: ${backup.proxy.socksAddress}",
+                        text = stringResource(R.string.socks_label, backup.proxy.socksAddress),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace
                     )
                 }
                 if (backup.proxy.dnsServer.isNotEmpty()) {
                     Text(
-                        text = "• DNS: ${backup.proxy.dnsServer}",
+                        text = stringResource(R.string.dns_label, backup.proxy.dnsServer),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace
                     )
@@ -431,17 +431,17 @@ fun ImportPreviewDialog(
                 
                 // Expose mappings
                 Text(
-                    text = "Expose Mappings:",
+                    text = stringResource(R.string.expose_mappings),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
-                    text = "• Enabled: ${backup.expose.enabled}",
+                    text = stringResource(R.string.enabled_label, backup.expose.enabled),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "• Mappings: ${backup.expose.mappings.size}",
+                    text = stringResource(R.string.mappings_count, backup.expose.mappings.size),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
@@ -454,7 +454,7 @@ fun ImportPreviewDialog(
                 }
                 if (backup.expose.mappings.size > 3) {
                     Text(
-                        text = "  - ... and ${backup.expose.mappings.size - 3} more",
+                        text = stringResource(R.string.more_mappings, backup.expose.mappings.size - 3),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -464,17 +464,17 @@ fun ImportPreviewDialog(
                 
                 // Forward mappings
                 Text(
-                    text = "Forward Mappings:",
+                    text = stringResource(R.string.forward_mappings),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
-                    text = "• Enabled: ${backup.forward.enabled}",
+                    text = stringResource(R.string.enabled_label, backup.forward.enabled),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "• Mappings: ${backup.forward.mappings.size}",
+                    text = stringResource(R.string.mappings_count, backup.forward.mappings.size),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
@@ -487,7 +487,7 @@ fun ImportPreviewDialog(
                 }
                 if (backup.forward.mappings.size > 3) {
                     Text(
-                        text = "  - ... and ${backup.forward.mappings.size - 3} more",
+                        text = stringResource(R.string.more_mappings, backup.forward.mappings.size - 3),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -496,7 +496,7 @@ fun ImportPreviewDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = "Note: This will replace your current proxy and port forwarding settings. Other settings (peers, private key, multicast) will not be affected.",
+                    text = stringResource(R.string.import_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -509,11 +509,11 @@ fun ImportPreviewDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.cancel))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(onClick = onConfirm) {
-                        Text("Import")
+                        Text(stringResource(R.string.import_button))
                     }
                 }
             }
@@ -574,7 +574,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 OutlinedTextField(
                     value = yggdrasilPublicKey ?: context.getString(R.string.not_connected),
                     onValueChange = { },
-                    label = { Text("Public Key") },
+                    label = { Text(stringResource(R.string.public_key)) },
                     modifier = Modifier.fillMaxWidth(),
                     readOnly = true,
                     singleLine = true,
@@ -614,7 +614,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Start the service to view peer status",
+                            text = stringResource(R.string.start_service_view_peers),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -628,22 +628,14 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 Column(
                     modifier = Modifier.padding(16.dp)
                 ) {
-                    Text(
-                        text = "Peer Statistics",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
                             Text(
-                                text = "Connected Peers",
-                                style = MaterialTheme.typography.bodyMedium,
+                                text = stringResource(R.string.connected_peers),
+                                style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
@@ -661,21 +653,8 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Spacer(modifier = Modifier.height(8.dp))
 
-                    if (peerCount == 0) {
-                        Text(
-                            text = "No peers connected. Add peers in the Configuration tab to connect to the Yggdrasil network.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            text = "You are connected to $peerCount peer${if (peerCount != 1) "s" else ""} on the Yggdrasil network.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -705,7 +684,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (peer.inbound) "Inbound" else "Outbound",
+                                text = if (peer.inbound) stringResource(R.string.inbound) else stringResource(R.string.outbound),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -733,7 +712,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         ) {
                             Column {
                                 Text(
-                                    text = "Uptime",
+                                    text = stringResource(R.string.uptime),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -744,7 +723,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                             }
                             Column {
                                 Text(
-                                    text = "Latency",
+                                    text = stringResource(R.string.latency),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -755,7 +734,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                             }
                             Column {
                                 Text(
-                                    text = "Cost",
+                                    text = stringResource(R.string.cost),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -774,13 +753,13 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         ) {
                             Column {
                                 Text(
-                                    text = "RX: ${formatBytes(peer.rxBytes)}",
+                                    text = stringResource(R.string.rx_label, formatBytes(peer.rxBytes)),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
                             Column {
                                 Text(
-                                    text = "TX: ${formatBytes(peer.txBytes)}",
+                                    text = stringResource(R.string.tx_label, formatBytes(peer.txBytes)),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
@@ -864,11 +843,11 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
             ) {
                 Column {
                     Text(
-                        text = "Service Logs",
+                        text = stringResource(R.string.service_logs),
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = "${logs.size} log entries",
+                        text = stringResource(R.string.log_entries, logs.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -917,7 +896,7 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No logs yet. Start the service to see logs.",
+                            text = stringResource(R.string.no_logs_yet),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.Gray
                         )
@@ -942,7 +921,7 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Logs are collected in real-time from the service",
+                text = stringResource(R.string.logs_collected_realtime),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

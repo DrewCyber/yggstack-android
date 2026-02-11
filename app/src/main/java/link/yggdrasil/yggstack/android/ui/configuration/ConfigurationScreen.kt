@@ -125,7 +125,7 @@ fun ConfigurationScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("Discover peers")
+                            Text(stringResource(R.string.discover_peers))
                         }
                     }
                     
@@ -1009,13 +1009,13 @@ fun MaxBackoffDialog(
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Max Reconnection Backoff") },
+        title = { Text(stringResource(R.string.max_reconnection_backoff)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Maximum time to wait before attempting peer reconnection",
+                    text = stringResource(R.string.max_reconnection_description),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -1058,12 +1058,12 @@ fun MaxBackoffDialog(
             Button(
                 onClick = { onConfirm(sliderValue.toInt()) }
             ) {
-                Text("OK")
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

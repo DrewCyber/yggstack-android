@@ -1,5 +1,6 @@
 package link.yggdrasil.yggstack.android.ui.settings
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -26,11 +28,14 @@ import link.yggdrasil.yggstack.android.utils.AutostartHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val repository = remember { ConfigRepository(context) }
     val selectedTheme by repository.themeFlow.collectAsState(initial = "system")
+    val selectedLanguage by repository.languageFlow.collectAsState(initial = "system")
     val autostartEnabled by repository.autostartFlow.collectAsState(initial = false)
     val autoUpdateEnabled by repository.autoUpdateFlow.collectAsState(initial = true)
     val coroutineScope = rememberCoroutineScope()
@@ -203,6 +208,63 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             }
                         }
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Language Section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                var expanded by remember { mutableStateOf(false) }
+                val languages = listOf(
+                    "system" to stringResource(R.string.language_system),
+                    "en" to stringResource(R.string.language_english),
+                    "ru" to stringResource(R.string.language_russian)
+                )
+                val selectedLanguageLabel = languages.find { it.first == selectedLanguage }?.second
+                    ?: stringResource(R.string.language_system)
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedLanguageLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.language_section)) },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        languages.forEach { (code, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    expanded = false
+                                    coroutineScope.launch {
+                                        repository.saveLanguage(code)
+                                        // Recreate activity to apply new locale immediately
+                                        activity?.recreate()
+                                    }
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
+                        }
+                    }
                 }
             }
         }

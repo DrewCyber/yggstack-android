@@ -46,9 +46,11 @@ class ConfigurationViewModel(
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            android.util.Log.d("ConfigViewModel", "onServiceConnected called, binder=$binder")
             val localBinder = binder as? YggstackService.YggstackBinder
             yggstackService = localBinder?.getService()
             serviceBound = true
+            android.util.Log.d("ConfigViewModel", "Service bound successfully, service=$yggstackService")
 
             // Sync initial state immediately and check for state desync
             yggstackService?.let { service ->
@@ -125,6 +127,7 @@ class ConfigurationViewModel(
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
+            android.util.Log.d("ConfigViewModel", "onServiceDisconnected called")
             serviceBound = false
             yggstackService = null
             _serviceState.value = ServiceState.Stopped
@@ -133,6 +136,7 @@ class ConfigurationViewModel(
     }
 
     init {
+        android.util.Log.d("ConfigViewModel", "ViewModel init, context=$context, hashCode=${this.hashCode()}")
         loadConfig()
         bindToService()
         
@@ -150,8 +154,10 @@ class ConfigurationViewModel(
     }
 
     private fun bindToService() {
+        android.util.Log.d("ConfigViewModel", "bindToService called, context=$context")
         val intent = Intent(context, YggstackService::class.java)
-        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        val bindResult = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        android.util.Log.d("ConfigViewModel", "bindService result: $bindResult")
     }
 
     private fun unbindFromService() {
@@ -289,6 +295,7 @@ class ConfigurationViewModel(
     }
 
     fun startService() {
+        android.util.Log.d("ConfigViewModel", "startService() called, context=$context, serviceBound=$serviceBound")
         viewModelScope.launch {
             _serviceState.value = ServiceState.Starting
             try {
@@ -299,11 +306,13 @@ class ConfigurationViewModel(
                         YggstackConfigParcelable.fromYggstackConfig(_config.value)
                     )
                 }
+                android.util.Log.d("ConfigViewModel", "Starting foreground service...")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
+                android.util.Log.d("ConfigViewModel", "Service start command sent successfully")
 
                 // Add a timeout fallback to ensure state updates if service doesn't notify
                 kotlinx.coroutines.delay(3000)
@@ -318,6 +327,7 @@ class ConfigurationViewModel(
                     }
                 }
             } catch (e: Exception) {
+                android.util.Log.e("ConfigViewModel", "Error starting service", e)
                 _serviceState.value = ServiceState.Error(e.message ?: "Unknown error")
                 // Fallback to stopped state after error
                 kotlinx.coroutines.delay(2000)
@@ -327,13 +337,16 @@ class ConfigurationViewModel(
     }
 
     fun stopService() {
+        android.util.Log.d("ConfigViewModel", "stopService() called, context=$context, serviceBound=$serviceBound")
         viewModelScope.launch {
             _serviceState.value = ServiceState.Stopping
             try {
                 val intent = Intent(context, YggstackService::class.java).apply {
                     action = YggstackService.ACTION_STOP
                 }
+                android.util.Log.d("ConfigViewModel", "Stopping service...")
                 context.startService(intent)
+                android.util.Log.d("ConfigViewModel", "Service stop command sent successfully")
 
                 // Add a timeout fallback to reset state if service doesn't respond
                 kotlinx.coroutines.delay(3000)

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Yggstack</string>
+
+    <!-- Navigation -->
+    <string name="nav_configuration">Настройка</string>
+    <string name="nav_diagnostics">Диагностика</string>
+    <string name="nav_info">Система</string>
+
+    <!-- Configuration Screen -->
+    <string name="peers_section">Узлы</string>
+    <string name="add_peer">Добавить узел</string>
+    <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
+    <string name="multicast_discovery">Обнаружение узлов Multicast</string>
+    <string name="multicast_discover">Подключаться к обнаруженным узлам</string>
+    <string name="multicast_advertise">Анонсировать для входящих подключений</string>
+    <string name="private_key_section">Приватный ключ</string>
+    <string name="show_private_key">Показать приватный ключ</string>
+    <string name="hide_private_key">Скрыть приватный ключ</string>
+    <string name="yggdrasil_ip_section">IP-адрес Yggdrasil</string>
+    <string name="copy_ip">Копировать IP</string>
+    <string name="not_connected">Не подключено</string>
+    <string name="proxy_config_section">Yggdrasil прокси</string>
+    <string name="socks_proxy">SOCKS прокси</string>
+    <string name="socks_proxy_hint">127.0.0.1:1080</string>
+    <string name="dns_server">DNS сервер</string>
+    <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
+    <string name="expose_local_port_section">Открыть локальный порт</string>
+    <string name="add_mapping">Добавить маппинг</string>
+    <string name="forward_remote_port_section">Пробросить удалённый порт</string>
+    <string name="start_service">Запустить сервис</string>
+    <string name="stop_service">Остановить сервис</string>
+    <string name="delete_peer">Удалить узел</string>
+    <string name="protocol_tcp">TCP</string>
+    <string name="protocol_udp">UDP</string>
+    <string name="local_port">Локальный порт</string>
+    <string name="local_ip">Локальный IP</string>
+    <string name="ygg_port">Порт Yggdrasil</string>
+    <string name="remote_ip">Удалённый IP</string>
+    <string name="remote_port">Удалённый порт</string>
+
+    <!-- Diagnostics Screen -->
+    <string name="tab_config">Конфиг</string>
+    <string name="tab_peers">Статус</string>
+    <string name="tab_logs">Логи</string>
+
+    <!-- Settings Screen -->
+    <string name="theme_section">Тема</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
+    <string name="theme_system">Системная</string>
+    <string name="autostart_section">Автозапуск</string>
+    <string name="autostart_enabled">Запускать сервис при загрузке</string>
+    <string name="autostart_description">Примечание: Xiaomi, Huawei, Oppo могут требовать дополнительные разрешения на автозапуск в настройках системы.</string>
+    <string name="system_section">Система</string>
+    <string name="auto_update_section">Проверка обновлений</string>
+    <string name="auto_update_enabled">Проверять обновления</string>
+    <string name="auto_update_description">Автоматически проверять новые версии при запуске</string>
+    <string name="log_management">Управление логами</string>
+    <string name="clear_logs">Очистить логи</string>
+    <string name="export_logs">Экспортировать логи</string>
+    <string name="about_section">О приложении</string>
+    <string name="version">Версия</string>
+    <string name="library_version">Версия библиотеки</string>
+    <string name="repository">GitHub репозиторий</string>
+    <string name="telegram_chat">Telegram чат (Ru/En)</string>
+    <string name="download_logs">Скачать логи</string>
+    <string name="new_version_available">Доступна новая версия</string>
+    <string name="update_later">Обновить позже</string>
+    <string name="download_update">Скачать обновление</string>
+
+    <!-- Messages -->
+    <string name="ip_copied">IP-адрес скопирован в буфер обмена</string>
+    <string name="config_saved">Конфигурация сохранена</string>
+    <string name="service_started">Сервис запущен</string>
+    <string name="service_stopped">Сервис остановлен</string>
+    <string name="invalid_peer_uri">Неверный формат URI узла</string>
+    <string name="invalid_port">Неверный номер порта</string>
+    <string name="invalid_ip">Неверный IP-адрес</string>
+
+    <!-- Background Permissions Dialog -->
+    <string name="permission_dialog_title">Требуются разрешения</string>
+    <string name="permission_dialog_message">Чтобы сервис Yggstack работал в фоновом режиме и отображал уведомления, необходимо предоставить следующие разрешения:</string>
+    <string name="permission_notifications_required">Разрешить уведомления (необходимо для фонового сервиса)</string>
+    <string name="permission_battery_required">Отключить оптимизацию батареи</string>
+    <string name="permission_background_required">Разрешить неограниченную фоновую активность</string>
+    <string name="permission_dialog_instructions">Нажмите \"Открыть настройки\" для настройки этих разрешений. Это обеспечит активность сервиса даже когда приложение не на переднем плане.</string>
+    <string name="permission_dialog_open_settings">Открыть настройки</string>
+    <string name="permission_dialog_later">Позже</string>
+
+    <!-- Log Level -->
+    <string name="log_level">Логи</string>
+    <string name="log_level_description">Уровень детализации логирования Yggstack</string>
+    <string name="log_level_error">Error</string>
+    <string name="log_level_warn">Warn</string>
+    <string name="log_level_info">Info</string>
+    <string name="log_level_debug">Debug</string>
+
+    <!-- Language Settings -->
+    <string name="language_section">Язык</string>
+    <string name="language_system">Системный</string>
+    <string name="language_english">English</string>
+    <string name="language_russian">Русский</string>
+
+    <!-- Diagnostics Strings -->
+    <string name="service_logs">Логи сервиса</string>
+    <string name="log_entries">%d записей в логе</string>
+    <string name="logs_collected_realtime">Логи собираются в реальном времени</string>
+    <string name="no_logs_yet">Логов пока нет. Запустите сервис для просмотра логов.</string>
+    <string name="service_running">Сервис запущен</string>
+    <string name="service_stopped_status">Сервис остановлен</string>
+    <string name="no_config_available">Конфигурация недоступна</string>
+    <string name="start_service_view_peers">Запустите сервис для просмотра статуса узлов</string>
+    <string name="connected_peers">Подключенные узлы</string>
+    <string name="inbound">Входящий</string>
+    <string name="outbound">Исходящий</string>
+    <string name="backup_configuration">Резервная копия</string>
+    <string name="backup_restore_description">Резервное копирование/восстановление настроек прокси и портов</string>    <string name="public_key">Публичный ключ</string>
+    <string name="import_config_title">Импортировать конфигурацию?</string>
+    <string name="import_config_description">Будут импортированы следующие настройки:</string>
+    <string name="proxy_settings">Настройки прокси:</string>
+    <string name="expose_mappings">Маппинги Expose:</string>
+    <string name="forward_mappings">Маппинги Forward:</string>
+    <string name="enabled_label">• Включено: %s</string>
+    <string name="socks_label">• SOCKS: %s</string>
+    <string name="dns_label">• DNS: %s</string>
+    <string name="mappings_count">• Маппингов: %d</string>
+    <string name="more_mappings">  - ... и еще %d</string>
+    <string name="import_note">Примечание: Это заменит ваши текущие настройки прокси и перенаправления портов. Другие настройки (узлы, приватный ключ, multicast) не будут затронуты.</string>
+    <string name="import_button">Импортировать</string>
+    <string name="no_peers_message">Узлы не подключены. Добавьте узлы на вкладке Настройка для подключения к сети Yggdrasil.</string>
+    <string name="uptime">Время работы</string>
+    <string name="latency">Задержка</string>
+    <string name="cost">Цена</string>
+    <string name="rx_label">RX: %s</string>
+    <string name="tx_label">TX: %s</string>    
+    <!-- Peer Discovery Strings -->
+    <string name="peer_discovery">Обнаружение узлов</string>
+    <string name="discover_peers">Найти узлы</string>
+    <string name="external_ip">Внешний IP</string>
+    <string name="get_peers">Скачать список</string>
+    <string name="rtt_check">Проверка RTT</string>
+    <string name="max_reconnection_backoff">Макс. задержка переподключения</string>
+    <string name="max_reconnection_description">Максимальное время ожидания перед повторной попыткой подключения к узлу</string>
+    <string name="cancel">Отмена</string>
+    <string name="ok">OK</string>
+</resources>

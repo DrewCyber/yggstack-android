@@ -18,9 +18,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.PublicPeerInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,10 +69,10 @@ fun PeerDiscoveryScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Peer Discovery")
+                        Text(stringResource(R.string.peer_discovery))
                         externalIp?.let { ip ->
                             Text(
-                                text = "External IP: $ip",
+                                text = stringResource(R.string.external_ip) + ": $ip",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -104,7 +106,7 @@ fun PeerDiscoveryScreen(
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Get Peers")
+                    Text(stringResource(R.string.get_peers))
                 }
                 
                 if (isCancellable) {
@@ -117,7 +119,7 @@ fun PeerDiscoveryScreen(
                     ) {
                         Icon(Icons.Default.Close, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Cancel")
+                        Text(stringResource(R.string.cancel))
                     }
                 } else {
                     Button(
@@ -127,7 +129,7 @@ fun PeerDiscoveryScreen(
                     ) {
                         Icon(Icons.Default.Speed, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("RTT Check")
+                        Text(stringResource(R.string.rtt_check))
                     }
                 }
             }

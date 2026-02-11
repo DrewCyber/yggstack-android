@@ -1,5 +1,6 @@
 package link.yggdrasil.yggstack.android
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -35,11 +36,27 @@ import link.yggdrasil.yggstack.android.ui.configuration.ConfigurationViewModel
 import link.yggdrasil.yggstack.android.ui.diagnostics.DiagnosticsScreen
 import link.yggdrasil.yggstack.android.ui.settings.SettingsScreen
 import link.yggdrasil.yggstack.android.ui.theme.YggstackAndroidTheme
+import link.yggdrasil.yggstack.android.utils.LocaleHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
+    
+    companion object {
+        // Temporary screen state that survives activity recreation but not app restart
+        var tempSelectedScreen: Int? = null
+    }
+    
+    override fun attachBaseContext(newBase: Context) {
+        // Apply saved locale before activity is created
+        val repository = ConfigRepository(newBase)
+        val language = runBlocking { repository.languageFlow.first() }
+        val localeContext = LocaleHelper.applyLocale(newBase, language)
+        super.attachBaseContext(localeContext)
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -64,17 +81,29 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val repository = ConfigRepository(context)
+    val applicationContext = context.applicationContext
+    val repository = ConfigRepository(applicationContext)
     val configViewModel: ConfigurationViewModel = viewModel(
-        factory = ConfigurationViewModel.Factory(repository, context)
+        factory = ConfigurationViewModel.Factory(repository, applicationContext)
     )
 
-    var selectedScreen by remember { mutableStateOf(0) }
+    // Use temp screen from companion object if available (after recreation), otherwise default to 0
+    var selectedScreen by remember { mutableStateOf(MainActivity.tempSelectedScreen ?: 0) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var permissionsChecked by remember { mutableStateOf(false) }
     var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    
+    // Clear temp screen after using it
+    LaunchedEffect(Unit) {
+        MainActivity.tempSelectedScreen = null
+    }
+    
+    // Save current screen to temp variable when it changes (for language change recreation)
+    LaunchedEffect(selectedScreen) {
+        MainActivity.tempSelectedScreen = selectedScreen
+    }
 
     // Notification permission launcher for Android 13+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(

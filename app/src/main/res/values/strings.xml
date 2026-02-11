@@ -95,5 +95,56 @@
     <string name="log_level_warn">Warn</string>
     <string name="log_level_info">Info</string>
     <string name="log_level_debug">Debug</string>
+
+    <!-- Language Settings -->
+    <string name="language_section">Language</string>
+    <string name="language_system">System Default</string>
+    <string name="language_english">English</string>
+    <string name="language_russian">Русский</string>
+
+    <!-- Diagnostics Strings -->
+    <string name="service_logs">Service Logs</string>
+    <string name="log_entries">%d log entries</string>
+    <string name="logs_collected_realtime">Logs are collected in real-time from the service</string>
+    <string name="no_logs_yet">No logs yet. Start the service to see logs.</string>
+    <string name="service_running">Service Running</string>
+    <string name="service_stopped_status">Service Stopped</string>
+    <string name="no_config_available">No configuration available</string>
+    <string name="start_service_view_peers">Start the service to view peer status</string>
+    <string name="connected_peers">Connected Peers</string>
+    <string name="inbound">Inbound</string>
+    <string name="outbound">Outbound</string>
+    <string name="backup_configuration">Backup Configuration</string>
+    <string name="backup_restore_description">Backup/Restore proxy and port settings</string>
+    <string name="public_key">Public Key</string>
+    <string name="import_config_title">Import Configuration?</string>
+    <string name="import_config_description">This will import the following settings:</string>
+    <string name="proxy_settings">Proxy Settings:</string>
+    <string name="expose_mappings">Expose Mappings:</string>
+    <string name="forward_mappings">Forward Mappings:</string>
+    <string name="enabled_label">• Enabled: %s</string>
+    <string name="socks_label">• SOCKS: %s</string>
+    <string name="dns_label">• DNS: %s</string>
+    <string name="mappings_count">• Mappings: %d</string>
+    <string name="more_mappings">  - ... and %d more</string>
+    <string name="import_note">Note: This will replace your current proxy and port forwarding settings. Other settings (peers, private key, multicast) will not be affected.</string>
+    <string name="import_button">Import</string>
+    <string name="no_peers_message">No peers connected. Add peers in the Configuration tab to connect to the Yggdrasil network.</string>
+    <string name="uptime">Uptime</string>
+    <string name="latency">Latency</string>
+    <string name="cost">Cost</string>
+    <string name="rx_label">RX: %s</string>
+    <string name="tx_label">TX: %s</string>
+    
+    <!-- Peer Discovery Strings -->
+    <string name="peer_discovery">Peer Discovery</string>
+    <string name="discover_peers">Discover peers</string>
+    <string name="external_ip">External IP</string>
+    <string name="get_peers">Get Peers</string>
+    <string name="rtt_check">RTT Check</string>
+    <string name="max_reconnection_backoff">Max Reconnection Backoff</string>
+    <string name="max_reconnection_description">Maximum time to wait before attempting peer reconnection</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
 </resources>
 
