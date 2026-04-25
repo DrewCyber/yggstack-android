@@ -2,3 +2,6 @@
 	path = lib/yggstack
 	url = git@github.com:DrewCyber/yggstack.git
 	branch = mobile-bindings-ai
+[submodule "lib/yggstack-ng"]
+	path = lib/yggstack-ng
+	url = git@github.com:DrewCyber/yggstack-ng.git

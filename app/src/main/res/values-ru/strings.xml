@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Yggstack</string>
+    <string name="app_name">Yggstack-ng</string>
 
     <!-- Navigation -->
     <string name="nav_configuration">Настройка</string>

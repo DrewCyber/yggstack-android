@@ -61,8 +61,8 @@ This will:
 
 **Build Output:**
 - Location: `lib/yggstack/android-build/yggstack.aar`
-- Package name: `link.yggdrasil.yggstack`
-- Main class: `link.yggdrasil.yggstack.Yggstack`
+- Package name: `link.yggdrasil.yggstackng`
+- Main class: `link.yggdrasil.yggstackng.Yggstack`
 
 ### Step 2: Copy AAR to App Libraries
 

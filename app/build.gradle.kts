@@ -74,11 +74,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "link.yggdrasil.yggstack.android"
+    namespace = "link.yggdrasil.yggstackng.android"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "link.yggdrasil.yggstack.android"
+        applicationId = "link.yggdrasil.yggstackng.android"
         minSdk = 23
         targetSdk = 34
         versionCode = getVersionCode()
@@ -180,8 +180,10 @@ android {
 }
 
 dependencies {
-    // Yggstack library
-    implementation(files("libs/yggstack.aar"))
+    // Rust-based Yggstack library – .so files in src/main/jniLibs/<abi>/
+    // UniFFI-generated Kotlin bindings are in src/main/java/uniffi/yggstack_mobile/
+    // JNA is required by UniFFI 0.29 generated Kotlin bindings
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
