@@ -88,6 +88,28 @@ fun resolveGoModuleVersion(moduleDir: File, moduleName: String, fallbackRepoUrl:
     )
 }
 
+// Rust variant: resolve a git dependency (e.g. yggdrasil-ng) from Cargo.lock.
+// source lines look like: git+https://github.com/Revertron/Yggdrasil-ng#<40-hex-rev>
+fun resolveCargoGitDependencyVersion(lockFile: File, packageName: String, fallbackRepoUrl: String): RepoVersionInfo {
+    if (!lockFile.exists()) return RepoVersionInfo(tag = null, commit = null, repoUrl = fallbackRepoUrl)
+    val block = lockFile.readText()
+        .split("[[package]]")
+        .firstOrNull { it.lineSequence().any { l -> l.trim() == "name = \"$packageName\"" } }
+        ?: return RepoVersionInfo(tag = null, commit = null, repoUrl = fallbackRepoUrl)
+    val version = Regex("version = \"([^\"]+)\"").find(block)?.groupValues?.get(1)
+    val source = Regex("source = \"([^\"]+)\"").find(block)?.groupValues?.get(1)
+    val commit = source
+        ?.let { Regex("#([0-9a-f]{7,40})").find(it)?.groupValues?.get(1) }
+        ?.take(7)
+    val repoUrl = source
+        ?.removePrefix("git+")
+        ?.substringBefore("#")
+        ?.removeSuffix(".git")
+        ?.takeIf { it.isNotBlank() }
+        ?: fallbackRepoUrl
+    return RepoVersionInfo(tag = version, commit = commit, repoUrl = repoUrl)
+}
+
 val appVersionInfo by lazy {
     resolveGitRepoVersion(
         repoDir = rootProject.projectDir,
@@ -97,16 +119,16 @@ val appVersionInfo by lazy {
 
 val yggstackVersionInfo by lazy {
     resolveGitRepoVersion(
-        repoDir = rootProject.file("lib/yggstack"),
-        fallbackRepoUrl = "https://github.com/DrewCyber/yggstack"
+        repoDir = rootProject.file("lib/yggstack-ng"),
+        fallbackRepoUrl = "https://github.com/DrewCyber/yggstack-ng"
     )
 }
 
 val yggdrasilVersionInfo by lazy {
-    resolveGoModuleVersion(
-        moduleDir = rootProject.file("lib/yggstack"),
-        moduleName = "github.com/yggdrasil-network/yggdrasil-go",
-        fallbackRepoUrl = "https://github.com/yggdrasil-network/yggdrasil-go"
+    resolveCargoGitDependencyVersion(
+        lockFile = rootProject.file("lib/yggstack-ng/Cargo.lock"),
+        packageName = "yggdrasil",
+        fallbackRepoUrl = "https://github.com/Revertron/Yggdrasil-ng"
     )
 }
 
@@ -157,13 +179,13 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "link.yggdrasil.yggstack.android"
+    namespace = "link.yggdrasil.yggstackng.android"
     compileSdk = 37
     // Must match the NDK installed by CI (.github/workflows/build-release.yml)
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "link.yggdrasil.yggstack.android"
+        applicationId = "link.yggdrasil.yggstackng.android"
         minSdk = 23
         targetSdk = 34
         versionCode = getVersionCode()
@@ -266,8 +288,10 @@ kotlin {
 }
 
 dependencies {
-    // Yggstack library
-    implementation(files("libs/yggstack.aar"))
+    // Rust-based Yggstack library – .so files in src/main/jniLibs/<abi>/
+    // UniFFI-generated Kotlin bindings are in src/main/java/uniffi/yggstack_mobile/
+    // JNA is required by UniFFI 0.29 generated Kotlin bindings
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     // Core Android
     implementation(libs.core.ktx)
