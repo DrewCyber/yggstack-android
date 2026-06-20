@@ -364,6 +364,22 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(multicastListen = enabled))
     }
 
+    fun updateGroupPassword(password: String) {
+        val trimmed = password.trim()
+        val keepEnabled = _config.value.groupPasswordEnabled && trimmed.isNotBlank()
+        updateConfig(
+            _config.value.copy(
+                groupPassword = trimmed,
+                groupPasswordEnabled = keepEnabled
+            )
+        )
+    }
+
+    fun setGroupPasswordEnabled(enabled: Boolean) {
+        val canEnable = _config.value.groupPassword.isNotBlank()
+        updateConfig(_config.value.copy(groupPasswordEnabled = enabled && canEnable))
+    }
+
     fun setLogLevel(level: String) {
         updateConfig(_config.value.copy(logLevel = level))
     }

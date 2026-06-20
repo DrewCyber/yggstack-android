@@ -14,6 +14,11 @@
     <string name="multicast_discovery">Обнаружение узлов Multicast</string>
     <string name="multicast_discover">Подключаться к обнаруженным узлам</string>
     <string name="multicast_advertise">Анонсировать для входящих подключений</string>
+    <string name="group_password_section">Приватная группа</string>
+    <string name="group_password_label">Group Password</string>
+    <string name="group_password_hint">Введите общий пароль группы</string>
+    <string name="group_password_enter_to_enable">Введите пароль, чтобы включить режим приватной группы</string>
+    <string name="group_password_warning">При включении узел сможет обмениваться сессионным трафиком только с узлами с тем же Group Password. Публичные сервисы будут недоступны.</string>
     <string name="private_key_section">Приватный ключ</string>
     <string name="show_private_key">Показать приватный ключ</string>
     <string name="hide_private_key">Скрыть приватный ключ</string>
@@ -122,12 +127,14 @@
     <string name="backup_preview_label">Предпросмотр:</string>
     <string name="backup_include_yggdrasil">Включить параметры Yggdrasil</string>
     <string name="backup_desc_yggstack_only">Включает: настройки прокси, маппинги expose/forward</string>
-    <string name="backup_desc_full">Включает: приватный ключ Yggdrasil, узлы, настройки multicast, макс. задержку + настройки прокси и маппинги портов</string>
+    <string name="backup_desc_full">Включает: приватный ключ Yggdrasil, узлы, настройки multicast, Group Password, макс. задержку + настройки прокси и маппинги портов</string>
     <string name="backup_yggdrasil_settings">Настройки Yggdrasil:</string>
     <string name="backup_private_key_label">• Приватный ключ: %s</string>
     <string name="backup_peers_count">• Узлов: %d</string>
     <string name="backup_multicast_beacon">• Multicast beacon: %s</string>
     <string name="backup_multicast_listen">• Multicast listen: %s</string>
+    <string name="backup_group_password_enabled">• Group Password включен: %s</string>
+    <string name="backup_group_password_value">• Group Password: %s</string>
     <string name="backup_max_backoff">• Макс. задержка: %dс</string>    <string name="public_key">Публичный ключ</string>
     <string name="import_config_title">Импортировать конфигурацию?</string>
     <string name="import_config_description">Будут импортированы следующие настройки:</string>
@@ -140,7 +147,7 @@
     <string name="mappings_count">• Маппингов: %d</string>
     <string name="more_mappings">  - ... и еще %d</string>
     <string name="import_note">Примечание: Это заменит ваши текущие настройки прокси и перенаправления портов. Другие настройки (узлы, приватный ключ, multicast) не будут затронуты.</string>
-    <string name="import_note_full">Примечание: Это заменит настройки Yggdrasil (приватный ключ, узлы, multicast, макс. задержка) И настройки прокси/маппинги портов.</string>
+    <string name="import_note_full">Примечание: Это заменит настройки Yggdrasil (приватный ключ, узлы, multicast, Group Password, макс. задержка) И настройки прокси/маппинги портов.</string>
     <string name="import_button">Импортировать</string>
     <string name="no_peers_message">Узлы не подключены. Добавьте узлы на вкладке Настройка для подключения к сети Yggdrasil.</string>
     <string name="uptime">Время работы</string>

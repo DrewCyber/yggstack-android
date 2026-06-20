@@ -38,6 +38,8 @@ class ConfigRepository(private val context: Context) {
         private val AUTO_UPDATE_KEY = booleanPreferencesKey("auto_update")
         private val MULTICAST_BEACON = booleanPreferencesKey("multicast_beacon")
         private val MULTICAST_LISTEN = booleanPreferencesKey("multicast_listen")
+        private val GROUP_PASSWORD_ENABLED = booleanPreferencesKey("group_password_enabled")
+        private val GROUP_PASSWORD = stringPreferencesKey("group_password")
         private val LOG_LEVEL = stringPreferencesKey("log_level")
         private val CACHED_PEERS = stringPreferencesKey("cached_peers")
         private val MAX_BACKOFF_ENABLED = booleanPreferencesKey("max_backoff_enabled")
@@ -73,6 +75,8 @@ class ConfigRepository(private val context: Context) {
             forwardEnabled = preferences[FORWARD_ENABLED] ?: false,
             multicastBeacon = preferences[MULTICAST_BEACON] ?: false,
             multicastListen = preferences[MULTICAST_LISTEN] ?: false,
+            groupPasswordEnabled = preferences[GROUP_PASSWORD_ENABLED] ?: false,
+            groupPassword = preferences[GROUP_PASSWORD] ?: "",
             logLevel = preferences[LOG_LEVEL] ?: "error",
             cachedPeers = preferences[CACHED_PEERS]?.let {
                 json.decodeFromString<List<CachedPeer>>(it)
@@ -101,6 +105,8 @@ class ConfigRepository(private val context: Context) {
             preferences[FORWARD_ENABLED] = config.forwardEnabled
             preferences[MULTICAST_BEACON] = config.multicastBeacon
             preferences[MULTICAST_LISTEN] = config.multicastListen
+            preferences[GROUP_PASSWORD_ENABLED] = config.groupPasswordEnabled
+            preferences[GROUP_PASSWORD] = config.groupPassword
             preferences[LOG_LEVEL] = config.logLevel
             preferences[CACHED_PEERS] = json.encodeToString(config.cachedPeers)
             preferences[MAX_BACKOFF_ENABLED] = config.maxBackoffEnabled

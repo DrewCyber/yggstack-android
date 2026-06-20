@@ -21,6 +21,8 @@ data class YggstackConfig(
     val multicastBeacon: Boolean = false,
     val multicastListen: Boolean = false,
     val logLevel: String = "info",
+    val groupPasswordEnabled: Boolean = false,
+    val groupPassword: String = "",
     val cachedPeers: List<CachedPeer> = emptyList(),  // Dynamically discovered peers cache
     val maxBackoffEnabled: Boolean = true,
     val maxBackoff: Int = 5,  // Maximum backoff time in seconds for peer reconnection (5-30s)

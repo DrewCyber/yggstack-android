@@ -14,6 +14,11 @@
     <string name="multicast_discovery">Multicast Peer Discovery</string>
     <string name="multicast_discover">Connect to discovered peers</string>
     <string name="multicast_advertise">Announce for incoming connections</string>
+    <string name="group_password_section">Private Group</string>
+    <string name="group_password_label">Group Password</string>
+    <string name="group_password_hint">Enter shared password</string>
+    <string name="group_password_enter_to_enable">Enter password to enable private group mode</string>
+    <string name="group_password_warning">When enabled, this node can only exchange session traffic with nodes using the same group password. Public services will be unreachable.</string>
     <string name="private_key_section">Private Key</string>
     <string name="show_private_key">Show private key</string>
     <string name="hide_private_key">Hide private key</string>
@@ -122,12 +127,14 @@
     <string name="backup_preview_label">Preview:</string>
     <string name="backup_include_yggdrasil">Include Yggdrasil parameters</string>
     <string name="backup_desc_yggstack_only">Includes: proxy settings, expose/forward port mappings</string>
-    <string name="backup_desc_full">Includes: Yggdrasil private key, peers, multicast settings, max backoff + proxy settings, expose/forward port mappings</string>
+    <string name="backup_desc_full">Includes: Yggdrasil private key, peers, multicast settings, group password, max backoff + proxy settings, expose/forward port mappings</string>
     <string name="backup_yggdrasil_settings">Yggdrasil Settings:</string>
     <string name="backup_private_key_label">• Private key: %s</string>
     <string name="backup_peers_count">• Peers: %d</string>
     <string name="backup_multicast_beacon">• Multicast beacon: %s</string>
     <string name="backup_multicast_listen">• Multicast listen: %s</string>
+    <string name="backup_group_password_enabled">• Group password enabled: %s</string>
+    <string name="backup_group_password_value">• Group password: %s</string>
     <string name="backup_max_backoff">• Max backoff: %ds</string>
     <string name="public_key">Public Key</string>
     <string name="import_config_title">Import Configuration?</string>
@@ -141,7 +148,7 @@
     <string name="mappings_count">• Mappings: %d</string>
     <string name="more_mappings">  - ... and %d more</string>
     <string name="import_note">Note: This will replace your current proxy and port forwarding settings. Other settings (peers, private key, multicast) will not be affected.</string>
-    <string name="import_note_full">Note: This will replace your current Yggdrasil settings (private key, peers, multicast, max backoff) AND proxy/port forwarding settings.</string>
+    <string name="import_note_full">Note: This will replace your current Yggdrasil settings (private key, peers, multicast, group password, max backoff) AND proxy/port forwarding settings.</string>
     <string name="import_button">Import</string>
     <string name="no_peers_message">No peers connected. Add peers in the Configuration tab to connect to the Yggdrasil network.</string>
     <string name="uptime">Uptime</string>

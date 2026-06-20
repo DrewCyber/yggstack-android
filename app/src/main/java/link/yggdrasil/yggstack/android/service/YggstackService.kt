@@ -166,6 +166,30 @@ class YggstackService : Service() {
         }
     }
 
+    private fun jsonEscape(value: String): String {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+    }
+
+    private fun applyGroupPasswordToConfigJson(configJson: String, config: YggstackConfig): String {
+        val groupPassword = if (config.groupPasswordEnabled && config.groupPassword.isNotBlank()) {
+            config.groupPassword
+        } else {
+            ""
+        }
+        val escapedGroupPassword = jsonEscape(groupPassword)
+        return if (Regex("\"GroupPassword\":\\s*\"[^\"]*\"").containsMatchIn(configJson)) {
+            configJson.replace(
+                Regex("\"GroupPassword\":\\s*\"[^\"]*\""),
+                "\"GroupPassword\": \"$escapedGroupPassword\""
+            )
+        } else {
+            configJson.replace(
+                Regex("\"IfName\":"),
+                "\"GroupPassword\": \"$escapedGroupPassword\",\n  \"IfName\":"
+            )
+        }
+    }
+
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
     }
@@ -828,6 +852,8 @@ class YggstackService : Service() {
                 )
             }
 
+            finalConfig = applyGroupPasswordToConfigJson(finalConfig, config)
+
             return finalConfig
         }
 
@@ -885,6 +911,13 @@ class YggstackService : Service() {
             "[]"
         }
 
+        val groupPassword = if (config.groupPasswordEnabled && config.groupPassword.isNotBlank()) {
+            config.groupPassword
+        } else {
+            ""
+        }
+        val escapedGroupPassword = jsonEscape(groupPassword)
+
         // Use the same structure as generated config
         val manualConfig = """{
   "PrivateKey": "${config.privateKey}",
@@ -895,6 +928,7 @@ class YggstackService : Service() {
   "AdminListen": "none",
   "MulticastInterfaces": $multicastInterfaces,
   "AllowedPublicKeys": [],
+    "GroupPassword": "$escapedGroupPassword",
   "IfName": "auto",
   "IfMTU": 65535,
   "NodeInfoPrivacy": false,
@@ -1925,6 +1959,8 @@ class YggstackService : Service() {
                 put("proxyEnabled", config.proxyEnabled)
                 put("multicastBeacon", config.multicastBeacon)
                 put("multicastListen", config.multicastListen)
+                put("groupPasswordEnabled", config.groupPasswordEnabled)
+                put("groupPassword", config.groupPassword)
                 put("logLevel", config.logLevel)
                 put("maxBackoff", config.maxBackoff)
                 put("exposeEnabled", config.exposeEnabled)
@@ -2025,6 +2061,8 @@ class YggstackService : Service() {
                     proxyEnabled = json.optBoolean("proxyEnabled", false),
                     multicastBeacon = json.optBoolean("multicastBeacon", true),
                     multicastListen = json.optBoolean("multicastListen", true),
+                    groupPasswordEnabled = json.optBoolean("groupPasswordEnabled", false),
+                    groupPassword = json.optString("groupPassword", ""),
                     logLevel = json.optString("logLevel", "info"),
                     maxBackoff = json.optInt("maxBackoff", 5),
                     exposeEnabled = json.optBoolean("exposeEnabled", false),

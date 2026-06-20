@@ -13,6 +13,8 @@ data class YggdrasilSettings(
     val peers: List<String>,
     val multicastBeacon: Boolean,
     val multicastListen: Boolean,
+    val groupPasswordEnabled: Boolean = false,
+    val groupPassword: String = "",
     val maxBackoffEnabled: Boolean = true,
     val maxBackoff: Int
 )
@@ -47,6 +49,8 @@ data class BackupConfig(
                     peers = config.peers,
                     multicastBeacon = config.multicastBeacon,
                     multicastListen = config.multicastListen,
+                    groupPasswordEnabled = config.groupPasswordEnabled,
+                    groupPassword = config.groupPassword,
                     maxBackoffEnabled = config.maxBackoffEnabled,
                     maxBackoff = config.maxBackoff
                 ) else null,
@@ -80,6 +84,8 @@ data class BackupConfig(
             val ygPeers = mutableListOf<String>()
             var ygMulticastBeacon = false
             var ygMulticastListen = false
+            var ygGroupPasswordEnabled = false
+            var ygGroupPassword = ""
             var ygMaxBackoffEnabled = true
             var ygMaxBackoff = 0
             var hasYggdrasil = false
@@ -176,6 +182,8 @@ data class BackupConfig(
                         "peers"           -> ygPeers.addAll(parseTomlStringArray(rawVal))
                         "multicastBeacon" -> ygMulticastBeacon  = boolVal()
                         "multicastListen" -> ygMulticastListen  = boolVal()
+                        "groupPasswordEnabled" -> ygGroupPasswordEnabled = boolVal()
+                        "groupPassword"  -> ygGroupPassword = strVal()
                         "maxBackoffEnabled" -> ygMaxBackoffEnabled = boolVal()
                         "maxBackoff"      -> ygMaxBackoff        = intVal()
                     }
@@ -215,6 +223,8 @@ data class BackupConfig(
                     peers           = ygPeers,
                     multicastBeacon = ygMulticastBeacon,
                     multicastListen = ygMulticastListen,
+                    groupPasswordEnabled = ygGroupPasswordEnabled,
+                    groupPassword = ygGroupPassword,
                     maxBackoffEnabled = ygMaxBackoffEnabled,
                     maxBackoff      = ygMaxBackoff
                 ) else null,
@@ -280,6 +290,8 @@ data class BackupConfig(
             appendLine("peers = [$peersToml]")
             appendLine("multicastBeacon = ${yggdrasil.multicastBeacon}")
             appendLine("multicastListen = ${yggdrasil.multicastListen}")
+            appendLine("groupPasswordEnabled = ${yggdrasil.groupPasswordEnabled}")
+            appendLine("groupPassword = \"${yggdrasil.groupPassword.tomlEscape()}\"")
             appendLine("maxBackoffEnabled = ${yggdrasil.maxBackoffEnabled}")
             appendLine("maxBackoff = ${yggdrasil.maxBackoff}")
             appendLine()
@@ -338,6 +350,8 @@ data class BackupConfig(
                 peers = it.peers,
                 multicastBeacon = it.multicastBeacon,
                 multicastListen = it.multicastListen,
+                groupPasswordEnabled = it.groupPasswordEnabled,
+                groupPassword = it.groupPassword,
                 maxBackoffEnabled = it.maxBackoffEnabled,
                 maxBackoff = it.maxBackoff
             )

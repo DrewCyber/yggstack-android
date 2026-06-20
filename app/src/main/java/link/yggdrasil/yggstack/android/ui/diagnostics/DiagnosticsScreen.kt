@@ -533,6 +533,23 @@ fun ImportPreviewDialog(
                         fontFamily = FontFamily.Monospace
                     )
                     Text(
+                        text = stringResource(R.string.backup_group_password_enabled, ygd.groupPasswordEnabled),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    if (ygd.groupPassword.isNotBlank()) {
+                        val maskedGroupPassword = if (ygd.groupPassword.length > 12) {
+                            "${ygd.groupPassword.take(4)}...${ygd.groupPassword.takeLast(4)}"
+                        } else {
+                            "●●●●"
+                        }
+                        Text(
+                            text = stringResource(R.string.backup_group_password_value, maskedGroupPassword),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Text(
                         text = stringResource(R.string.backup_max_backoff, ygd.maxBackoff),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace

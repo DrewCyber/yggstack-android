@@ -47,6 +47,7 @@ fun ConfigurationScreen(
     var editingForwardMapping by remember { mutableStateOf<ForwardMapping?>(null) }
     var deepLinkForwardPrefill by remember { mutableStateOf<ForwardMapping?>(null) }
     var showPeerDiscovery by remember { mutableStateOf(false) }
+    var showGroupPassword by remember { mutableStateOf(false) }
 
     // Open the relevant dialog when a deep link arrives
     LaunchedEffect(pendingDeepLink) {
@@ -213,9 +214,7 @@ fun ConfigurationScreen(
                     var showMaxBackoffDialog by remember { mutableStateOf(false) }
                     
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -255,6 +254,50 @@ fun ConfigurationScreen(
                             onDismiss = { showMaxBackoffDialog = false }
                         )
                     }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = config.groupPassword,
+                            onValueChange = { viewModel.updateGroupPassword(it) },
+                            label = { Text(stringResource(R.string.group_password_label)) },
+                            modifier = Modifier.weight(1f),
+                            enabled = !isServiceRunning,
+                            singleLine = true,
+                            visualTransformation = if (showGroupPassword) {
+                                VisualTransformation.None
+                            } else {
+                                PasswordVisualTransformation()
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { showGroupPassword = !showGroupPassword },
+                                    enabled = !isServiceRunning
+                                ) {
+                                    Icon(
+                                        if (showGroupPassword) Icons.Default.Lock else Icons.Default.Edit,
+                                        contentDescription = if (showGroupPassword)
+                                            stringResource(R.string.hide_private_key)
+                                        else
+                                            stringResource(R.string.show_private_key)
+                                    )
+                                }
+                            }
+                        )
+                        Switch(
+                            checked = config.groupPasswordEnabled,
+                            onCheckedChange = { viewModel.setGroupPasswordEnabled(it) },
+                            enabled = !isServiceRunning &&
+                                    (config.groupPasswordEnabled || config.groupPassword.isNotBlank()),
+                            modifier = Modifier
+                                .align(Alignment.CenterVertically)
+                                .scale(0.6f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
             }
 
