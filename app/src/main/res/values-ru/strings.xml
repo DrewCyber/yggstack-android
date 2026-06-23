@@ -165,4 +165,12 @@
     <string name="max_reconnection_description">Максимальное время ожидания перед повторной попыткой подключения к узлу</string>
     <string name="cancel">Отмена</string>
     <string name="ok">OK</string>
+
+    <!-- Samsung Modes and Routines automation actions -->
+    <string name="automation_start_label">Запустить Yggstack</string>
+    <string name="automation_start_description">Запустить сервис Yggstack</string>
+    <string name="automation_stop_label">Остановить Yggstack</string>
+    <string name="automation_stop_description">Остановить сервис Yggstack</string>
+    <string name="automation_shortcuts_enabled">Ярлыки автоматизации</string>
+    <string name="automation_shortcuts_description">Показывать ярлыки Запустить/Остановить как отдельные приложения в лаунчере и Режимах и Сценариях</string>
 </resources>

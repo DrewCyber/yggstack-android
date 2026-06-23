@@ -51,6 +51,7 @@ class ConfigRepository(private val context: Context) {
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
+        private val AUTOMATION_SHORTCUTS_KEY = booleanPreferencesKey("automation_shortcuts")
     }
 
     /**
@@ -144,6 +145,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveAutostart(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTOSTART_KEY] = enabled
+        }
+    }
+
+    /**
+     * Get automation shortcuts (launcher shortcuts for start/stop service) preference
+     */
+    val automationShortcutsFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[AUTOMATION_SHORTCUTS_KEY] ?: false
+    }
+
+    /**
+     * Save automation shortcuts preference
+     */
+    suspend fun saveAutomationShortcuts(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTOMATION_SHORTCUTS_KEY] = enabled
         }
     }
 

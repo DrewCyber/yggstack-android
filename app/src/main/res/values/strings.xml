@@ -167,5 +167,13 @@
     <string name="max_reconnection_description">Maximum time to wait before attempting peer reconnection</string>
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
+
+    <!-- Samsung Modes and Routines automation actions -->
+    <string name="automation_start_label">Start Yggstack</string>
+    <string name="automation_start_description">Start the Yggstack service</string>
+    <string name="automation_stop_label">Stop Yggstack</string>
+    <string name="automation_stop_description">Stop the Yggstack service</string>
+    <string name="automation_shortcuts_enabled">Automation Shortcuts</string>
+    <string name="automation_shortcuts_description">Show Start/Stop shortcuts as separate apps in the launcher and Modes &amp; Routines</string>
 </resources>
 
