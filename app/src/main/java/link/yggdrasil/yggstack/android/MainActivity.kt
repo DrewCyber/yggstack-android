@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -83,6 +86,28 @@ class MainActivity : ComponentActivity() {
         }
     }
     
+    private fun registerAutomationShortcuts() {
+        val startShortcut = ShortcutInfoCompat.Builder(this, "shortcut_start_yggstack")
+            .setShortLabel(getString(R.string.automation_start_label))
+            .setLongLabel(getString(R.string.automation_start_description))
+            .setIcon(IconCompat.createWithResource(this, R.mipmap.ic_launcher))
+            .setIntent(
+                Intent(this, link.yggdrasil.yggstack.android.automation.AutomationStartActivity::class.java)
+                    .setAction(Intent.ACTION_DEFAULT)
+            )
+            .build()
+        val stopShortcut = ShortcutInfoCompat.Builder(this, "shortcut_stop_yggstack")
+            .setShortLabel(getString(R.string.automation_stop_label))
+            .setLongLabel(getString(R.string.automation_stop_description))
+            .setIcon(IconCompat.createWithResource(this, R.mipmap.ic_launcher))
+            .setIntent(
+                Intent(this, link.yggdrasil.yggstack.android.automation.AutomationStopActivity::class.java)
+                    .setAction(Intent.ACTION_DEFAULT)
+            )
+            .build()
+        ShortcutManagerCompat.setDynamicShortcuts(this, listOf(startShortcut, stopShortcut))
+    }
+
     override fun attachBaseContext(newBase: Context) {
         // Apply saved locale before activity is created
         val repository = ConfigRepository(newBase)
@@ -93,6 +118,7 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        registerAutomationShortcuts()
         parseDeepLink(intent?.data)?.let { pendingDeepLinkFlow.value = it }
         setContent {
             val repository = ConfigRepository(this)

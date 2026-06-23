@@ -171,6 +171,4 @@
     <string name="automation_start_description">Запустить сервис Yggstack</string>
     <string name="automation_stop_label">Остановить Yggstack</string>
     <string name="automation_stop_description">Остановить сервис Yggstack</string>
-    <string name="automation_shortcuts_enabled">Ярлыки автоматизации</string>
-    <string name="automation_shortcuts_description">Показывать ярлыки Запустить/Остановить как отдельные приложения в лаунчере и Режимах и Сценариях</string>
 </resources>

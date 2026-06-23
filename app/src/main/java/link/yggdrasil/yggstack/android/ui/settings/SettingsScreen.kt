@@ -1,9 +1,7 @@
 package link.yggdrasil.yggstack.android.ui.settings
 
 import android.app.Activity
-import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.clickable
@@ -40,7 +38,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val selectedLanguage by repository.languageFlow.collectAsState(initial = "en")
     val autostartEnabled by repository.autostartFlow.collectAsState(initial = false)
     val autoUpdateEnabled by repository.autoUpdateFlow.collectAsState(initial = true)
-    val automationShortcutsEnabled by repository.automationShortcutsFlow.collectAsState(initial = false)
     val coroutineScope = rememberCoroutineScope()
 
     Column(
@@ -182,50 +179,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Disable Battery Optimization")
                     }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Automation shortcuts toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.automation_shortcuts_enabled),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = stringResource(R.string.automation_shortcuts_description),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = automationShortcutsEnabled,
-                        onCheckedChange = { enabled ->
-                            coroutineScope.launch {
-                                repository.saveAutomationShortcuts(enabled)
-                            }
-                            val state = if (enabled)
-                                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                            else
-                                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                            val pm = context.packageManager
-                            listOf(
-                                "link.yggdrasil.yggstack.android.automation.AutomationStartActivity",
-                                "link.yggdrasil.yggstack.android.automation.AutomationStopActivity"
-                            ).forEach { className ->
-                                pm.setComponentEnabledSetting(
-                                    ComponentName(context, className),
-                                    state,
-                                    PackageManager.DONT_KILL_APP
-                                )
-                            }
-                        }
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

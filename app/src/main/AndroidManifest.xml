@@ -76,41 +76,22 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Shortcut: Start Yggstack — appears as a separate app in Routines/Modes app picker -->
-        <!-- Disabled by default; enabled at runtime via the toggle in the System screen -->
+        <!-- Dynamic shortcut targets: Start / Stop Yggstack service -->
         <activity
             android:name=".automation.AutomationStartActivity"
             android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
-            android:enabled="false"
             android:noHistory="true"
             android:taskAffinity=""
-            android:excludeFromRecents="true"
-            android:label="@string/automation_start_label"
-            android:icon="@mipmap/ic_launcher">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:excludeFromRecents="true" />
 
-        <!-- Shortcut: Stop Yggstack — appears as a separate app in Routines/Modes app picker -->
-        <!-- Disabled by default; enabled at runtime via the toggle in the System screen -->
         <activity
             android:name=".automation.AutomationStopActivity"
             android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
-            android:enabled="false"
             android:noHistory="true"
             android:taskAffinity=""
-            android:excludeFromRecents="true"
-            android:label="@string/automation_stop_label"
-            android:icon="@mipmap/ic_launcher">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:excludeFromRecents="true" />
     </application>
 
 </manifest>
