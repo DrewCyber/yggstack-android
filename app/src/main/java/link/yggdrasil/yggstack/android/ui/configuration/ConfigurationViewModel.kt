@@ -52,6 +52,10 @@ class ConfigurationViewModel(
     private val _logsEnabled = MutableStateFlow(true)
     val logsEnabled: StateFlow<Boolean> = _logsEnabled.asStateFlow()
 
+    private val _suppressTransitWarning = MutableStateFlow(false)
+    private val _showTransitTrafficWarning = MutableStateFlow(false)
+    val showTransitTrafficWarning: StateFlow<Boolean> = _showTransitTrafficWarning.asStateFlow()
+
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
 
@@ -155,6 +159,13 @@ class ConfigurationViewModel(
         viewModelScope.launch {
             repository.logsEnabledFlow.collect { enabled ->
                 _logsEnabled.value = enabled
+            }
+        }
+
+        // Load transit warning suppression preference
+        viewModelScope.launch {
+            repository.suppressTransitWarningFlow.collect { suppressed ->
+                _suppressTransitWarning.value = suppressed
             }
         }
     }
@@ -415,7 +426,28 @@ class ConfigurationViewModel(
     }
 
     fun startService() {
-        android.util.Log.d("ConfigViewModel", "startService() called, context=$context, serviceBound=$serviceBound")
+        val enabledPeerCount = _config.value.peers.filter { it !in _config.value.disabledPeers }.size
+        if (enabledPeerCount > 1 && !_suppressTransitWarning.value) {
+            _showTransitTrafficWarning.value = true
+            return
+        }
+        doStartService()
+    }
+
+    fun confirmStartWithWarning(suppress: Boolean) {
+        _showTransitTrafficWarning.value = false
+        if (suppress) {
+            viewModelScope.launch { repository.saveSuppressTransitWarning(true) }
+        }
+        doStartService()
+    }
+
+    fun dismissTransitWarning() {
+        _showTransitTrafficWarning.value = false
+    }
+
+    private fun doStartService() {
+        android.util.Log.d("ConfigViewModel", "doStartService() called, context=$context, serviceBound=$serviceBound")
         viewModelScope.launch {
             _serviceState.value = ServiceState.Starting
             try {

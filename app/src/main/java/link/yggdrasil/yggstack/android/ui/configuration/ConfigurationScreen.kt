@@ -37,6 +37,7 @@ fun ConfigurationScreen(
     val showPrivateKey by viewModel.showPrivateKey.collectAsState()
     val savedScrollPosition by viewModel.scrollPosition.collectAsState()
     val pendingDeepLink by viewModel.pendingDeepLink.collectAsState()
+    val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsState()
 
     var peerInput by remember { mutableStateOf("") }
     var editingPeer by remember { mutableStateOf<String?>(null) }
@@ -624,6 +625,13 @@ fun ConfigurationScreen(
     }
 
     // Dialogs
+    if (showTransitTrafficWarning) {
+        TransitTrafficWarningDialog(
+            onConfirm = { suppress -> viewModel.confirmStartWithWarning(suppress) },
+            onDismiss = { viewModel.dismissTransitWarning() }
+        )
+    }
+
     if (showPeerDiscovery) {
         val context = LocalContext.current
         val repository = ConfigRepository(context)
@@ -876,6 +884,54 @@ fun ForwardMappingItem(
             enabled = checkboxEnabled
         )
     }
+}
+
+@Composable
+fun TransitTrafficWarningDialog(
+    onConfirm: (suppress: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var suppressChecked by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+        title = { Text(stringResource(R.string.transit_warning_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.transit_warning_message),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Checkbox(
+                        checked = suppressChecked,
+                        onCheckedChange = { suppressChecked = it }
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.transit_warning_suppress),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.clickable { suppressChecked = !suppressChecked }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(suppressChecked) }) {
+                Text(stringResource(R.string.transit_warning_start_anyway))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

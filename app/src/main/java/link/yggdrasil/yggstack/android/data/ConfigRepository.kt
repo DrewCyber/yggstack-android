@@ -51,6 +51,7 @@ class ConfigRepository(private val context: Context) {
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
+        private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
     }
 
     /**
@@ -208,6 +209,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveLanguage(language: String) {
         context.dataStore.edit { preferences ->
             preferences[LANGUAGE_KEY] = language
+        }
+    }
+
+    /**
+     * Get "suppress transit traffic warning" preference
+     */
+    val suppressTransitWarningFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SUPPRESS_TRANSIT_WARNING] ?: false
+    }
+
+    /**
+     * Save "suppress transit traffic warning" preference
+     */
+    suspend fun saveSuppressTransitWarning(suppress: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SUPPRESS_TRANSIT_WARNING] = suppress
         }
     }
 

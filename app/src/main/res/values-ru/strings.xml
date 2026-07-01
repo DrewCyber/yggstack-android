@@ -166,6 +166,12 @@
     <string name="cancel">Отмена</string>
     <string name="ok">OK</string>
 
+    <!-- Transit Traffic Warning Dialog -->
+    <string name="transit_warning_title">Включено несколько узлов</string>
+    <string name="transit_warning_message">У вас включено более одного узла. Узлы с несколькими активными пирами могут передавать транзитный трафик других участников сети Yggdrasil, что может существенно увеличить потребление трафика.\n\nЕсли у вас ограниченный тарифный план или медленное соединение, рекомендуется держать включённым только один узел.</string>
+    <string name="transit_warning_suppress">Больше не показывать это предупреждение</string>
+    <string name="transit_warning_start_anyway">Запустить всё равно</string>
+
     <!-- Samsung Modes and Routines automation actions -->
     <string name="automation_start_label">Запустить Yggstack</string>
     <string name="automation_start_description">Запустить сервис Yggstack</string>
