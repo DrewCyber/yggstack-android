@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
+import link.yggdrasil.yggstack.mobile.PeerEventCallback
 import link.yggdrasil.yggstack.mobile.Yggstack
 import org.json.JSONArray
 import org.json.JSONObject
@@ -398,6 +399,12 @@ class YggstackService : Service() {
                         }
                     })
                 }
+
+                yggstack?.setPeerEventCallback(object : PeerEventCallback {
+                    override fun onPeerEvent(payload: String) {
+                        handlePeerEvent(payload)
+                    }
+                })
                 
                 // Use log level from config
                 val logLevel = config.logLevel
@@ -476,6 +483,16 @@ class YggstackService : Service() {
                     _yggdrasilIp.value = null
                 }
 
+                // Get and store public key once (peer updates now come from callback events)
+                try {
+                    val publicKey = kotlinx.coroutines.withTimeout(5000L) {
+                        yggstack?.publicKey
+                    }
+                    _yggdrasilPublicKey.value = publicKey
+                } catch (_: Exception) {
+                    _yggdrasilPublicKey.value = null
+                }
+
                 logDebug("Setting service running state...")
                 _isRunning.value = true
                 _peerCount.value = 0
@@ -494,10 +511,7 @@ class YggstackService : Service() {
                 cleanupPeerCache()
 
                 logInfo("Yggstack started successfully")
-                updateNotification("Connected", 0, 0)
-
-                // Start monitoring for peer details subscriptions (lazy-load)
-                startPeerStatsSubscriptionMonitor()
+                updateNotification("Connected", _peerCount.value, _totalPeerCount.value)
 
             } catch (e: Exception) {
                 logError("ERROR starting Yggstack: ${e.message}")
@@ -1152,6 +1166,34 @@ class YggstackService : Service() {
         }
     }
 
+    private fun handlePeerEvent(payload: String) {
+        serviceScope.launch {
+            try {
+                val eventObject = JSONObject(payload)
+                val peersArray = eventObject.optJSONArray("Peers") ?: JSONArray()
+                val peersJson = peersArray.toString()
+
+                _peerDetailsJSON.emit(peersJson)
+
+                var connectedCount = 0
+                for (i in 0 until peersArray.length()) {
+                    if (peersArray.getJSONObject(i).optBoolean("Up", false)) {
+                        connectedCount++
+                    }
+                }
+
+                _peerCount.value = connectedCount
+                _totalPeerCount.value = peersArray.length()
+
+                if (_isRunning.value) {
+                    updateNotification("Connected", connectedCount, peersArray.length())
+                }
+            } catch (e: Exception) {
+                logError("Error handling peer callback event: ${e.message}")
+            }
+        }
+    }
+
     private fun startPeerStatsSubscriptionMonitor() {
         peerStatsSubscriptionJob?.cancel()
         peerStatsSubscriptionJob = serviceScope.launch {
@@ -1482,7 +1524,7 @@ class YggstackService : Service() {
             .setContentTitle("Yggstack")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setSmallIcon(R.drawable.ic_qs_tile)
+            .setSmallIcon(if (peerCount > 0) R.drawable.ic_qs_tile else R.drawable.ic_stack_group)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
