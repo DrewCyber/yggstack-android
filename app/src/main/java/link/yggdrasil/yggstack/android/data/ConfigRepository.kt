@@ -24,6 +24,9 @@ class ConfigRepository(private val context: Context) {
     }
 
     companion object {
+        private val HOST_PORT_REGEX = Regex("^[^:\\[\\]]+:\\d+$")
+        private val PORT_ONLY_REGEX = Regex("^:\\d+$")
+        private val DEFAULT_PORT_SUFFIX_REGEX = Regex("(:53)+$")
         private val PEERS_KEY = stringPreferencesKey("peers")
         private val PRIVATE_KEY = stringPreferencesKey("private_key")
         private val SOCKS_PROXY = stringPreferencesKey("socks_proxy")
@@ -53,6 +56,36 @@ class ConfigRepository(private val context: Context) {
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
+
+        fun normalizeDnsServer(value: String): String {
+            val trimmed = value.trim()
+            if (trimmed.isBlank()) return trimmed
+
+            if (trimmed.startsWith("[")) {
+                val closingBracketIndex = trimmed.indexOf(']')
+                if (closingBracketIndex > 0) {
+                    val host = trimmed.substring(0, closingBracketIndex + 1)
+                    val remainder = trimmed.substring(closingBracketIndex + 1)
+
+                    return when {
+                        remainder.isEmpty() -> "$host:53"
+                        remainder == ":53" -> "$host:53"
+                        DEFAULT_PORT_SUFFIX_REGEX.matches(remainder) -> "$host:53"
+                        PORT_ONLY_REGEX.matches(remainder) -> "$host$remainder"
+                        else -> "$host:53"
+                    }
+                }
+            }
+
+            if (HOST_PORT_REGEX.matches(trimmed)) {
+                return trimmed
+            }
+
+            return when {
+                trimmed.contains(":") -> "[$trimmed]:53"
+                else -> "$trimmed:53"
+            }
+        }
     }
 
     /**

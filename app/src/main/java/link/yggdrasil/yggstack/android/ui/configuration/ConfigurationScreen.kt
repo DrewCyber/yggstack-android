@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -49,6 +50,8 @@ fun ConfigurationScreen(
     var deepLinkForwardPrefill by remember { mutableStateOf<ForwardMapping?>(null) }
     var showPeerDiscovery by remember { mutableStateOf(false) }
     var showGroupPassword by remember { mutableStateOf(false) }
+    var dnsServerInput by remember { mutableStateOf(config.dnsServer) }
+    var isDnsServerFocused by remember { mutableStateOf(false) }
 
     // Open the relevant dialog when a deep link arrives
     LaunchedEffect(pendingDeepLink) {
@@ -74,6 +77,12 @@ fun ConfigurationScreen(
     // Save scroll position when it changes
     LaunchedEffect(scrollState.value) {
         viewModel.saveScrollPosition(scrollState.value)
+    }
+
+    LaunchedEffect(config.dnsServer, isDnsServerFocused) {
+        if (!isDnsServerFocused && dnsServerInput != config.dnsServer) {
+            dnsServerInput = config.dnsServer
+        }
     }
 
     val isServiceRunning = serviceState is ServiceState.Running
@@ -380,11 +389,28 @@ fun ConfigurationScreen(
 
                 val context = LocalContext.current
                 OutlinedTextField(
-                    value = config.dnsServer,
-                    onValueChange = { viewModel.updateDnsServer(it) },
+                    value = dnsServerInput,
+                    onValueChange = {
+                        dnsServerInput = it
+                        viewModel.updateDnsServer(it)
+                    },
                     label = { Text(stringResource(R.string.dns_server)) },
                     placeholder = { Text(stringResource(R.string.dns_server_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focusState ->
+                            val wasFocused = isDnsServerFocused
+                            isDnsServerFocused = focusState.isFocused
+                            if (wasFocused && !focusState.isFocused) {
+                                val normalizedDnsServer = ConfigRepository.normalizeDnsServer(dnsServerInput)
+                                if (normalizedDnsServer != dnsServerInput) {
+                                    dnsServerInput = normalizedDnsServer
+                                }
+                                if (normalizedDnsServer != config.dnsServer) {
+                                    viewModel.updateDnsServer(normalizedDnsServer)
+                                }
+                            }
+                        },
                     enabled = !isServiceRunning && config.proxyEnabled,
                     trailingIcon = {
                         IconButton(

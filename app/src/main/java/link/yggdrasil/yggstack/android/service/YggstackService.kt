@@ -425,7 +425,7 @@ class YggstackService : Service() {
                 }
 
                 val dnsServer = if (config.proxyEnabled && config.dnsServer.isNotBlank()) {
-                    config.dnsServer
+                    ConfigRepository.normalizeDnsServer(config.dnsServer)
                 } else {
                     ""
                 }
