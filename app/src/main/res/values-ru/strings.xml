@@ -55,6 +55,11 @@
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_system">Системная</string>
+    <string name="theme_colors_section">Цвета</string>
+    <string name="theme_colors_app">Цвета приложения</string>
+    <string name="theme_colors_system">Системные цвета</string>
+    <string name="theme_colors_system_description">Использует системные цвета Android, сохраняя выбранный светлый, тёмный или системный режим.</string>
+    <string name="theme_colors_system_unsupported">Системные цвета доступны только на Android 12 и новее.</string>
     <string name="autostart_section">Автозапуск</string>
     <string name="autostart_enabled">Запускать сервис при загрузке</string>
     <string name="autostart_description">Примечание: Xiaomi, Huawei, Oppo могут требовать дополнительные разрешения на автозапуск в настройках системы.</string>

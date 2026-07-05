@@ -55,6 +55,11 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_system">System Default</string>
+    <string name="theme_colors_section">Colors</string>
+    <string name="theme_colors_app">App colors</string>
+    <string name="theme_colors_system">System colors</string>
+    <string name="theme_colors_system_description">Uses Android system colors while keeping the selected light, dark, or system mode.</string>
+    <string name="theme_colors_system_unsupported">System colors require Android 12 or newer.</string>
     <string name="autostart_section">Autostart</string>
     <string name="autostart_enabled">Start service on boot</string>
     <string name="autostart_description">Note: Xiaomi, Huawei, Oppo may require additional autostart permission in their system settings.</string>

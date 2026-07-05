@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val repository = ConfigRepository(this)
             val theme by repository.themeFlow.collectAsState(initial = "system")
+            val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = false)
             val systemInDarkTheme = isSystemInDarkTheme()
             
             val darkTheme = when (theme) {
@@ -132,7 +133,10 @@ class MainActivity : ComponentActivity() {
                 else -> systemInDarkTheme
             }
             
-            YggstackAndroidTheme(darkTheme = darkTheme) {
+            YggstackAndroidTheme(
+                darkTheme = darkTheme,
+                dynamicColor = useSystemColors
+            ) {
                 MainScreen()
             }
         }

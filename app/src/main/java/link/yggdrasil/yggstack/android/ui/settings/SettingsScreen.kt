@@ -3,6 +3,7 @@ package link.yggdrasil.yggstack.android.ui.settings
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -43,7 +44,9 @@ fun SettingsScreen(
     val selectedLanguage by repository.languageFlow.collectAsState(initial = "en")
     val autostartEnabled by repository.autostartFlow.collectAsState(initial = false)
     val autoUpdateEnabled by repository.autoUpdateFlow.collectAsState(initial = true)
+    val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = false)
     val coroutineScope = rememberCoroutineScope()
+    val systemColorsSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     Column(
         modifier = modifier
@@ -88,6 +91,42 @@ fun SettingsScreen(
                             }
                         }
                     )
+
+                    if (systemColorsSupported) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = stringResource(R.string.theme_colors_section),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        )
+
+                        ThemeOption(
+                            label = stringResource(R.string.theme_colors_app),
+                            selected = !useSystemColors,
+                            onClick = {
+                                coroutineScope.launch {
+                                    repository.saveUseSystemColors(false)
+                                }
+                            }
+                        )
+                        ThemeOption(
+                            label = stringResource(R.string.theme_colors_system),
+                            selected = useSystemColors,
+                            onClick = {
+                                coroutineScope.launch {
+                                    repository.saveUseSystemColors(true)
+                                }
+                            }
+                        )
+
+                        Text(
+                            text = stringResource(R.string.theme_colors_system_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
         }

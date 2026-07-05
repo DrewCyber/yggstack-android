@@ -34,6 +34,7 @@ class ConfigRepository(private val context: Context) {
         private val FORWARD_MAPPINGS = stringPreferencesKey("forward_mappings")
         private val FORWARD_ENABLED = booleanPreferencesKey("forward_enabled")
         private val THEME_KEY = stringPreferencesKey("theme")
+        private val USE_SYSTEM_COLORS_KEY = booleanPreferencesKey("use_system_colors")
         private val AUTOSTART_KEY = booleanPreferencesKey("autostart")
         private val AUTO_UPDATE_KEY = booleanPreferencesKey("auto_update")
         private val MULTICAST_BEACON = booleanPreferencesKey("multicast_beacon")
@@ -129,6 +130,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[THEME_KEY] = theme
+        }
+    }
+
+    /**
+     * Get system colors preference
+     */
+    val useSystemColorsFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[USE_SYSTEM_COLORS_KEY] ?: false
+    }
+
+    /**
+     * Save system colors preference
+     */
+    suspend fun saveUseSystemColors(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[USE_SYSTEM_COLORS_KEY] = enabled
         }
     }
 
