@@ -67,13 +67,18 @@
     <string name="export_logs">Экспортировать логи</string>
     <string name="about_section">О приложении</string>
     <string name="version">Версия</string>
-    <string name="library_version">Версия библиотеки</string>
+    <string name="yggstack_version">Версия Yggstack</string>
+    <string name="yggdrasil_version">Версия Yggdrasil</string>
     <string name="repository">GitHub репозиторий</string>
     <string name="telegram_chat">Telegram чат (Ru/En)</string>
     <string name="download_logs">Скачать логи</string>
     <string name="new_version_available">Доступна новая версия</string>
     <string name="update_later">Обновить позже</string>
     <string name="download_update">Скачать обновление</string>
+    <string name="check_for_update_now">Проверить обновления</string>
+    <string name="reset_suspended_dialogs">Показать все скрытые диалоги снова</string>
+    <string name="no_updates_available">Обновлений нет</string>
+    <string name="suspended_dialogs_reset">Скрытые диалоги сброшены</string>
 
     <!-- Messages -->
     <string name="ip_copied">IP-адрес скопирован в буфер обмена</string>

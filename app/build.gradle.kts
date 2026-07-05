@@ -7,6 +7,106 @@ plugins {
 
 import java.util.Properties
 import java.io.FileInputStream
+import java.io.File
+
+data class RepoVersionInfo(
+    val tag: String?,
+    val commit: String?,
+    val repoUrl: String
+) {
+    val displayValue: String
+        get() = when {
+            !tag.isNullOrBlank() && !commit.isNullOrBlank() -> "$tag - $commit"
+            !commit.isNullOrBlank() -> commit
+            !tag.isNullOrBlank() -> tag
+            else -> "unknown"
+        }
+
+    val versionNameValue: String
+        get() = when {
+            !tag.isNullOrBlank() && !commit.isNullOrBlank() -> "$tag-$commit"
+            !commit.isNullOrBlank() -> commit
+            !tag.isNullOrBlank() -> tag
+            else -> "0.0.1"
+        }
+
+    val commitUrl: String
+        get() = if (!commit.isNullOrBlank()) "$repoUrl/commit/$commit" else repoUrl
+}
+
+fun runCommand(workingDir: File, vararg command: String): String? {
+    return try {
+        val process = ProcessBuilder(*command)
+            .directory(workingDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        if (process.waitFor() == 0 && output.isNotEmpty()) output else null
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun normalizeGitHubUrl(remoteUrl: String?): String? {
+    if (remoteUrl.isNullOrBlank()) return null
+    return when {
+        remoteUrl.startsWith("git@github.com:") -> {
+            "https://github.com/" + remoteUrl.removePrefix("git@github.com:").removeSuffix(".git")
+        }
+        remoteUrl.startsWith("https://github.com/") -> remoteUrl.removeSuffix(".git")
+        else -> null
+    }
+}
+
+fun resolveGitRepoVersion(repoDir: File, fallbackRepoUrl: String, preferredTag: String? = null): RepoVersionInfo {
+    val commit = runCommand(repoDir, "git", "rev-parse", "--short", "HEAD")
+    val tag = preferredTag
+        ?: runCommand(repoDir, "git", "describe", "--tags", "--abbrev=0")?.removePrefix("v")
+    val repoUrl = normalizeGitHubUrl(runCommand(repoDir, "git", "remote", "get-url", "origin"))
+        ?: fallbackRepoUrl
+
+    return RepoVersionInfo(tag = tag, commit = commit, repoUrl = repoUrl)
+}
+
+fun resolveGoModuleVersion(moduleDir: File, moduleName: String, fallbackRepoUrl: String): RepoVersionInfo {
+    val moduleVersion = Regex("$moduleName\\s+v([^\\s]+)")
+        .find(moduleDir.resolve("go.mod").readText())
+        ?.groupValues
+        ?.get(1)
+
+    val metadata = runCommand(moduleDir, "go", "mod", "download", "-json", "$moduleName@v$moduleVersion")
+    val commit = metadata
+        ?.let { Regex("\"Hash\"\\s*:\\s*\"([0-9a-f]{40})\"").find(it)?.groupValues?.get(1) }
+        ?.take(7)
+
+    return RepoVersionInfo(
+        tag = moduleVersion,
+        commit = commit,
+        repoUrl = fallbackRepoUrl
+    )
+}
+
+val appVersionInfo by lazy {
+    resolveGitRepoVersion(
+        repoDir = rootProject.projectDir,
+        fallbackRepoUrl = "https://github.com/DrewCyber/yggstack-android"
+    )
+}
+
+val yggstackVersionInfo by lazy {
+    resolveGitRepoVersion(
+        repoDir = rootProject.file("lib/yggstack"),
+        fallbackRepoUrl = "https://github.com/DrewCyber/yggstack"
+    )
+}
+
+val yggdrasilVersionInfo by lazy {
+    resolveGoModuleVersion(
+        moduleDir = rootProject.file("lib/yggstack"),
+        moduleName = "github.com/yggdrasil-network/yggdrasil-go",
+        fallbackRepoUrl = "https://github.com/yggdrasil-network/yggdrasil-go"
+    )
+}
 
 // Get version from git tag or environment variable
 fun getVersionName(): String {
@@ -16,22 +116,7 @@ fun getVersionName(): String {
         return envVersion
     }
 
-    // Try to get from git tag
-    return try {
-        val tag = Runtime.getRuntime().exec("git describe --tags --abbrev=0").inputStream.bufferedReader().readText().trim()
-        val commit = Runtime.getRuntime().exec("git rev-parse --short HEAD").inputStream.bufferedReader().readText().trim()
-        
-        // Remove 'v' prefix if present
-        val version = if (tag.startsWith("v")) tag.substring(1) else tag
-        
-        if (version.isNotEmpty() && commit.isNotEmpty()) {
-            "$version-$commit"
-        } else {
-            "0.0.1"
-        }
-    } catch (e: Exception) {
-        "0.0.1"
-    }
+    return appVersionInfo.versionNameValue
 }
 
 // Calculate versionCode from semantic version (e.g., 1.2.3 -> 10203)
@@ -59,11 +144,7 @@ fun getVersionCode(): Int {
 }
 
 fun getCommitHash(): String {
-    return try {
-        Runtime.getRuntime().exec("git rev-parse --short HEAD").inputStream.bufferedReader().readText().trim()
-    } catch (e: Exception) {
-        "unknown"
-    }
+    return appVersionInfo.commit ?: "unknown"
 }
 
 // Load keystore properties for local builds
@@ -87,6 +168,12 @@ android {
         // Generate BuildConfig fields
         buildConfigField("String", "VERSION_NAME", "\"${getVersionName()}\"")
         buildConfigField("String", "COMMIT_HASH", "\"${getCommitHash()}\"")
+        buildConfigField("String", "APP_VERSION_DISPLAY", "\"${appVersionInfo.displayValue}\"")
+        buildConfigField("String", "APP_VERSION_URL", "\"${appVersionInfo.commitUrl}\"")
+        buildConfigField("String", "YGGSTACK_VERSION_DISPLAY", "\"${yggstackVersionInfo.displayValue}\"")
+        buildConfigField("String", "YGGSTACK_VERSION_URL", "\"${yggstackVersionInfo.commitUrl}\"")
+        buildConfigField("String", "YGGDRASIL_VERSION_DISPLAY", "\"${yggdrasilVersionInfo.displayValue}\"")
+        buildConfigField("String", "YGGDRASIL_VERSION_URL", "\"${yggdrasilVersionInfo.commitUrl}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -67,13 +67,18 @@
     <string name="export_logs">Export Logs</string>
     <string name="about_section">About</string>
     <string name="version">Version</string>
-    <string name="library_version">Library Version</string>
+    <string name="yggstack_version">Yggstack version</string>
+    <string name="yggdrasil_version">Yggdrasil version</string>
     <string name="repository">GitHub Repository</string>
     <string name="telegram_chat">Telegram Chat (Ru/En)</string>
     <string name="download_logs">Download Logs</string>
     <string name="new_version_available">New version available</string>
     <string name="update_later">Update Later</string>
     <string name="download_update">Download Update</string>
+    <string name="check_for_update_now">Check for update</string>
+    <string name="reset_suspended_dialogs">Show all hidded dialogs again</string>
+    <string name="no_updates_available">No updates available</string>
+    <string name="suspended_dialogs_reset">Suspended dialogs reset</string>
 
     <!-- Messages -->
     <string name="ip_copied">IP address copied to clipboard</string>

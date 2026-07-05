@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,13 +25,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.BuildConfig
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.VersionChecker
 import link.yggdrasil.yggstack.android.utils.AutostartHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(modifier: Modifier = Modifier) {
+fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    onCheckForUpdate: () -> Unit = {}
+) {
     val context = LocalContext.current
     val activity = context as? Activity
     val repository = remember { ConfigRepository(context) }
@@ -282,17 +287,23 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
                 SettingItem(
                     label = stringResource(R.string.version),
-                    value = BuildConfig.VERSION_NAME
+                    value = BuildConfig.APP_VERSION_DISPLAY,
+                    url = BuildConfig.APP_VERSION_URL,
+                    context = context
                 )
 
                 SettingItem(
-                    label = "Commit",
-                    value = BuildConfig.COMMIT_HASH
+                    label = stringResource(R.string.yggstack_version),
+                    value = BuildConfig.YGGSTACK_VERSION_DISPLAY,
+                    url = BuildConfig.YGGSTACK_VERSION_URL,
+                    context = context
                 )
 
                 SettingItem(
-                    label = stringResource(R.string.library_version),
-                    value = "yggstack 1.0.5"
+                    label = stringResource(R.string.yggdrasil_version),
+                    value = BuildConfig.YGGDRASIL_VERSION_DISPLAY,
+                    url = BuildConfig.YGGDRASIL_VERSION_URL,
+                    context = context
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -311,6 +322,34 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     context = context
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = onCheckForUpdate,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.check_for_update_now))
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = {
+                coroutineScope.launch {
+                    VersionChecker(context).clearPostponedVersion()
+                    repository.saveSuppressTransitWarning(false)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.suspended_dialogs_reset),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.reset_suspended_dialogs))
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -374,7 +413,9 @@ fun ThemeOption(
 @Composable
 fun SettingItem(
     label: String,
-    value: String
+    value: String,
+    url: String? = null,
+    context: android.content.Context? = null
 ) {
     Row(
         modifier = Modifier
@@ -383,7 +424,19 @@ fun SettingItem(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
-        Text(text = value, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (url != null && context != null) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+            modifier = if (url != null && context != null) {
+                Modifier.clickable {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    context.startActivity(intent)
+                }
+            } else {
+                Modifier
+            }
+        )
     }
 }
 

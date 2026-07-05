@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -160,6 +161,11 @@ fun MainScreen() {
     var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    fun showAvailableUpdate(update: VersionInfo) {
+        versionInfo = update
+        showUpdateDialog = true
+    }
     
     // Clear temp screen after using it
     LaunchedEffect(Unit) {
@@ -344,7 +350,22 @@ fun MainScreen() {
             when (selectedScreen) {
                 0 -> ConfigurationScreen(viewModel = configViewModel)
                 1 -> DiagnosticsScreen()
-                2 -> SettingsScreen()
+                2 -> SettingsScreen(
+                    onCheckForUpdate = {
+                        coroutineScope.launch {
+                            val update = VersionChecker(context).checkForUpdate()
+                            if (update != null) {
+                                showAvailableUpdate(update)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.no_updates_available),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                )
             }
         }
     }
