@@ -38,7 +38,7 @@ class VersionChecker(private val context: Context) {
         return (currentTime - lastCheck) >= CHECK_INTERVAL
     }
     
-    suspend fun checkForUpdate(): VersionInfo? = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdate(force: Boolean = false): VersionInfo? = withContext(Dispatchers.IO) {
         try {
             Log.i("VersionChecker", "Checking for updates from GitHub...")
             val json = URL(GITHUB_API_URL).readText()
@@ -69,6 +69,10 @@ class VersionChecker(private val context: Context) {
             // Check if this is a new version
             if (isNewerVersion(tagName, BuildConfig.VERSION_NAME)) {
                 Log.i("VersionChecker", "New version available: $tagName")
+                if (force) {
+                    Log.i("VersionChecker", "Force check requested, ignoring any postponed version")
+                    return@withContext VersionInfo(tagName, downloadUrl, releaseNotes)
+                }
                 // Check if user has postponed this version
                 val prefs = context.versionDataStore.data.first()
                 val postponedVersion = prefs[POSTPONED_VERSION_KEY]

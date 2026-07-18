@@ -29,7 +29,9 @@ import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.VersionChecker
 import link.yggdrasil.yggstack.android.utils.AutostartHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +46,10 @@ fun SettingsScreen(
     val selectedLanguage by repository.languageFlow.collectAsState(initial = "en")
     val autostartEnabled by repository.autostartFlow.collectAsState(initial = false)
     val autoUpdateEnabled by repository.autoUpdateFlow.collectAsState(initial = true)
-    val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = false)
+    // Read the current value synchronously so the toggle shows the correct
+    // selection immediately on screen load instead of flashing "App colors" first.
+    val initialUseSystemColors = remember { runBlocking { repository.useSystemColorsFlow.first() } }
+    val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = initialUseSystemColors)
     val coroutineScope = rememberCoroutineScope()
     val systemColorsSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 

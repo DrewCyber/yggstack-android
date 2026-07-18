@@ -40,8 +40,8 @@ fun ConfigurationScreen(
     val pendingDeepLink by viewModel.pendingDeepLink.collectAsState()
     val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsState()
 
-    var peerInput by remember { mutableStateOf("") }
     var editingPeer by remember { mutableStateOf<String?>(null) }
+    var showPeerDialog by remember { mutableStateOf(false) }
     var showExposeDialog by remember { mutableStateOf(false) }
     var editingExposeMapping by remember { mutableStateOf<ExposeMapping?>(null) }
     var deepLinkExposePrefill by remember { mutableStateOf<ExposeMapping?>(null) }
@@ -172,54 +172,27 @@ fun ConfigurationScreen(
                             enabled = !isServiceRunning,
                             onEdit = {
                                 editingPeer = peer
-                                peerInput = peer
-                            },
-                            onDelete = { viewModel.removePeer(peer) }
+                                showPeerDialog = true
+                            }
                         )
                     }
 
-                    OutlinedTextField(
-                        value = peerInput,
-                        onValueChange = { peerInput = it },
-                        label = { Text(if (editingPeer != null) "Edit Peer" else stringResource(R.string.peer_uri_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isServiceRunning,
-                        trailingIcon = {
-                            Row {
-                                if (editingPeer != null) {
-                                    IconButton(
-                                        onClick = {
-                                            editingPeer = null
-                                            peerInput = ""
-                                        },
-                                        enabled = !isServiceRunning
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Cancel")
-                                    }
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (peerInput.isNotBlank()) {
-                                            if (editingPeer != null) {
-                                                viewModel.updatePeer(editingPeer!!, peerInput)
-                                                editingPeer = null
-                                            } else {
-                                                viewModel.addPeer(peerInput)
-                                            }
-                                            peerInput = ""
-                                        }
-                                    },
-                                    enabled = !isServiceRunning
-                                ) {
-                                    Icon(
-                                        if (editingPeer != null) Icons.Default.Check else Icons.Default.Add,
-                                        contentDescription = if (editingPeer != null) "Update" else stringResource(R.string.add_peer)
-                                    )
-                                }
-                            }
+                    if (!isServiceRunning) {
+                        Button(
+                            onClick = {
+                                editingPeer = null
+                                showPeerDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.add_peer))
                         }
-                    )
-                    
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     // MaxBackoff setting
                     var showMaxBackoffDialog by remember { mutableStateOf(false) }
                     
@@ -736,6 +709,34 @@ fun ConfigurationScreen(
             )
         }
     }
+
+    if (showPeerDialog) {
+        key(showPeerDialog, editingPeer) {
+            PeerDialog(
+                initialPeer = editingPeer,
+                onDismiss = {
+                    showPeerDialog = false
+                    editingPeer = null
+                },
+                onConfirm = { newPeer ->
+                    if (editingPeer != null) {
+                        viewModel.updatePeer(editingPeer!!, newPeer)
+                    } else {
+                        viewModel.addPeer(newPeer)
+                    }
+                    showPeerDialog = false
+                    editingPeer = null
+                },
+                onDelete = editingPeer?.let { peer ->
+                    {
+                        viewModel.removePeer(peer)
+                        showPeerDialog = false
+                        editingPeer = null
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
@@ -807,12 +808,12 @@ fun PeerItem(
     onToggleEnabled: () -> Unit,
     enabled: Boolean,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (enabled) Modifier.clickable(onClick = onEdit) else Modifier)
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -826,23 +827,10 @@ fun PeerItem(
             color = if (isEnabled) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy((-8).dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (enabled) {
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_peer))
-                }
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit peer")
-                }
-            }
-            Checkbox(
-                checked = isEnabled,
-                onCheckedChange = { onToggleEnabled() }
-            )
-        }
+        Checkbox(
+            checked = isEnabled,
+            onCheckedChange = { onToggleEnabled() }
+        )
     }
 }
 
@@ -1350,6 +1338,75 @@ fun ForwardMappingDialog(
                         context.startActivity(Intent.createChooser(sendIntent, null))
                     },
                     enabled = allValid
+                ) {
+                    Text("Share")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun PeerDialog(
+    initialPeer: String? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+    onDelete: (() -> Unit)? = null
+) {
+    var peerUri by remember { mutableStateOf(initialPeer ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (initialPeer != null) "Edit Peer" else stringResource(R.string.add_peer))
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.delete_peer),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            OutlinedTextField(
+                value = peerUri,
+                onValueChange = { peerUri = it },
+                label = { Text(stringResource(R.string.peer_uri_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(peerUri.trim()) },
+                enabled = peerUri.isNotBlank()
+            ) {
+                Text(if (initialPeer != null) "Update" else "Add")
+            }
+        },
+        dismissButton = {
+            val context = LocalContext.current
+            Row {
+                TextButton(
+                    onClick = {
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, peerUri.trim())
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, null))
+                    },
+                    enabled = peerUri.isNotBlank()
                 ) {
                     Text("Share")
                 }

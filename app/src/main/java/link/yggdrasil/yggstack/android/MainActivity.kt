@@ -121,10 +121,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         registerAutomationShortcuts()
         parseDeepLink(intent?.data)?.let { pendingDeepLinkFlow.value = it }
+
+        val repository = ConfigRepository(this)
+        // Read the current theme/colors synchronously so the very first frame
+        // is rendered with the correct scheme (avoids a visible flash on launch).
+        val initialTheme = runBlocking { repository.themeFlow.first() }
+        val initialUseSystemColors = runBlocking { repository.useSystemColorsFlow.first() }
+
         setContent {
-            val repository = ConfigRepository(this)
-            val theme by repository.themeFlow.collectAsState(initial = "system")
-            val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = false)
+            val theme by repository.themeFlow.collectAsState(initial = initialTheme)
+            val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = initialUseSystemColors)
             val systemInDarkTheme = isSystemInDarkTheme()
             
             val darkTheme = when (theme) {
@@ -357,7 +363,7 @@ fun MainScreen() {
                 2 -> SettingsScreen(
                     onCheckForUpdate = {
                         coroutineScope.launch {
-                            val update = VersionChecker(context).checkForUpdate()
+                            val update = VersionChecker(context).checkForUpdate(force = true)
                             if (update != null) {
                                 showAvailableUpdate(update)
                             } else {
