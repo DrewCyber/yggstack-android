@@ -785,7 +785,8 @@ class YggstackService : Service() {
                 config.cachedPeers.filter { cached ->
                     cached.lastSeen > recentCutoff && 
                     cached.successCount > cached.failureCount &&
-                    !allPeers.contains(cached.uri)
+                    !allPeers.contains(cached.uri) &&
+                    !config.disabledPeers.contains(cached.uri)
                 }
             } else {
                 emptyList()
@@ -1331,10 +1332,12 @@ class YggstackService : Service() {
                 val isInbound = peer.optBoolean("Inbound", false)
                 
                 if (uri.isNotEmpty() && isUp && !isInbound) {
-                    // Check if this is a static peer (user-configured)
+                    // Check if this is a static peer (user-configured) or disabled
                     val isStatic = currentConfig.peers.contains(uri)
+                    val isDisabled = currentConfig.disabledPeers.contains(uri)
                     
-                    if (!isStatic) {
+                    // Only cache non-static, non-disabled peers
+                    if (!isStatic && !isDisabled) {
                         // This is a dynamically discovered outbound peer (multicast listen)
                         discoveredPeers.add(CachedPeer(
                             uri = uri,
@@ -1990,6 +1993,22 @@ class YggstackService : Service() {
                     })
                 }
                 put("forwardMappings", forwardMappingsArray)
+                
+                // Save disabledPeers
+                put("disabledPeers", JSONArray(config.disabledPeers))
+                
+                // Save cachedPeers
+                val cachedPeersArray = JSONArray()
+                config.cachedPeers.forEach { cached ->
+                    cachedPeersArray.put(JSONObject().apply {
+                        put("uri", cached.uri)
+                        put("discoverySource", cached.discoverySource)
+                        put("lastSeen", cached.lastSeen)
+                        put("successCount", cached.successCount)
+                        put("failureCount", cached.failureCount)
+                    })
+                }
+                put("cachedPeers", cachedPeersArray)
             }
             
             sharedPreferences.edit()
@@ -2053,6 +2072,31 @@ class YggstackService : Service() {
                     }
                 }
                 
+                // Parse disabledPeers array
+                val disabledPeers = mutableListOf<String>()
+                val disabledPeersArray = json.optJSONArray("disabledPeers")
+                if (disabledPeersArray != null) {
+                    for (i in 0 until disabledPeersArray.length()) {
+                        disabledPeers.add(disabledPeersArray.getString(i))
+                    }
+                }
+                
+                // Parse cachedPeers array
+                val cachedPeers = mutableListOf<CachedPeer>()
+                val cachedPeersArray = json.optJSONArray("cachedPeers")
+                if (cachedPeersArray != null) {
+                    for (i in 0 until cachedPeersArray.length()) {
+                        val cached = cachedPeersArray.getJSONObject(i)
+                        cachedPeers.add(CachedPeer(
+                            uri = cached.getString("uri"),
+                            discoverySource = cached.getString("discoverySource"),
+                            lastSeen = cached.getLong("lastSeen"),
+                            successCount = cached.optInt("successCount", 0),
+                            failureCount = cached.optInt("failureCount", 0)
+                        ))
+                    }
+                }
+                
                 lastConfig = YggstackConfig(
                     privateKey = json.optString("privateKey", ""),
                     peers = peers,
@@ -2068,7 +2112,9 @@ class YggstackService : Service() {
                     exposeEnabled = json.optBoolean("exposeEnabled", false),
                     forwardEnabled = json.optBoolean("forwardEnabled", false),
                     exposeMappings = exposeMappings,
-                    forwardMappings = forwardMappings
+                    forwardMappings = forwardMappings,
+                    disabledPeers = disabledPeers,
+                    cachedPeers = cachedPeers
                 )
                 
                 logInfo("Loaded config from SharedPreferences: ${peers.size} peer(s), key present=${lastConfig!!.privateKey.isNotBlank()}")
