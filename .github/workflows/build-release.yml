@@ -36,7 +36,11 @@ jobs:
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260203041319-574ceaa2f723
-          gomobile init
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20260203041319-574ceaa2f723
+          # Do not use `gomobile init`: it unconditionally installs gobind@latest,
+          # which now requires Go >= 1.26. `gomobile bind` only needs this marker
+          # directory to exist plus gobind on PATH (same as what init provides).
+          mkdir -p "$(go env GOPATH)/pkg/gomobile"
 
       - name: Install NDK 26.1.10909125
         run: |

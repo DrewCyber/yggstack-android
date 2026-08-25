@@ -30,11 +30,13 @@ Docs/                      # DEV_README.md, DEV_QUICKSTART.md, PRD.md, etc. — 
 
 - JDK 17 (temurin)
 - Go 1.25.11
-- gomobile `golang.org/x/mobile/cmd/gomobile@v0.0.0-20260203041319-574ceaa2f723`
+- gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260203041319-574ceaa2f723`
 - Android NDK `26.1.10909125`
 - compileSdk / targetSdk 34, minSdk 23
 
 If any doc under `Docs/` or `lib/yggstack/` states different versions, the workflow file wins.
+
+Note: never run `gomobile init` — it fetches `gobind@latest`, which now requires Go ≥ 1.26. The workflow and `lib/yggstack/mobile/build-android.sh` create `$GOPATH/pkg/gomobile` directly instead, which is all `gomobile bind` needs.
 
 ## Build commands
 
