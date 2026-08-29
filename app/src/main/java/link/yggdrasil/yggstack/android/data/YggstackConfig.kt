@@ -92,3 +92,28 @@ data class PeerDetail(
     val latency: Long
 )
 
+/**
+ * Runtime stats for a single listener (SOCKS proxy, forwarded or exposed port),
+ * parsed from the Go side's GetListenersJSON. Counters reset when the service stops.
+ */
+data class PortStatsDetail(
+    val key: String,        // listener identity, e.g. "ltcp:127.0.0.1:8080->[300:...]:80"
+    val kind: String,       // "socks", "local-tcp", "local-udp", "remote-tcp", "remote-udp"
+    val listenAddr: String,
+    val targetAddr: String,
+    val activeConnections: Long,
+    val totalConnections: Long,
+    val rxBytes: Long,
+    val txBytes: Long
+) {
+    val isTcp: Boolean get() = kind == "socks" || kind == "local-tcp" || kind == "remote-tcp"
+
+    /** Section this listener belongs to on the Ports stats page: "proxy", "expose" or "forward". */
+    val section: String
+        get() = when (kind) {
+            "remote-tcp", "remote-udp" -> "expose"
+            "local-tcp", "local-udp" -> "forward"
+            else -> "proxy"
+        }
+}
+

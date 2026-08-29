@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import link.yggdrasil.yggstack.mobile.LogCallback
@@ -136,6 +137,9 @@ class YggstackService : Service() {
 
     private val _peerDetailsJSON = MutableSharedFlow<String>(replay = 1)
     val peerDetailsJSON: SharedFlow<String> = _peerDetailsJSON.asSharedFlow()
+
+    private val _portStatsJSON = MutableSharedFlow<String>(replay = 1)
+    val portStatsJSON: SharedFlow<String> = _portStatsJSON.asSharedFlow()
 
     private val _generatedPrivateKey = MutableStateFlow<String?>(null)
     val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
@@ -434,6 +438,10 @@ class YggstackService : Service() {
                 yggstack?.clearLocalMappings()
                 yggstack?.clearRemoteMappings()
 
+                // Drop stale listener stats from a previous run so the Ports
+                // page never flashes old numbers while the first tick is pending
+                _portStatsJSON.resetReplayCache()
+
                 // Setup port mappings BEFORE starting
                 // This ensures mappings are in place when start() runs
                 setupPortMappings(config)
@@ -618,7 +626,8 @@ class YggstackService : Service() {
                         _peerCount.value = 0
                         _totalPeerCount.value = 0
                         _generatedPrivateKey.value = null
-                        
+                        _portStatsJSON.resetReplayCache()
+
                         logInfo("Yggstack stopped")
                     }
                 } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -629,6 +638,7 @@ class YggstackService : Service() {
                     _peerCount.value = 0
                     _totalPeerCount.value = 0
                     _generatedPrivateKey.value = null
+                    _portStatsJSON.resetReplayCache()
                 }
                 
                 // Cancel the notification
@@ -1156,18 +1166,24 @@ class YggstackService : Service() {
     private fun startPeerStatsSubscriptionMonitor() {
         peerStatsSubscriptionJob?.cancel()
         peerStatsSubscriptionJob = serviceScope.launch {
-            _peerDetailsJSON.subscriptionCount.collect { count ->
+            // One shared updater feeds both peer details and port stats; it
+            // runs while either flow has at least one collector (i.e. while
+            // the Peers or Ports diagnostics tab is visible)
+            combine(
+                _peerDetailsJSON.subscriptionCount,
+                _portStatsJSON.subscriptionCount
+            ) { peerSubs, portSubs -> peerSubs + portSubs }.collect { count ->
                 // Only react to subscriptions if service is running
                 if (!_isRunning.value) {
                     logDebug("Service not running, ignoring subscription changes")
                     return@collect
                 }
-                
+
                 if (count > 0) {
-                    logDebug("Peer details subscriber active, starting stats updater")
+                    logDebug("Stats subscriber active, starting stats updater")
                     startPeerStatsUpdater()
                 } else {
-                    logDebug("No peer details subscribers, stopping stats updater")
+                    logDebug("No stats subscribers, stopping stats updater")
                     stopPeerStatsUpdater()
                 }
             }
@@ -1175,16 +1191,24 @@ class YggstackService : Service() {
     }
 
     private fun stopPeerStatsUpdater() {
-        peerStatsJob?.cancel()
-        peerStatsJob = null
+        synchronized(this) {
+            peerStatsJob?.cancel()
+            peerStatsJob = null
+        }
     }
 
     private fun startPeerStatsUpdater() {
-        // Cancel any existing updater first
-        peerStatsJob?.cancel()
-        peerStatsJob = serviceScope.launch {
-            while (_isRunning.value) {
-                try {
+        // Guard against double-start: rapid tab switches can fire overlapping
+        // subscription events, and two concurrent pollers would race on
+        // peerStatsJob and double the JNI traffic into the Go runtime.
+        synchronized(this) {
+            if (peerStatsJob?.isActive == true) {
+                logDebug("Stats updater already running, skipping start")
+                return
+            }
+            peerStatsJob = serviceScope.launch {
+                while (_isRunning.value) {
+                    try {
                     // Double-check service is still running before updating
                     if (!_isRunning.value) break
                     
@@ -1271,6 +1295,17 @@ class YggstackService : Service() {
                         }
                         break
                     }
+
+                    // Update per-listener stats for the Ports page; failures here
+                    // are transient and must not trigger crash detection
+                    try {
+                        val listenersJson = yggstack?.getListenersJSON()
+                        if (listenersJson != null) {
+                            _portStatsJSON.emit(listenersJson)
+                        }
+                    } catch (e: Exception) {
+                        logError("Error fetching listener stats: ${e.message}")
+                    }
                 } catch (e: Exception) {
                     logError("Error fetching peer stats: ${e.message}")
                     // Don't break on transient errors, but log them
@@ -1279,6 +1314,7 @@ class YggstackService : Service() {
             }
             if (_isRunning.value) {
                 logInfo("Peer stats updater stopped")
+            }
             }
         }
     }

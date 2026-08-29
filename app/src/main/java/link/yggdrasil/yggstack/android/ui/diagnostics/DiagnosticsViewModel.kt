@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.PortStatsDetail
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.service.YggstackService
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,9 @@ class DiagnosticsViewModel(
     private val _peerDetails = MutableStateFlow<List<link.yggdrasil.yggstack.android.data.PeerDetail>>(emptyList())
     val peerDetails: StateFlow<List<link.yggdrasil.yggstack.android.data.PeerDetail>> = _peerDetails.asStateFlow()
 
+    private val _portStats = MutableStateFlow<List<PortStatsDetail>>(emptyList())
+    val portStats: StateFlow<List<PortStatsDetail>> = _portStats.asStateFlow()
+
     private val _yggdrasilIp = MutableStateFlow<String?>(null)
     val yggdrasilIp: StateFlow<String?> = _yggdrasilIp.asStateFlow()
 
@@ -63,6 +67,9 @@ class DiagnosticsViewModel(
 
     private val _peerStatusScrollPosition = MutableStateFlow(0)
     val peerStatusScrollPosition: StateFlow<Int> = _peerStatusScrollPosition.asStateFlow()
+
+    private val _portsCompactMode = MutableStateFlow(false)
+    val portsCompactMode: StateFlow<Boolean> = _portsCompactMode.asStateFlow()
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -138,6 +145,8 @@ class DiagnosticsViewModel(
                     _yggdrasilIp.value = null
                     _yggdrasilPublicKey.value = null
                     _peerDetails.value = emptyList()
+                    // Port stats reset when the service stops
+                    _portStats.value = emptyList()
                 }
             }
         }
@@ -167,6 +176,10 @@ class DiagnosticsViewModel(
 
     fun savePeerStatusScrollPosition(position: Int) {
         _peerStatusScrollPosition.value = position
+    }
+
+    fun setPortsCompactMode(compact: Boolean) {
+        _portsCompactMode.value = compact
     }
 
     fun clearLogs() {
@@ -293,6 +306,48 @@ class DiagnosticsViewModel(
                         _yggdrasilPublicKey.value = key
                     }
                 }
+            }
+        }
+    }
+
+    private fun parsePortStats(json: String): List<PortStatsDetail> {
+        if (json.isBlank() || json == "[]") return emptyList()
+
+        return try {
+            val jsonArray = JSONArray(json)
+            val listeners = mutableListOf<PortStatsDetail>()
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                listeners.add(
+                    PortStatsDetail(
+                        key = obj.optString("Key", ""),
+                        kind = obj.optString("Kind", ""),
+                        listenAddr = obj.optString("Listen", ""),
+                        targetAddr = obj.optString("Target", ""),
+                        activeConnections = obj.optLong("ActiveConns", 0),
+                        totalConnections = obj.optLong("TotalConns", 0),
+                        rxBytes = obj.optLong("RXBytes", 0),
+                        txBytes = obj.optLong("TXBytes", 0)
+                    )
+                )
+            }
+
+            // Already sorted by the Go side; stable re-sort keeps order deterministic
+            listeners.sortedWith(compareBy({ it.kind }, { it.listenAddr }, { it.targetAddr }))
+        } catch (e: JSONException) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Collects per-listener port stats from service. Should be called from a composable
+     * with LaunchedEffect to tie subscription lifecycle to composable visibility.
+     */
+    suspend fun collectPortStats() {
+        yggstackService?.let { service ->
+            service.portStatsJSON.collect { json ->
+                _portStats.value = parsePortStats(json)
             }
         }
     }

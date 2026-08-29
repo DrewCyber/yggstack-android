@@ -51,6 +51,7 @@ class ConfigRepository(private val context: Context) {
         private val LOGS_ENABLED = booleanPreferencesKey("logs_enabled")
         private val DISABLED_PEERS = stringPreferencesKey("disabled_peers")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
+        private val DIAGNOSTICS_TAB_MIGRATED = booleanPreferencesKey("diagnostics_tab_ports_migrated")
         private val PUBLIC_PEERS_CACHE = stringPreferencesKey("public_peers_cache")
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
@@ -231,10 +232,22 @@ class ConfigRepository(private val context: Context) {
     }
 
     /**
-     * Get diagnostics tab preference
+     * Get diagnostics tab preference.
+     * One-time migration for the inserted "Ports" tab: indices saved before it
+     * existed map old Logs (2) to its new index (3).
      */
     val diagnosticsTabFlow: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[DIAGNOSTICS_TAB_KEY] ?: 0
+        val saved = preferences[DIAGNOSTICS_TAB_KEY] ?: 0
+        val migrated = preferences[DIAGNOSTICS_TAB_MIGRATED] ?: false
+        if (!migrated && saved == 2) {
+            context.dataStore.edit {
+                it[DIAGNOSTICS_TAB_KEY] = 3
+                it[DIAGNOSTICS_TAB_MIGRATED] = true
+            }
+            3
+        } else {
+            saved.coerceIn(0, 3)
+        }
     }
 
     /**

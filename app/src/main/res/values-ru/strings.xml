@@ -47,8 +47,23 @@
 
     <!-- Diagnostics Screen -->
     <string name="tab_config">Конфиг</string>
-    <string name="tab_peers">Статус</string>
+    <string name="tab_peers">Пиры</string>
+    <string name="tab_ports">Порты</string>
     <string name="tab_logs">Логи</string>
+
+    <!-- Ports Stats Page -->
+    <string name="ports_service_stopped">Запустите сервис для просмотра статистики портов</string>
+    <string name="ports_no_listeners">Нет активных слушателей</string>
+    <string name="ports_section_proxy">SOCKS-прокси</string>
+    <string name="ports_section_expose">Опубликованные порты</string>
+    <string name="ports_section_forward">Проброшенные порты</string>
+    <string name="ports_active_label">Активных:</string>
+    <string name="ports_total_label">Всего: %1$d</string>
+    <string name="ports_rx_rate_label">RX: %1$s (%2$s/с)</string>
+    <string name="ports_tx_rate_label">TX: %1$s (%2$s/с)</string>
+    <string name="ports_view_mode_label">Вид</string>
+    <string name="ports_view_compact">Компактный</string>
+    <string name="ports_view_extended">Расширенный</string>
 
     <!-- Settings Screen -->
     <string name="theme_section">Тема</string>

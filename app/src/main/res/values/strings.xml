@@ -47,8 +47,23 @@
 
     <!-- Diagnostics Screen -->
     <string name="tab_config">Config</string>
-    <string name="tab_peers">Status</string>
+    <string name="tab_peers">Peers</string>
+    <string name="tab_ports">Ports</string>
     <string name="tab_logs">Logs</string>
+
+    <!-- Ports Stats Page -->
+    <string name="ports_service_stopped">Start the service to view port statistics</string>
+    <string name="ports_no_listeners">No active listeners</string>
+    <string name="ports_section_proxy">SOCKS Proxy</string>
+    <string name="ports_section_expose">Exposed Ports</string>
+    <string name="ports_section_forward">Forwarded Ports</string>
+    <string name="ports_active_label">Active:</string>
+    <string name="ports_total_label">Total: %1$d</string>
+    <string name="ports_rx_rate_label">RX: %1$s (%2$s/s)</string>
+    <string name="ports_tx_rate_label">TX: %1$s (%2$s/s)</string>
+    <string name="ports_view_mode_label">View</string>
+    <string name="ports_view_compact">Compact</string>
+    <string name="ports_view_extended">Extended</string>
 
     <!-- Settings Screen -->
     <string name="theme_section">Theme</string>

@@ -19,10 +19,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,6 +33,8 @@ import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.PortStatsDetail
+import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,14 +52,15 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
     val tabs = listOf(
         stringResource(R.string.tab_config),
         stringResource(R.string.tab_peers),
+        stringResource(R.string.tab_ports),
         stringResource(R.string.tab_logs)
     )
-    
+
     // Load saved tab before creating pager
     var initialTab by remember { mutableStateOf<Int?>(null) }
-    
+
     LaunchedEffect(Unit) {
-        initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 2)
+        initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 3)
     }
     
     // Only show content after initial tab is loaded
@@ -96,7 +101,11 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
                         viewModel = viewModel,
                         isVisible = pagerState.currentPage == 1
                     )
-                    2 -> LogsViewer(viewModel)
+                    2 -> PortsViewer(
+                        viewModel = viewModel,
+                        isVisible = pagerState.currentPage == 2
+                    )
+                    3 -> LogsViewer(viewModel)
                 }
             }
         }
@@ -919,6 +928,305 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Ports stats page: per-listener connection counts and RX/TX for the SOCKS
+ * proxy, exposed and forwarded ports. Sections whose config toggle is
+ * disabled are hidden; stats reset when the service stops.
+ */
+@Composable
+fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
+    val isServiceRunning by viewModel.isServiceRunning.collectAsState()
+    val portStats by viewModel.portStats.collectAsState()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsState()
+    val compactMode by viewModel.portsCompactMode.collectAsState()
+
+    // Only collect port stats when this tab is visible and service is running
+    LaunchedEffect(isVisible, isServiceRunning) {
+        if (isVisible && isServiceRunning) {
+            viewModel.collectPortStats()
+        }
+    }
+
+    // Live rates: bytes-per-second from deltas between consecutive 1s polls,
+    // matched by listener key so ordering changes don't corrupt them
+    val rates = remember { mutableStateMapOf<String, Pair<Double, Double>>() }
+    var prevStats by remember { mutableStateOf<List<PortStatsDetail>?>(null) }
+    var prevTimeMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(portStats) {
+        val now = System.currentTimeMillis()
+        val prev = prevStats
+        if (prev != null && prevTimeMs > 0) {
+            val elapsedSec = (now - prevTimeMs) / 1000.0
+            if (elapsedSec >= 0.2) {
+                val prevByKey = prev.associateBy { it.key }
+                portStats.forEach { cur ->
+                    val old = prevByKey[cur.key]
+                    rates[cur.key] = if (old != null) {
+                        (cur.rxBytes - old.rxBytes) / elapsedSec to (cur.txBytes - old.txBytes) / elapsedSec
+                    } else {
+                        0.0 to 0.0
+                    }
+                }
+            }
+        }
+        prevStats = portStats
+        prevTimeMs = now
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.ports_view_mode_label),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.ports_view_compact),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (compactMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = !compactMode,
+                        onCheckedChange = { viewModel.setPortsCompactMode(!it) },
+                        modifier = Modifier.scale(0.8f)
+                    )
+                    Text(
+                        text = stringResource(R.string.ports_view_extended),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (!compactMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (!isServiceRunning) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.ports_service_stopped),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else {
+            val config = yggstackConfig
+            val sections = listOf(
+                Triple("proxy", config?.proxyEnabled == true, R.string.ports_section_proxy),
+                Triple("expose", config?.exposeEnabled == true, R.string.ports_section_expose),
+                Triple("forward", config?.forwardEnabled == true, R.string.ports_section_forward)
+            )
+
+            var shownAny = false
+            sections.forEach { (section, enabled, titleRes) ->
+                val entries = portStats.filter { it.section == section }
+                if (enabled && entries.isNotEmpty()) {
+                    shownAny = true
+                    // Keep the same order as on the Configuration screen by
+                    // sorting on the mapped config entry's position; anything
+                    // not matching a config mapping falls back to the end
+                    val orderedEntries = if (section == "proxy") entries else entries.sortedBy { stat ->
+                        listenerConfigIndex(stat, config).let { if (it >= 0) it else Int.MAX_VALUE }
+                    }
+                    Text(
+                        text = stringResource(titleRes),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    orderedEntries.forEach { stat ->
+                        PortStatItem(
+                            stat = stat,
+                            displayName = resolveListenerName(stat, config),
+                            rxRatePerSec = rates[stat.key]?.first,
+                            txRatePerSec = rates[stat.key]?.second,
+                            compact = compactMode
+                        )
+                    }
+                }
+            }
+
+            if (!shownAny) {
+                Text(
+                    text = stringResource(R.string.ports_no_listeners),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PortStatItem(
+    stat: PortStatsDetail,
+    displayName: String?,
+    rxRatePerSec: Double?,
+    txRatePerSec: Double?,
+    compact: Boolean
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    if (!displayName.isNullOrBlank()) {
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                    if (!compact) {
+                        Text(
+                            text = if (stat.targetAddr.isBlank()) stat.listenAddr
+                            else "${stat.listenAddr} → ${stat.targetAddr}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (stat.isTcp) "TCP" else "UDP",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.ports_active_label),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                // Highlight live activity; back to the default color when idle.
+                Text(
+                    text = "${stat.activeConnections}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (stat.activeConnections > 0) MaterialTheme.colorScheme.primary else Color.Unspecified
+                )
+                Text(
+                    text = stringResource(R.string.ports_total_label, stat.totalConnections),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = rxRatePerSec?.let {
+                            stringResource(R.string.ports_rx_rate_label, formatBytes(stat.rxBytes), formatBytes(it.toLong()))
+                        } ?: stringResource(R.string.rx_label, formatBytes(stat.rxBytes)),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Column {
+                    Text(
+                        text = txRatePerSec?.let {
+                            stringResource(R.string.ports_tx_rate_label, formatBytes(stat.txBytes), formatBytes(it.toLong()))
+                        } ?: stringResource(R.string.tx_label, formatBytes(stat.txBytes)),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Index of the configured mapping a live listener corresponds to, or -1 when
+ * unmatched. Used for showing the mapping's short name and for keeping the
+ * Ports page in the same order as the Configuration screen.
+ */
+private fun listenerConfigIndex(stat: PortStatsDetail, config: YggstackConfig?): Int {
+    config ?: return -1
+    val proto = if (stat.isTcp) Protocol.TCP else Protocol.UDP
+    return when (stat.section) {
+        "expose" -> config.exposeMappings.indexOfFirst { m ->
+            m.protocol == proto &&
+                m.yggPort.toString() == stat.listenAddr.substringAfterLast(':') &&
+                m.localPort.toString() == stat.targetAddr.substringAfterLast(':')
+        }
+        "forward" -> config.forwardMappings.indexOfFirst { m ->
+            m.protocol == proto &&
+                m.localPort.toString() == stat.listenAddr.substringAfterLast(':') &&
+                m.remotePort.toString() == stat.targetAddr.substringAfterLast(':')
+        }
+        else -> -1
+    }
+}
+
+/**
+ * Best-effort match of a live listener against configured mappings to show
+ * its short name; falls back to null (the card shows addresses instead).
+ */
+private fun resolveListenerName(stat: PortStatsDetail, config: YggstackConfig?): String? {
+    val cfg = config ?: return null
+    return when (val index = listenerConfigIndex(stat, cfg)) {
+        -1 -> null
+        else -> when (stat.section) {
+            "expose" -> cfg.exposeMappings[index].shortName.takeIf { it.isNotBlank() }
+            "forward" -> cfg.forwardMappings[index].shortName.takeIf { it.isNotBlank() }
+            else -> null
         }
     }
 }
