@@ -57,6 +57,7 @@ class ConfigRepository(private val context: Context) {
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
+        private val PORTS_COMPACT_MODE = booleanPreferencesKey("ports_compact_mode")
 
         fun normalizeDnsServer(value: String): String {
             val trimmed = value.trim()
@@ -228,6 +229,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveLogsEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[LOGS_ENABLED] = enabled
+        }
+    }
+
+    /**
+     * Get Ports view mode preference (Compact/Extended)
+     */
+    val portsCompactModeFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PORTS_COMPACT_MODE] ?: false
+    }
+
+    /**
+     * Save Ports view mode preference
+     */
+    suspend fun savePortsCompactMode(compact: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PORTS_COMPACT_MODE] = compact
         }
     }
 

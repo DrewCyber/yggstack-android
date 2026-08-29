@@ -137,6 +137,13 @@ class DiagnosticsViewModel(
                 _yggstackConfig.value = config
             }
         }
+
+        // Restore the Ports view mode across app restarts
+        viewModelScope.launch {
+            repository.portsCompactModeFlow.collect { compact ->
+                _portsCompactMode.value = compact
+            }
+        }
         
         // Clear IP and public key when service stops
         viewModelScope.launch {
@@ -180,6 +187,9 @@ class DiagnosticsViewModel(
 
     fun setPortsCompactMode(compact: Boolean) {
         _portsCompactMode.value = compact
+        viewModelScope.launch {
+            repository.savePortsCompactMode(compact)
+        }
     }
 
     fun clearLogs() {
