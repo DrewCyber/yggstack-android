@@ -193,6 +193,19 @@
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
 
+    <!-- Power Save -->
+    <string name="power_save_title">Power Save</string>
+    <string name="power_save_description">Turns off the node after this much idle time with no active connections; a new connection attempt or Wake Now brings it back up.</string>
+    <string name="power_save_exposed_hint">Unavailable while an exposed port is enabled.</string>
+    <string name="power_save_idle_timeout_label">Idle shutdown timeout</string>
+    <string name="power_save_idle_timeout_description">How long to wait with zero active SOCKS/forwarded-port connections before powering down the node.</string>
+    <string name="power_save_wake_now">Wake Now</string>
+    <string name="power_save_idle_status">Idle for %1$s — listening for connections</string>
+    <string name="power_save_countdown_status">Powering down in %1$s</string>
+    <string name="power_save_armed_status">Power Save armed — active connections in progress</string>
+    <string name="power_save_active_ports_status">Active ports: %1$d</string>
+    <string name="power_save_notification_text">Power saving — waiting for connections</string>
+
     <!-- Transit Traffic Warning Dialog -->
     <string name="transit_warning_title">Multiple Peers Enabled</string>
     <string name="transit_warning_message">You have more than one peer enabled. Nodes with multiple active peers may carry transit traffic for other nodes in the Yggdrasil network, which can significantly increase your bandwidth usage.\n\nIf you have a limited data plan or a slow connection, it is recommended to keep only one peer enabled.</string>

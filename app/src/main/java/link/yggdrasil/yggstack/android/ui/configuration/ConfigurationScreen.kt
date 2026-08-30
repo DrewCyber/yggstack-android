@@ -85,7 +85,13 @@ fun ConfigurationScreen(
         }
     }
 
-    val isServiceRunning = serviceState is ServiceState.Running
+    // Treat Stopping as still-running for edit-gating: the service briefly reports
+    // Stopping before Power Save's idle flag flips true, and without this, config
+    // sections that are hidden/disabled while running (Add peer, Add mapping, etc.)
+    // flash back into their editable state for that transient window.
+    val isServiceRunning = serviceState is ServiceState.Running ||
+        serviceState is ServiceState.PowerSaving ||
+        serviceState is ServiceState.Stopping
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -491,6 +497,79 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Power Save Section
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    val exposedActive = config.hasActiveExposedPorts()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.power_save_title),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Switch(
+                            checked = config.powerSaveEnabled,
+                            onCheckedChange = { viewModel.setPowerSaveEnabled(it) },
+                            enabled = !isServiceRunning && !exposedActive,
+                            modifier = Modifier.scale(0.8f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (exposedActive) {
+                            stringResource(R.string.power_save_exposed_hint)
+                        } else {
+                            stringResource(R.string.power_save_description)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (config.powerSaveEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        var showIdleTimeoutDialog by remember { mutableStateOf(false) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.power_save_idle_timeout_label),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            TextButton(
+                                onClick = { showIdleTimeoutDialog = true },
+                                enabled = !isServiceRunning
+                            ) {
+                                Text(
+                                    text = formatMinutesSeconds(config.powerSaveIdleTimeoutSeconds),
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
+                        if (showIdleTimeoutDialog) {
+                            PowerSaveIdleTimeoutDialog(
+                                currentValue = config.powerSaveIdleTimeoutSeconds,
+                                onConfirm = { newValue ->
+                                    viewModel.setPowerSaveIdleTimeoutSeconds(newValue)
+                                    showIdleTimeoutDialog = false
+                                },
+                                onDismiss = { showIdleTimeoutDialog = false }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Log Level Section
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -605,13 +684,22 @@ fun ConfigurationScreen(
                 .fillMaxWidth()
                 .padding(16.dp),
             enabled = serviceState !is ServiceState.Starting && serviceState !is ServiceState.Stopping,
+            // Disabled colors are pinned to the same enabled-state colors: Material3's
+            // default disabled look is a near-transparent onSurface overlay, which made
+            // the button appear to vanish during the brief Stopping window (e.g. while
+            // Power Save is tearing the node down before it reports idle).
             colors = if (isServiceRunning) {
                 ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
+                    contentColor = MaterialTheme.colorScheme.onError,
+                    disabledContainerColor = MaterialTheme.colorScheme.error,
+                    disabledContentColor = MaterialTheme.colorScheme.onError
                 )
             } else {
-                ButtonDefaults.buttonColors()
+                ButtonDefaults.buttonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.primary,
+                    disabledContentColor = MaterialTheme.colorScheme.onPrimary
+                )
             }
         ) {
             Text(
@@ -1486,5 +1574,84 @@ fun MaxBackoffDialog(
             }
         }
     )
+}
+
+@Composable
+fun PowerSaveIdleTimeoutDialog(
+    currentValue: Int,
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var sliderValue by remember { mutableStateOf(currentValue.toFloat()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.power_save_idle_timeout_label)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(R.string.power_save_idle_timeout_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                Text(
+                    text = formatMinutesSeconds(sliderValue.toInt()),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                )
+
+                Slider(
+                    value = sliderValue,
+                    onValueChange = { sliderValue = it },
+                    valueRange = 10f..120f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "10s",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "120s",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(sliderValue.toInt()) }
+            ) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+private fun formatMinutesSeconds(totalSeconds: Int): String {
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return when {
+        minutes > 0 && seconds > 0 -> "${minutes}m ${seconds}s"
+        minutes > 0 -> "${minutes}m"
+        else -> "${seconds}s"
+    }
 }
 

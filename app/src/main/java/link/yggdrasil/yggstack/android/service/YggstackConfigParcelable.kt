@@ -25,7 +25,9 @@ data class YggstackConfigParcelable(
     val logLevel: String,
     val maxBackoffEnabled: Boolean,
     val maxBackoff: Int,
-    val disabledPeers: List<String>
+    val disabledPeers: List<String>,
+    val powerSaveEnabled: Boolean,
+    val powerSaveIdleTimeoutSeconds: Int
 ) : Parcelable {
 
     fun toYggstackConfig(): YggstackConfig {
@@ -46,7 +48,9 @@ data class YggstackConfigParcelable(
             logLevel = logLevel,
             maxBackoffEnabled = maxBackoffEnabled,
             maxBackoff = maxBackoff,
-            disabledPeers = disabledPeers
+            disabledPeers = disabledPeers,
+            powerSaveEnabled = powerSaveEnabled,
+            powerSaveIdleTimeoutSeconds = powerSaveIdleTimeoutSeconds
         )
     }
 
@@ -69,7 +73,9 @@ data class YggstackConfigParcelable(
                 logLevel = config.logLevel,
                 maxBackoffEnabled = config.maxBackoffEnabled,
                 maxBackoff = config.maxBackoff,
-                disabledPeers = config.disabledPeers
+                disabledPeers = config.disabledPeers,
+                powerSaveEnabled = config.powerSaveEnabled,
+                powerSaveIdleTimeoutSeconds = config.powerSaveIdleTimeoutSeconds
             )
         }
     }

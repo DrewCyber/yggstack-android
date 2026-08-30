@@ -58,6 +58,8 @@ class ConfigRepository(private val context: Context) {
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
         private val PORTS_COMPACT_MODE = booleanPreferencesKey("ports_compact_mode")
+        private val POWER_SAVE_ENABLED = booleanPreferencesKey("power_save_enabled")
+        private val POWER_SAVE_IDLE_TIMEOUT = intPreferencesKey("power_save_idle_timeout")
 
         fun normalizeDnsServer(value: String): String {
             val trimmed = value.trim()
@@ -122,7 +124,9 @@ class ConfigRepository(private val context: Context) {
             maxBackoff = preferences[MAX_BACKOFF] ?: 5,
             disabledPeers = preferences[DISABLED_PEERS]?.let {
                 json.decodeFromString<List<String>>(it)
-            } ?: emptyList()
+            } ?: emptyList(),
+            powerSaveEnabled = preferences[POWER_SAVE_ENABLED] ?: false,
+            powerSaveIdleTimeoutSeconds = preferences[POWER_SAVE_IDLE_TIMEOUT] ?: 15
         )
     }
 
@@ -149,6 +153,8 @@ class ConfigRepository(private val context: Context) {
             preferences[MAX_BACKOFF_ENABLED] = config.maxBackoffEnabled
             preferences[MAX_BACKOFF] = config.maxBackoff
             preferences[DISABLED_PEERS] = json.encodeToString(config.disabledPeers)
+            preferences[POWER_SAVE_ENABLED] = config.powerSaveEnabled
+            preferences[POWER_SAVE_IDLE_TIMEOUT] = config.powerSaveIdleTimeoutSeconds
         }
     }
 

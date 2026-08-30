@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?android:attr/colorControlNormal">
+
+    <!-- Power Save (idle) notification icon: Material Symbols "stack_group" -->
+    <group android:translateY="960">
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M400,-80q-33,0 -56.5,-23.5T320,-160v-160H160q-33,0 -56.5,-23.5T80,-400v-400q0,-33 23.5,-56.5T160,-880h400q33,0 56.5,23.5T640,-800v160h160q33,0 56.5,23.5T880,-560v400q0,33 -23.5,56.5T800,-80H400ZM400,-160h400v-400H560v-240H160v400h240v240ZM480,-560v0Z" />
+    </group>
+</vector>

@@ -89,23 +89,23 @@ class ConfigurationViewModel(
                 }
                 
                 // Set initial state based on actual service state
-                _serviceState.value = if (isActuallyRunning) {
-                    ServiceState.Running
-                } else {
-                    ServiceState.Stopped
+                _serviceState.value = when {
+                    service.isPowerSaveIdle.value -> ServiceState.PowerSaving
+                    isActuallyRunning -> ServiceState.Running
+                    else -> ServiceState.Stopped
                 }
                 _yggdrasilIp.value = service.yggdrasilIp.value
 
-                // Observe service state changes
+                // Observe service state changes (running + Power Save idle combined)
                 viewModelScope.launch {
-                    service.isRunning.collect { running ->
-                        // Update state based on actual service state
-                        _serviceState.value = if (running) {
-                            ServiceState.Running
-                        } else {
-                            ServiceState.Stopped
+                    combine(service.isRunning, service.isPowerSaveIdle) { running, idle -> running to idle }
+                        .collect { (running, idle) ->
+                            _serviceState.value = when {
+                                idle -> ServiceState.PowerSaving
+                                running -> ServiceState.Running
+                                else -> ServiceState.Stopped
+                            }
                         }
-                    }
                 }
                 
                 // Observe transition state to properly disable button during operations
@@ -113,7 +113,7 @@ class ConfigurationViewModel(
                     service.isTransitioning.collect { transitioning ->
                         if (transitioning) {
                             // Don't override - let existing state determine if Starting or Stopping
-                            if (_serviceState.value is ServiceState.Stopped) {
+                            if (_serviceState.value is ServiceState.Stopped || _serviceState.value is ServiceState.PowerSaving) {
                                 _serviceState.value = ServiceState.Starting
                             } else if (_serviceState.value is ServiceState.Running) {
                                 _serviceState.value = ServiceState.Stopping
@@ -409,6 +409,18 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(maxBackoffEnabled = enabled))
     }
 
+    fun setPowerSaveEnabled(enabled: Boolean) {
+        updateConfig(_config.value.copy(powerSaveEnabled = enabled))
+    }
+
+    fun setPowerSaveIdleTimeoutSeconds(seconds: Int) {
+        updateConfig(_config.value.copy(powerSaveIdleTimeoutSeconds = seconds.coerceIn(10, 120)))
+    }
+
+    fun wakeNow() {
+        yggstackService?.wakeNow()
+    }
+
     fun toggleShowPrivateKey() {
         _showPrivateKey.value = !_showPrivateKey.value
     }
@@ -516,9 +528,16 @@ class ConfigurationViewModel(
     }
 
     private fun updateConfig(config: YggstackConfig) {
-        _config.value = config
+        // Power Save and exposed ports are mutually exclusive (exposed mappings
+        // require the node to stay up to accept inbound network connections)
+        val finalConfig = if (config.powerSaveEnabled && config.hasActiveExposedPorts()) {
+            config.copy(powerSaveEnabled = false)
+        } else {
+            config
+        }
+        _config.value = finalConfig
         viewModelScope.launch {
-            repository.saveConfig(config)
+            repository.saveConfig(finalConfig)
         }
     }
 

@@ -191,6 +191,19 @@
     <string name="cancel">Отмена</string>
     <string name="ok">OK</string>
 
+    <!-- Power Save -->
+    <string name="power_save_title">Энергосбережение</string>
+    <string name="power_save_description">Выключает узел после этого времени простоя без активных соединений; новое подключение или кнопка \"Разбудить\" снова включат его.</string>
+    <string name="power_save_exposed_hint">Недоступно, пока включён открытый (exposed) порт.</string>
+    <string name="power_save_idle_timeout_label">Таймаут простоя</string>
+    <string name="power_save_idle_timeout_description">Сколько ждать без активных SOCKS/переадресованных соединений перед выключением узла.</string>
+    <string name="power_save_wake_now">Разбудить</string>
+    <string name="power_save_idle_status">Простой %1$s — ожидание подключений</string>
+    <string name="power_save_countdown_status">Выключение через %1$s</string>
+    <string name="power_save_armed_status">Энергосбережение активно — есть активные соединения</string>
+    <string name="power_save_active_ports_status">Активные порты: %1$d</string>
+    <string name="power_save_notification_text">Энергосбережение — ожидание подключений</string>
+
     <!-- Transit Traffic Warning Dialog -->
     <string name="transit_warning_title">Включено несколько узлов</string>
     <string name="transit_warning_message">У вас включено более одного узла. Узлы с несколькими активными пирами могут передавать транзитный трафик других участников сети Yggdrasil, что может существенно увеличить потребление трафика.\n\nЕсли у вас ограниченный тарифный план или медленное соединение, рекомендуется держать включённым только один узел.</string>

@@ -26,8 +26,19 @@ data class YggstackConfig(
     val cachedPeers: List<CachedPeer> = emptyList(),  // Dynamically discovered peers cache
     val maxBackoffEnabled: Boolean = true,
     val maxBackoff: Int = 5,  // Maximum backoff time in seconds for peer reconnection (5-30s)
-    val disabledPeers: List<String> = emptyList()  // Peers that have been manually disabled
+    val disabledPeers: List<String> = emptyList(),  // Peers that have been manually disabled
+    val powerSaveEnabled: Boolean = false,
+    val powerSaveIdleTimeoutSeconds: Int = 15  // 10-120s, idle time before powering down the node
 )
+
+/** True if at least one expose mapping would actually accept connections from the Yggdrasil network. */
+fun YggstackConfig.hasActiveExposedPorts(): Boolean =
+    exposeEnabled && exposeMappings.any { it.enabled }
+
+/** True if there is at least one local SOCKS proxy or forward mapping Power Save could wake on. */
+fun YggstackConfig.hasWakeableTargets(): Boolean =
+    (proxyEnabled && socksProxy.isNotBlank()) ||
+        (forwardEnabled && forwardMappings.any { it.enabled })
 
 /**
  * Cached peer information for fast reconnection

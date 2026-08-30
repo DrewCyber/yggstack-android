@@ -29,6 +29,7 @@ import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
 import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.CachedPeer
+import link.yggdrasil.yggstack.android.data.hasActiveExposedPorts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,6 +44,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import link.yggdrasil.yggstack.mobile.LogCallback
@@ -51,11 +53,21 @@ import link.yggdrasil.yggstack.mobile.Yggstack
 import org.json.JSONArray
 import org.json.JSONObject
 import android.content.SharedPreferences
+import link.yggdrasil.yggstack.android.utils.LocaleHelper
+import kotlinx.coroutines.runBlocking
 
 /**
  * Foreground service for running Yggstack
  */
 class YggstackService : Service() {
+
+    override fun attachBaseContext(newBase: Context) {
+        // getString() elsewhere in the service (e.g. Power Save notifications) must follow
+        // the app's saved language, not the system locale - the service is created directly
+        // by the OS and never goes through MainActivity's attachBaseContext override.
+        val language = runBlocking { ConfigRepository(newBase).languageFlow.first() }
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase, language))
+    }
 
     private val binder = YggstackBinder()
     private var yggstack: Yggstack? = null
@@ -64,11 +76,20 @@ class YggstackService : Service() {
     private var multicastLock: WifiManager.MulticastLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var persistentLogger: PersistentLogger
-    private var peerStatsJob: kotlinx.coroutines.Job? = null
+    private var peerDetailsJob: kotlinx.coroutines.Job? = null
+    private var portStatsJob: kotlinx.coroutines.Job? = null
     private lateinit var sharedPreferences: SharedPreferences
     
-    // Subscription monitoring for peer stats
-    private var peerStatsSubscriptionJob: kotlinx.coroutines.Job? = null
+    // Subscription monitoring for peer details / port stats (separate so each
+    // screen's tab visibility independently controls its own poll loop)
+    private var peerDetailsSubscriptionJob: kotlinx.coroutines.Job? = null
+    private var portStatsSubscriptionJob: kotlinx.coroutines.Job? = null
+
+    // Power Save: idle-detection monitor + wake-on-connection placeholder listeners
+    private var idlePowerSaveMonitorJob: kotlinx.coroutines.Job? = null
+    private val placeholderListeners = mutableListOf<PlaceholderListener>()
+    private val wakeTriggerLock = Any()
+    @Volatile private var wakeInProgress = false
     
     // Operation state management
     private val _isTransitioning = MutableStateFlow(false)
@@ -119,6 +140,15 @@ class YggstackService : Service() {
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+    private val _isPowerSaveIdle = MutableStateFlow(false)
+    val isPowerSaveIdle: StateFlow<Boolean> = _isPowerSaveIdle.asStateFlow()
+
+    private val _idleCountdownSeconds = MutableStateFlow<Long?>(null)
+    val idleCountdownSeconds: StateFlow<Long?> = _idleCountdownSeconds.asStateFlow()
+
+    private val _powerSaveIdleSince = MutableStateFlow<Long?>(null)
+    val powerSaveIdleSince: StateFlow<Long?> = _powerSaveIdleSince.asStateFlow()
 
     private val _yggdrasilIp = MutableStateFlow<String?>(null)
     val yggdrasilIp: StateFlow<String?> = _yggdrasilIp.asStateFlow()
@@ -212,7 +242,6 @@ class YggstackService : Service() {
         persistentLogger = PersistentLogger(this)
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
-        acquireWakeLock()
         registerScreenStateReceiver()
         verifyPermissions()
         
@@ -267,6 +296,10 @@ class YggstackService : Service() {
                 logInfo("onStartCommand: ACTION_STOP received")
                 stopYggstack()
             }
+            ACTION_WAKE_NOW -> {
+                logInfo("onStartCommand: ACTION_WAKE_NOW received")
+                wakeNow("manual")
+            }
             null -> {
                 // Service was restarted by system after being killed
                 logWarn("=== WARNING: Service restarted by system (intent=null) ===")
@@ -312,6 +345,8 @@ class YggstackService : Service() {
         }
         releaseMulticastLock()
         releaseWakeLock()
+        stopPlaceholderListeners()
+        idlePowerSaveMonitorJob?.cancel()
         serviceScope.cancel()
     }
     
@@ -464,6 +499,10 @@ class YggstackService : Service() {
                     acquireWifiLock()
                 }
 
+                // Partial wake lock is now scoped to the running node's lifetime
+                // (released on stop/idle so Power Save can fully sleep the CPU)
+                acquireWakeLock()
+
                 logDebug("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
                 yggstack?.start(socksAddress, dnsServer)
                 logInfo("Start() completed successfully")
@@ -487,6 +526,9 @@ class YggstackService : Service() {
                 logDebug("Setting service running state...")
                 _isRunning.value = true
                 _peerCount.value = 0
+                stopPlaceholderListeners()
+                _isPowerSaveIdle.value = false
+                _powerSaveIdleSince.value = null
                 logInfo("Service state updated: isRunning=true")
 
                 // Register network callback to monitor WiFi/Cellular changes
@@ -504,8 +546,12 @@ class YggstackService : Service() {
                 logInfo("Yggstack started successfully")
                 updateNotification("Connected", 0, 0)
 
-                // Start monitoring for peer details subscriptions (lazy-load)
-                startPeerStatsSubscriptionMonitor()
+                // Start monitoring for peer details / port stats subscriptions (lazy-load, independent cadences)
+                startPeerDetailsSubscriptionMonitor()
+                startPortStatsSubscriptionMonitor()
+
+                // (Re)start the Power Save idle monitor if eligible; harmless no-op otherwise
+                syncPowerSaveMonitor(config)
 
             } catch (e: Exception) {
                 logError("ERROR starting Yggstack: ${e.message}")
@@ -548,6 +594,7 @@ class YggstackService : Service() {
                 logError("Service stopped due to error. Please check configuration and try again.")
             } finally {
                 logDebug("Cleanup: Releasing operation mutex and resetting transitioning state")
+                wakeInProgress = false
                 _isTransitioning.value = false
                 operationMutex.unlock()
                 logInfo("Operation mutex released, transitioning state reset")
@@ -555,7 +602,7 @@ class YggstackService : Service() {
         }
     }
 
-    fun stopYggstack() {
+    fun stopYggstack(enterPowerSaveIdle: Boolean = false) {
         serviceScope.launch {
             // Wait up to 2 s for any concurrent start operation to release the mutex.
             // Using tryLock() and silently dropping the stop leaves the service in a
@@ -584,8 +631,10 @@ class YggstackService : Service() {
             }
             
             try {
-                // Force cleanup even if _isRunning is false (handles desync state)
-                if (!_isRunning.value && yggstack == null) {
+                // Force cleanup even if _isRunning is false (handles desync state),
+                // but not while intentionally idle - a full stop must still tear
+                // down placeholder listeners and the foreground service in that case
+                if (!_isRunning.value && yggstack == null && !_isPowerSaveIdle.value) {
                     logInfo("Service already stopped")
                     return@launch
                 }
@@ -596,18 +645,25 @@ class YggstackService : Service() {
                 
                 _isTransitioning.value = true
 
-                logInfo("Stopping Yggstack...")
+                logInfo(if (enterPowerSaveIdle) "Power Save: powering down node..." else "Stopping Yggstack...")
                 // NOTE: Keep _isRunning = true during stop so UI shows correct state
                 // It will be set to false in the finally block after everything completes
                 
                 // Wrap entire stop operation with safety timeout
                 try {
                     kotlinx.coroutines.withTimeout(3000L) {
-                        // Cancel peer stats jobs
-                        peerStatsJob?.cancel()
-                        peerStatsJob = null
-                        peerStatsSubscriptionJob?.cancel()
-                        peerStatsSubscriptionJob = null
+                        // Cancel peer/port stats jobs and the idle monitor
+                        peerDetailsJob?.cancel()
+                        peerDetailsJob = null
+                        portStatsJob?.cancel()
+                        portStatsJob = null
+                        peerDetailsSubscriptionJob?.cancel()
+                        peerDetailsSubscriptionJob = null
+                        portStatsSubscriptionJob?.cancel()
+                        portStatsSubscriptionJob = null
+                        idlePowerSaveMonitorJob?.cancel()
+                        idlePowerSaveMonitorJob = null
+                        _idleCountdownSeconds.value = null
                         
                         // Unregister network callback
                         unregisterNetworkCallback()
@@ -617,6 +673,10 @@ class YggstackService : Service() {
                         
                         // Release MulticastLock if held
                         releaseMulticastLock()
+
+                        // Release the partial wake lock - only the foreground
+                        // service itself remains held during Power Save idle
+                        releaseWakeLock()
                         
                         // Stop yggstack
                         yggstack?.stop()
@@ -633,6 +693,7 @@ class YggstackService : Service() {
                 } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                     logWarn("WARNING: Stop operation timed out after 3 seconds - forcing cleanup")
                     // Force cleanup on timeout
+                    releaseWakeLock()
                     yggstack = null
                     _yggdrasilIp.value = null
                     _peerCount.value = 0
@@ -641,20 +702,40 @@ class YggstackService : Service() {
                     _portStatsJSON.resetReplayCache()
                 }
                 
-                // Cancel the notification
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(NOTIFICATION_ID)
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
+                if (enterPowerSaveIdle) {
+                    // Real listeners are guaranteed closed by now (yggstack.stop() above),
+                    // so it's safe to bind placeholders on the same host:port.
+                    lastConfig?.let { startPlaceholderListeners(it) }
+                    _isPowerSaveIdle.value = true
+                    if (_powerSaveIdleSince.value == null) {
+                        _powerSaveIdleSince.value = System.currentTimeMillis()
+                    }
+                    updateIdlePowerSaveNotification()
+                    logInfo("Power Save: node powered down, listening for wake triggers")
                 } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
+                    stopPlaceholderListeners()
+                    _isPowerSaveIdle.value = false
+                    _powerSaveIdleSince.value = null
+
+                    // Cancel the notification
+                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    notificationManager.cancel(NOTIFICATION_ID)
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        stopForeground(true)
+                    }
+                    stopSelf()
                 }
-                stopSelf()
             } catch (e: Exception) {
                 logError("Error stopping Yggstack: ${e.message}")
                 // Force cleanup even on error
+                releaseWakeLock()
+                stopPlaceholderListeners()
+                _isPowerSaveIdle.value = false
+                _powerSaveIdleSince.value = null
                 yggstack = null
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
@@ -1163,50 +1244,44 @@ class YggstackService : Service() {
         }
     }
 
-    private fun startPeerStatsSubscriptionMonitor() {
-        peerStatsSubscriptionJob?.cancel()
-        peerStatsSubscriptionJob = serviceScope.launch {
-            // One shared updater feeds both peer details and port stats; it
-            // runs while either flow has at least one collector (i.e. while
-            // the Peers or Ports diagnostics tab is visible)
-            combine(
-                _peerDetailsJSON.subscriptionCount,
-                _portStatsJSON.subscriptionCount
-            ) { peerSubs, portSubs -> peerSubs + portSubs }.collect { count ->
-                // Only react to subscriptions if service is running
+    private fun startPeerDetailsSubscriptionMonitor() {
+        peerDetailsSubscriptionJob?.cancel()
+        peerDetailsSubscriptionJob = serviceScope.launch {
+            // Peers screen only: fixed 1s cadence, driven solely by whether
+            // the Peers tab is currently collecting peerDetailsJSON
+            _peerDetailsJSON.subscriptionCount.collect { count ->
                 if (!_isRunning.value) {
-                    logDebug("Service not running, ignoring subscription changes")
+                    logDebug("Service not running, ignoring peer details subscription changes")
                     return@collect
                 }
-
                 if (count > 0) {
-                    logDebug("Stats subscriber active, starting stats updater")
-                    startPeerStatsUpdater()
+                    logDebug("Peer details subscriber active, starting updater")
+                    startPeerDetailsUpdater()
                 } else {
-                    logDebug("No stats subscribers, stopping stats updater")
-                    stopPeerStatsUpdater()
+                    logDebug("No peer details subscribers, stopping updater")
+                    stopPeerDetailsUpdater()
                 }
             }
         }
     }
 
-    private fun stopPeerStatsUpdater() {
+    private fun stopPeerDetailsUpdater() {
         synchronized(this) {
-            peerStatsJob?.cancel()
-            peerStatsJob = null
+            peerDetailsJob?.cancel()
+            peerDetailsJob = null
         }
     }
 
-    private fun startPeerStatsUpdater() {
+    private fun startPeerDetailsUpdater() {
         // Guard against double-start: rapid tab switches can fire overlapping
         // subscription events, and two concurrent pollers would race on
-        // peerStatsJob and double the JNI traffic into the Go runtime.
+        // peerDetailsJob and double the JNI traffic into the Go runtime.
         synchronized(this) {
-            if (peerStatsJob?.isActive == true) {
-                logDebug("Stats updater already running, skipping start")
+            if (peerDetailsJob?.isActive == true) {
+                logDebug("Peer details updater already running, skipping start")
                 return
             }
-            peerStatsJob = serviceScope.launch {
+            peerDetailsJob = serviceScope.launch {
                 while (_isRunning.value) {
                     try {
                     // Double-check service is still running before updating
@@ -1295,9 +1370,57 @@ class YggstackService : Service() {
                         }
                         break
                     }
+                } catch (e: Exception) {
+                    logError("Error fetching peer stats: ${e.message}")
+                    // Don't break on transient errors, but log them
+                }
+                kotlinx.coroutines.delay(1000) // Update every 1 second
+            }
+            if (_isRunning.value) {
+                logInfo("Peer details updater stopped")
+            }
+            }
+        }
+    }
 
-                    // Update per-listener stats for the Ports page; failures here
-                    // are transient and must not trigger crash detection
+    private fun startPortStatsSubscriptionMonitor() {
+        portStatsSubscriptionJob?.cancel()
+        portStatsSubscriptionJob = serviceScope.launch {
+            // Ports screen only: fixed 1s cadence, driven solely by whether
+            // the Ports tab is currently collecting portStatsJSON. Power
+            // Save's own idle detection uses an entirely separate poll
+            // (idlePowerSaveMonitorJob) so this cadence is never affected by it.
+            _portStatsJSON.subscriptionCount.collect { count ->
+                if (!_isRunning.value) {
+                    logDebug("Service not running, ignoring port stats subscription changes")
+                    return@collect
+                }
+                if (count > 0) {
+                    logDebug("Port stats subscriber active, starting updater")
+                    startPortStatsUpdater()
+                } else {
+                    logDebug("No port stats subscribers, stopping updater")
+                    stopPortStatsUpdater()
+                }
+            }
+        }
+    }
+
+    private fun stopPortStatsUpdater() {
+        synchronized(this) {
+            portStatsJob?.cancel()
+            portStatsJob = null
+        }
+    }
+
+    private fun startPortStatsUpdater() {
+        synchronized(this) {
+            if (portStatsJob?.isActive == true) {
+                logDebug("Port stats updater already running, skipping start")
+                return
+            }
+            portStatsJob = serviceScope.launch {
+                while (_isRunning.value) {
                     try {
                         val listenersJson = yggstack?.getListenersJSON()
                         if (listenersJson != null) {
@@ -1306,16 +1429,222 @@ class YggstackService : Service() {
                     } catch (e: Exception) {
                         logError("Error fetching listener stats: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    logError("Error fetching peer stats: ${e.message}")
-                    // Don't break on transient errors, but log them
+                    kotlinx.coroutines.delay(1000) // Ports screen always refreshes every 1 second
                 }
-                kotlinx.coroutines.delay(1000) // Update every 1 second
+                if (_isRunning.value) {
+                    logInfo("Port stats updater stopped")
+                }
             }
-            if (_isRunning.value) {
-                logInfo("Peer stats updater stopped")
+        }
+    }
+
+    /**
+     * Sums active connections across the SOCKS proxy and forward-mapping
+     * listeners only (ignores exposed/"remote-*" listeners), from a raw
+     * GetListenersJSON payload.
+     */
+    private fun sumActiveTransitConnections(json: String): Long {
+        var sum = 0L
+        try {
+            val arr = JSONArray(json)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val kind = obj.optString("Kind", "")
+                if (kind == "remote-tcp" || kind == "remote-udp") continue
+                sum += obj.optLong("ActiveConns", 0)
             }
+        } catch (e: Exception) {
+            logError("Power Save: error parsing listener stats: ${e.message}")
+        }
+        return sum
+    }
+
+    /**
+     * Starts or stops the Power Save idle monitor to match current eligibility
+     * (running + enabled + no active exposed ports). Safe to call any time the
+     * live config changes.
+     */
+    private fun syncPowerSaveMonitor(config: YggstackConfig) {
+        val eligible = _isRunning.value && config.powerSaveEnabled && !config.hasActiveExposedPorts()
+        if (eligible) {
+            if (idlePowerSaveMonitorJob?.isActive != true) {
+                startIdlePowerSaveMonitor()
             }
+        } else {
+            stopIdlePowerSaveMonitor()
+        }
+    }
+
+    private fun stopIdlePowerSaveMonitor() {
+        idlePowerSaveMonitorJob?.cancel()
+        idlePowerSaveMonitorJob = null
+        _idleCountdownSeconds.value = null
+    }
+
+    /**
+     * Power Save's own dedicated poll loop (§4.2/§4.7 of the design doc):
+     * independent from the Ports screen's portStatsJob. Fixed at a 1s cadence -
+     * there's nothing to poll once the node is idle, so a configurable interval
+     * only added complexity without a real benefit.
+     */
+    private fun startIdlePowerSaveMonitor() {
+        idlePowerSaveMonitorJob?.cancel()
+        idlePowerSaveMonitorJob = serviceScope.launch {
+            var remainingSeconds = (lastConfig?.powerSaveIdleTimeoutSeconds ?: 15).toLong()
+            _idleCountdownSeconds.value = remainingSeconds
+            while (_isRunning.value) {
+                val cfg = lastConfig
+                if (cfg == null || !cfg.powerSaveEnabled || cfg.hasActiveExposedPorts()) {
+                    _idleCountdownSeconds.value = null
+                    break
+                }
+                val pollSeconds = 1
+                kotlinx.coroutines.delay(pollSeconds * 1000L)
+                if (!_isRunning.value) break
+
+                val activeConnections = try {
+                    yggstack?.getListenersJSON()?.let { sumActiveTransitConnections(it) } ?: 0L
+                } catch (e: Exception) {
+                    logError("Power Save: error polling listener stats: ${e.message}")
+                    0L
+                }
+
+                if (activeConnections > 0) {
+                    remainingSeconds = cfg.powerSaveIdleTimeoutSeconds.toLong()
+                    _idleCountdownSeconds.value = remainingSeconds
+                } else {
+                    remainingSeconds -= pollSeconds
+                    if (remainingSeconds <= 0) {
+                        _idleCountdownSeconds.value = 0
+                        triggerIdlePowerDown()
+                        break
+                    }
+                    _idleCountdownSeconds.value = remainingSeconds
+                }
+            }
+        }
+    }
+
+    private fun triggerIdlePowerDown() {
+        val cfg = lastConfig ?: return
+        logInfo("Power Save: no active connections for ${cfg.powerSaveIdleTimeoutSeconds}s - powering down node")
+        // Placeholder listeners are started inside stopYggstack(), after the real
+        // Yggstack listeners have actually released their ports - starting them here
+        // would race the async stop and lose the bind (port left unreachable).
+        stopYggstack(enterPowerSaveIdle = true)
+    }
+
+    /**
+     * Wakes the node from Power Save idle: tears down placeholder listeners
+     * and restarts Yggstack with the last known config. Safe to call multiple
+     * times concurrently (e.g. several placeholders firing at once) - only
+     * the first call proceeds.
+     */
+    fun wakeNow(reason: String = "manual") {
+        if (!_isPowerSaveIdle.value) return
+        synchronized(wakeTriggerLock) {
+            if (wakeInProgress) return
+            wakeInProgress = true
+        }
+        logInfo("Power Save: waking node ($reason)")
+        stopPlaceholderListeners()
+        val cfg = lastConfig
+        if (cfg != null) {
+            startYggstack(cfg)
+        } else {
+            logWarn("Power Save: cannot wake, no saved config")
+            wakeInProgress = false
+        }
+    }
+
+    private fun parseHostPort(value: String): Pair<String, Int>? {
+        val trimmed = value.trim()
+        val idx = trimmed.lastIndexOf(':')
+        if (idx <= 0 || idx == trimmed.length - 1) return null
+        val host = trimmed.substring(0, idx).removePrefix("[").removeSuffix("]")
+        val port = trimmed.substring(idx + 1).toIntOrNull() ?: return null
+        return host to port
+    }
+
+    private fun startPlaceholderListeners(config: YggstackConfig) {
+        stopPlaceholderListeners()
+        wakeInProgress = false
+        if (config.forwardEnabled) {
+            config.forwardMappings.filter { it.enabled }.forEach { mapping ->
+                val listener = PlaceholderListener(mapping.protocol, mapping.localIp, mapping.localPort)
+                placeholderListeners.add(listener)
+                listener.start { wakeNow("${mapping.protocol.name.lowercase()} forward ${mapping.localIp}:${mapping.localPort}") }
+            }
+        }
+        if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
+            parseHostPort(config.socksProxy)?.let { (host, port) ->
+                val listener = PlaceholderListener(Protocol.TCP, host, port)
+                placeholderListeners.add(listener)
+                listener.start { wakeNow("socks $host:$port") }
+            }
+        }
+    }
+
+    private fun stopPlaceholderListeners() {
+        placeholderListeners.forEach { it.stop() }
+        placeholderListeners.clear()
+    }
+
+    /**
+     * Binds a single local address/port while the node is powered down, so an
+     * incoming connection attempt (or first UDP packet) can wake the node back
+     * up. The triggering connection itself is always dropped - the client is
+     * expected to retry once the real mapping is back up (see design doc §4.3).
+     */
+    private inner class PlaceholderListener(
+        private val protocol: Protocol,
+        private val host: String,
+        private val port: Int
+    ) {
+        private var serverSocket: java.net.ServerSocket? = null
+        private var datagramSocket: java.net.DatagramSocket? = null
+        private var job: kotlinx.coroutines.Job? = null
+
+        fun start(onTriggered: () -> Unit) {
+            job = serviceScope.launch(Dispatchers.IO) {
+                try {
+                    when (protocol) {
+                        Protocol.TCP -> {
+                            val socket = java.net.ServerSocket()
+                            socket.reuseAddress = true
+                            socket.bind(java.net.InetSocketAddress(host, port))
+                            serverSocket = socket
+                            logInfo("Power Save: placeholder listening on TCP $host:$port")
+                            val client = socket.accept()
+                            try { client.close() } catch (_: Exception) {}
+                            onTriggered()
+                        }
+                        Protocol.UDP -> {
+                            val socket = java.net.DatagramSocket(null)
+                            socket.reuseAddress = true
+                            socket.bind(java.net.InetSocketAddress(host, port))
+                            datagramSocket = socket
+                            logInfo("Power Save: placeholder listening on UDP $host:$port")
+                            val buffer = ByteArray(1)
+                            val packet = java.net.DatagramPacket(buffer, buffer.size)
+                            socket.receive(packet) // blocks; packet is intentionally dropped
+                            onTriggered()
+                        }
+                    }
+                } catch (e: java.net.SocketException) {
+                    // Expected when stop() closes the socket to cancel listening
+                } catch (e: Exception) {
+                    logError("Power Save: placeholder listener error on $host:$port: ${e.message}")
+                }
+            }
+        }
+
+        fun stop() {
+            job?.cancel()
+            try { serverSocket?.close() } catch (_: Exception) {}
+            try { datagramSocket?.close() } catch (_: Exception) {}
+            serverSocket = null
+            datagramSocket = null
         }
     }
 
@@ -1553,6 +1882,58 @@ class YggstackService : Service() {
 
     private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
         val notification = createNotification(status, peerCount, totalPeerCount)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * Notification shown while the node is powered down in Power Save idle
+     * mode: swaps the small icon and offers "Wake Now" alongside "Stop".
+     */
+    private fun createIdlePowerSaveNotification(): Notification {
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE
+        } else {
+            0
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            notificationIntent,
+            pendingIntentFlags
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Yggstack")
+            .setContentText(getString(R.string.power_save_notification_text))
+            .setSmallIcon(R.drawable.ic_power_save_idle)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setShowWhen(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+
+        val wakeIntent = Intent(this, YggstackService::class.java).apply {
+            action = ACTION_WAKE_NOW
+        }
+        val wakePendingIntent = PendingIntent.getService(this, 1, wakeIntent, pendingIntentFlags)
+        builder.addAction(R.drawable.ic_power_save_idle, getString(R.string.power_save_wake_now), wakePendingIntent)
+
+        val stopIntent = Intent(this, YggstackService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, pendingIntentFlags)
+        builder.addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent)
+
+        return builder.build()
+    }
+
+    private fun updateIdlePowerSaveNotification() {
+        val notification = createIdlePowerSaveNotification()
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
@@ -2004,6 +2385,8 @@ class YggstackService : Service() {
                 put("maxBackoff", config.maxBackoff)
                 put("exposeEnabled", config.exposeEnabled)
                 put("forwardEnabled", config.forwardEnabled)
+                put("powerSaveEnabled", config.powerSaveEnabled)
+                put("powerSaveIdleTimeoutSeconds", config.powerSaveIdleTimeoutSeconds)
                 
                 // Save expose mappings
                 val exposeMappingsArray = JSONArray()
@@ -2147,6 +2530,8 @@ class YggstackService : Service() {
                     maxBackoff = json.optInt("maxBackoff", 5),
                     exposeEnabled = json.optBoolean("exposeEnabled", false),
                     forwardEnabled = json.optBoolean("forwardEnabled", false),
+                    powerSaveEnabled = json.optBoolean("powerSaveEnabled", false),
+                    powerSaveIdleTimeoutSeconds = json.optInt("powerSaveIdleTimeoutSeconds", 15),
                     exposeMappings = exposeMappings,
                     forwardMappings = forwardMappings,
                     disabledPeers = disabledPeers,
@@ -2260,6 +2645,7 @@ class YggstackService : Service() {
         const val NOTIFICATION_ID = 1
         const val ACTION_START = "link.yggdrasil.yggstack.android.action.START"
         const val ACTION_STOP = "link.yggdrasil.yggstack.android.action.STOP"
+        const val ACTION_WAKE_NOW = "link.yggdrasil.yggstack.android.action.WAKE_NOW"
         const val EXTRA_CONFIG = "config"
         private const val MAX_LOG_ENTRIES = 500
         private const val MAX_CRASH_RESTART_ATTEMPTS = 3

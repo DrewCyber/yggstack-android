@@ -7,6 +7,7 @@ sealed class ServiceState {
     object Stopped : ServiceState()
     object Starting : ServiceState()
     object Running : ServiceState()
+    object PowerSaving : ServiceState()
     object Stopping : ServiceState()
     data class Error(val message: String) : ServiceState()
 }

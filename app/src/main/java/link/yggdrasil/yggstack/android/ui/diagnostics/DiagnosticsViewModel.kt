@@ -71,6 +71,15 @@ class DiagnosticsViewModel(
     private val _portsCompactMode = MutableStateFlow(false)
     val portsCompactMode: StateFlow<Boolean> = _portsCompactMode.asStateFlow()
 
+    private val _isPowerSaveIdle = MutableStateFlow(false)
+    val isPowerSaveIdle: StateFlow<Boolean> = _isPowerSaveIdle.asStateFlow()
+
+    private val _idleCountdownSeconds = MutableStateFlow<Long?>(null)
+    val idleCountdownSeconds: StateFlow<Long?> = _idleCountdownSeconds.asStateFlow()
+
+    private val _powerSaveIdleSince = MutableStateFlow<Long?>(null)
+    val powerSaveIdleSince: StateFlow<Long?> = _powerSaveIdleSince.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -111,6 +120,21 @@ class DiagnosticsViewModel(
                         _currentConfig.value = configJson
                     }
                 }
+                viewModelScope.launch {
+                    service.isPowerSaveIdle.collect { idle ->
+                        _isPowerSaveIdle.value = idle
+                    }
+                }
+                viewModelScope.launch {
+                    service.idleCountdownSeconds.collect { seconds ->
+                        _idleCountdownSeconds.value = seconds
+                    }
+                }
+                viewModelScope.launch {
+                    service.powerSaveIdleSince.collect { since ->
+                        _powerSaveIdleSince.value = since
+                    }
+                }
 
                 // Sync initial state
                 _logs.value = service.logs.value
@@ -118,6 +142,9 @@ class DiagnosticsViewModel(
                 _peerCount.value = service.peerCount.value
                 // peerDetailsJSON is a SharedFlow - will be loaded when collected
                 _currentConfig.value = service.fullConfigJSON.value
+                _isPowerSaveIdle.value = service.isPowerSaveIdle.value
+                _idleCountdownSeconds.value = service.idleCountdownSeconds.value
+                _powerSaveIdleSince.value = service.powerSaveIdleSince.value
             }
         }
 
@@ -360,6 +387,10 @@ class DiagnosticsViewModel(
                 _portStats.value = parsePortStats(json)
             }
         }
+    }
+
+    fun wakeNow() {
+        yggstackService?.wakeNow()
     }
 
     class Factory(

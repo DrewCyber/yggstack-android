@@ -943,6 +943,9 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val portStats by viewModel.portStats.collectAsState()
     val yggstackConfig by viewModel.yggstackConfig.collectAsState()
     val compactMode by viewModel.portsCompactMode.collectAsState()
+    val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsState()
+    val idleCountdownSeconds by viewModel.idleCountdownSeconds.collectAsState()
+    val powerSaveIdleSince by viewModel.powerSaveIdleSince.collectAsState()
 
     // Only collect port stats when this tab is visible and service is running
     LaunchedEffect(isVisible, isServiceRunning) {
@@ -1020,7 +1023,20 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
         }
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (!isServiceRunning) {
+        if (yggstackConfig?.powerSaveEnabled == true && (isServiceRunning || isPowerSaveIdle)) {
+            val activeTransitConnections = portStats.filter { it.section != "expose" }.sumOf { it.activeConnections }
+            PowerSaveStatusCard(
+                isRunning = isServiceRunning,
+                isIdle = isPowerSaveIdle,
+                countdownSeconds = idleCountdownSeconds,
+                idleSinceMs = powerSaveIdleSince,
+                activeConnections = activeTransitConnections,
+                onWakeNow = { viewModel.wakeNow() }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (!isServiceRunning && !isPowerSaveIdle) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
@@ -1044,7 +1060,7 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     }
                 }
             }
-        } else {
+        } else if (isServiceRunning) {
             val config = yggstackConfig
             val sections = listOf(
                 Triple("proxy", config?.proxyEnabled == true, R.string.ports_section_proxy),
@@ -1229,6 +1245,70 @@ private fun resolveListenerName(stat: PortStatsDetail, config: YggstackConfig?):
             else -> null
         }
     }
+}
+
+@Composable
+fun PowerSaveStatusCard(
+    isRunning: Boolean,
+    isIdle: Boolean,
+    countdownSeconds: Long?,
+    idleSinceMs: Long?,
+    activeConnections: Long,
+    onWakeNow: () -> Unit
+) {
+    // Live-ticking clock so "idle for Xm" keeps advancing while the card is idle
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(isIdle) {
+        while (isIdle) {
+            nowMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.power_save_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                if (isIdle) {
+                    TextButton(onClick = onWakeNow) {
+                        Text(stringResource(R.string.power_save_wake_now))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            val statusText = when {
+                isIdle -> {
+                    val idleSeconds = idleSinceMs?.let { ((nowMs - it) / 1000).coerceAtLeast(0) } ?: 0L
+                    stringResource(R.string.power_save_idle_status, formatUptime(idleSeconds.toDouble()))
+                }
+                activeConnections > 0 -> stringResource(R.string.power_save_active_ports_status, activeConnections)
+                countdownSeconds != null -> stringResource(
+                    R.string.power_save_countdown_status,
+                    formatCountdown(countdownSeconds)
+                )
+                isRunning -> stringResource(R.string.power_save_armed_status)
+                else -> stringResource(R.string.power_save_countdown_status, formatCountdown(0))
+            }
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+private fun formatCountdown(totalSeconds: Long): String {
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%02d:%02d", minutes, seconds)
 }
 
 fun formatUptime(seconds: Double): String {
