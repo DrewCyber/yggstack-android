@@ -256,20 +256,25 @@ class ConfigRepository(private val context: Context) {
 
     /**
      * Get diagnostics tab preference.
-     * One-time migration for the inserted "Ports" tab: indices saved before it
-     * existed map old Logs (2) to its new index (3).
      */
     val diagnosticsTabFlow: Flow<Int> = context.dataStore.data.map { preferences ->
-        val saved = preferences[DIAGNOSTICS_TAB_KEY] ?: 0
-        val migrated = preferences[DIAGNOSTICS_TAB_MIGRATED] ?: false
-        if (!migrated && saved == 2) {
-            context.dataStore.edit {
-                it[DIAGNOSTICS_TAB_KEY] = 3
-                it[DIAGNOSTICS_TAB_MIGRATED] = true
+        (preferences[DIAGNOSTICS_TAB_KEY] ?: 0).coerceIn(0, 3)
+    }
+
+    /**
+     * One-time migration for the inserted "Ports" tab: indices saved before it
+     * existed map old Logs (2) to its new index (3). Called explicitly instead
+     * of writing from inside a flow transformation, where any collector could
+     * trigger a write as a side effect.
+     */
+    suspend fun migrateDiagnosticsTabIfNeeded() {
+        context.dataStore.edit { preferences ->
+            val saved = preferences[DIAGNOSTICS_TAB_KEY] ?: 0
+            val migrated = preferences[DIAGNOSTICS_TAB_MIGRATED] ?: false
+            if (!migrated && saved == 2) {
+                preferences[DIAGNOSTICS_TAB_KEY] = 3
             }
-            3
-        } else {
-            saved.coerceIn(0, 3)
+            preferences[DIAGNOSTICS_TAB_MIGRATED] = true
         }
     }
 

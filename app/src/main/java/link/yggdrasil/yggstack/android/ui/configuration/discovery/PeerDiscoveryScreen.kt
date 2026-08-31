@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.PublicPeerInfo
@@ -32,14 +33,14 @@ fun PeerDiscoveryScreen(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val externalIp by viewModel.externalIp.collectAsState()
-    val displayPeers by viewModel.getDisplayPeers().collectAsState()
-    val selectedPeers by viewModel.selectedPeers.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val isCancellable by viewModel.isCancellable.collectAsState()
-    val loadingMessage by viewModel.loadingMessage.collectAsState()
-    val progress by viewModel.progress.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
+    val externalIp by viewModel.externalIp.collectAsStateWithLifecycle()
+    val displayPeers by viewModel.getDisplayPeers().collectAsStateWithLifecycle()
+    val selectedPeers by viewModel.selectedPeers.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val isCancellable by viewModel.isCancellable.collectAsStateWithLifecycle()
+    val loadingMessage by viewModel.loadingMessage.collectAsStateWithLifecycle()
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current

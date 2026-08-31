@@ -28,9 +28,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.ExposeMapping
@@ -133,21 +135,21 @@ class MainActivity : ComponentActivity() {
         val initialUseSystemColors = runBlocking { repository.useSystemColorsFlow.first() }
 
         setContent {
-            val theme by repository.themeFlow.collectAsState(initial = initialTheme)
-            val useSystemColors by repository.useSystemColorsFlow.collectAsState(initial = initialUseSystemColors)
+            val theme by repository.themeFlow.collectAsStateWithLifecycle(initialValue = initialTheme)
+            val useSystemColors by repository.useSystemColorsFlow.collectAsStateWithLifecycle(initialValue = initialUseSystemColors)
             val systemInDarkTheme = isSystemInDarkTheme()
-            
+
             val darkTheme = when (theme) {
                 "light" -> false
                 "dark" -> true
                 else -> systemInDarkTheme
             }
-            
+
             YggstackAndroidTheme(
                 darkTheme = darkTheme,
                 dynamicColor = useSystemColors
             ) {
-                MainScreen()
+                MainScreen(initialUseSystemColors = initialUseSystemColors)
             }
         }
     }
@@ -160,13 +162,16 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen() {
+fun MainScreen(initialUseSystemColors: Boolean) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val applicationContext = context.applicationContext
-    val repository = ConfigRepository(applicationContext)
+    val repository = remember { ConfigRepository(applicationContext) }
     val configViewModel: ConfigurationViewModel = viewModel(
-        factory = ConfigurationViewModel.Factory(repository, applicationContext)
+        factory = remember { ConfigurationViewModel.Factory(repository, applicationContext) }
     )
+    // Preserves each tab's saveable state (scroll positions, list state)
+    // across bottom-nav switches instead of fully disposing the screens
+    val saveableStateHolder = rememberSaveableStateHolder()
 
     // Use temp screen from companion object if available (after recreation), otherwise default to 0
     var selectedScreen by remember { mutableStateOf(MainActivity.tempSelectedScreen ?: 0) }
@@ -361,25 +366,30 @@ fun MainScreen() {
                 .padding(innerPadding),
             color = MaterialTheme.colorScheme.background
         ) {
-            when (selectedScreen) {
-                0 -> ConfigurationScreen(viewModel = configViewModel)
-                1 -> DiagnosticsScreen()
-                2 -> SettingsScreen(
-                    onCheckForUpdate = {
-                        coroutineScope.launch {
-                            val update = VersionChecker(context).checkForUpdate(force = true)
-                            if (update != null) {
-                                showAvailableUpdate(update)
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.no_updates_available),
-                                    Toast.LENGTH_SHORT
-                                ).show()
+            // Keyed by tab so each screen's saveable state (scroll position,
+            // pager page) survives switching away and back
+            saveableStateHolder.SaveableStateProvider(key = "screen_$selectedScreen") {
+                when (selectedScreen) {
+                    0 -> ConfigurationScreen(viewModel = configViewModel)
+                    1 -> DiagnosticsScreen()
+                    2 -> SettingsScreen(
+                        initialUseSystemColors = initialUseSystemColors,
+                        onCheckForUpdate = {
+                            coroutineScope.launch {
+                                val update = VersionChecker(context).checkForUpdate(force = true)
+                                if (update != null) {
+                                    showAvailableUpdate(update)
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.no_updates_available),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     }

@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.*
@@ -33,12 +36,11 @@ fun ConfigurationScreen(
     viewModel: ConfigurationViewModel,
     modifier: Modifier = Modifier
 ) {
-    val config by viewModel.config.collectAsState()
-    val serviceState by viewModel.serviceState.collectAsState()
-    val showPrivateKey by viewModel.showPrivateKey.collectAsState()
-    val savedScrollPosition by viewModel.scrollPosition.collectAsState()
-    val pendingDeepLink by viewModel.pendingDeepLink.collectAsState()
-    val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsState()
+    val config by viewModel.config.collectAsStateWithLifecycle()
+    val serviceState by viewModel.serviceState.collectAsStateWithLifecycle()
+    val showPrivateKey by viewModel.showPrivateKey.collectAsStateWithLifecycle()
+    val pendingDeepLink by viewModel.pendingDeepLink.collectAsStateWithLifecycle()
+    val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsStateWithLifecycle()
 
     var editingPeer by remember { mutableStateOf<String?>(null) }
     var showPeerDialog by remember { mutableStateOf(false) }
@@ -72,11 +74,35 @@ fun ConfigurationScreen(
         }
     }
 
-    val scrollState = rememberScrollState(initial = savedScrollPosition)
-    
-    // Save scroll position when it changes
-    LaunchedEffect(scrollState.value) {
-        viewModel.saveScrollPosition(scrollState.value)
+    // Read the saved position once for restoration instead of collecting it:
+    // subscribing here would recompose the whole screen on every save
+    val savedScrollPosition = viewModel.scrollPosition.value
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = savedScrollPosition.first,
+        initialFirstVisibleItemScrollOffset = savedScrollPosition.second
+    )
+
+    // Save the scroll position once per gesture — when scrolling settles — and
+    // when the screen leaves composition (bottom-nav tab switch), instead of
+    // on every scrolled pixel
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling) {
+                    viewModel.saveScrollPosition(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset
+                    )
+                }
+            }
+    }
+    DisposableEffect(listState, viewModel) {
+        onDispose {
+            viewModel.saveScrollPosition(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }
     }
 
     LaunchedEffect(config.dnsServer, isDnsServerFocused) {
@@ -97,13 +123,12 @@ fun ConfigurationScreen(
         modifier = modifier.fillMaxSize()
     ) {
         // Scrollable content
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(12.dp)
-                .padding(bottom = 50.dp) // Space for button at bottom
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 62.dp) // Space for button at bottom
         ) {
+            item(key = "title") {
             // App title as part of scrollable content
             Text(
                 text = stringResource(R.string.app_name),
@@ -111,7 +136,8 @@ fun ConfigurationScreen(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
-            
+            }
+            item(key = "privateKey") {
             // Private Key Section
             Card(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -140,7 +166,8 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
+            }
+            item(key = "peers") {
             // Peers Section with clickable header
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -291,7 +318,8 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(3.dp))
-
+            }
+            item(key = "multicast") {
             // Multicast Discovery Card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -347,7 +375,8 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
+            }
+            item(key = "proxy") {
             // Proxy Configuration Section
             ConfigSectionWithToggle(
                 title = stringResource(R.string.proxy_config_section),
@@ -412,7 +441,8 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
+            }
+            item(key = "expose") {
             // Expose Local Port Section
             ConfigSectionWithToggle(
                 title = stringResource(R.string.expose_local_port_section),
@@ -454,7 +484,8 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
+            }
+            item(key = "forward") {
             // Forward Remote Port Section
             ConfigSectionWithToggle(
                 title = stringResource(R.string.forward_remote_port_section),
@@ -496,7 +527,8 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
+            }
+            item(key = "powerSave") {
             // Power Save Section
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -585,11 +617,12 @@ fun ConfigurationScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
+            }
+            item(key = "logLevel") {
             // Log Level Section
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    val logsEnabled by viewModel.logsEnabled.collectAsState()
+                    val logsEnabled by viewModel.logsEnabled.collectAsStateWithLifecycle()
                     val logLevels = listOf("error", "warn", "info", "debug")
                     val logLevelLabels = mapOf(
                         "error" to stringResource(R.string.log_level_error),
@@ -684,7 +717,9 @@ fun ConfigurationScreen(
         }
 
             Spacer(modifier = Modifier.height(12.dp))
+            }
         }
+
 
         // Start/Stop Button - Sticky at bottom
         Button(
@@ -737,7 +772,7 @@ fun ConfigurationScreen(
 
     if (showPeerDiscovery) {
         val context = LocalContext.current
-        val repository = ConfigRepository(context)
+        val repository = remember { ConfigRepository(context) }
         val discoveryViewModel: PeerDiscoveryViewModel = viewModel(
             factory = PeerDiscoveryViewModel.Factory(repository)
         )

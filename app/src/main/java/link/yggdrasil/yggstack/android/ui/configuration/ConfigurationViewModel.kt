@@ -43,8 +43,16 @@ class ConfigurationViewModel(
     private val _showPrivateKey = MutableStateFlow(false)
     val showPrivateKey: StateFlow<Boolean> = _showPrivateKey.asStateFlow()
 
-    private val _scrollPosition = MutableStateFlow(0)
-    val scrollPosition: StateFlow<Int> = _scrollPosition.asStateFlow()
+    // Pending debounced config persist (see updateConfig)
+    private var debouncedPersistJob: kotlinx.coroutines.Job? = null
+
+    // How long after the last text-field edit the config is persisted
+    private val PERSIST_DEBOUNCE_MS = 500L
+
+    // First visible item index + pixel offset, restored when the screen
+    // re-enters composition after a bottom-nav tab switch
+    private val _scrollPosition = MutableStateFlow(0 to 0)
+    val scrollPosition: StateFlow<Pair<Int, Int>> = _scrollPosition.asStateFlow()
 
     private val _pendingDeepLink = MutableStateFlow<PendingDeepLink?>(null)
     val pendingDeepLink: StateFlow<PendingDeepLink?> = _pendingDeepLink.asStateFlow()
@@ -172,6 +180,13 @@ class ConfigurationViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        // Flush a pending debounced persist so the last text edits are not lost
+        if (debouncedPersistJob?.isActive == true) {
+            debouncedPersistJob?.cancel()
+            kotlinx.coroutines.runBlocking {
+                repository.saveConfig(_config.value)
+            }
+        }
         unbindFromService()
     }
 
@@ -250,15 +265,15 @@ class ConfigurationViewModel(
     }
 
     fun updatePrivateKey(privateKey: String) {
-        updateConfig(_config.value.copy(privateKey = privateKey))
+        updateConfig(_config.value.copy(privateKey = privateKey), debouncePersist = true)
     }
 
     fun updateSocksProxy(proxy: String) {
-        updateConfig(_config.value.copy(socksProxy = proxy))
+        updateConfig(_config.value.copy(socksProxy = proxy), debouncePersist = true)
     }
 
     fun updateDnsServer(dns: String) {
-        updateConfig(_config.value.copy(dnsServer = dns))
+        updateConfig(_config.value.copy(dnsServer = dns), debouncePersist = true)
     }
 
     fun toggleProxyEnabled() {
@@ -382,7 +397,8 @@ class ConfigurationViewModel(
             _config.value.copy(
                 groupPassword = trimmed,
                 groupPasswordEnabled = keepEnabled
-            )
+            ),
+            debouncePersist = true
         )
     }
 
@@ -425,8 +441,8 @@ class ConfigurationViewModel(
         _showPrivateKey.value = !_showPrivateKey.value
     }
 
-    fun saveScrollPosition(position: Int) {
-        _scrollPosition.value = position
+    fun saveScrollPosition(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
+        _scrollPosition.value = firstVisibleItemIndex to firstVisibleItemScrollOffset
     }
 
     fun setPendingDeepLink(link: PendingDeepLink) {
@@ -527,7 +543,7 @@ class ConfigurationViewModel(
         }
     }
 
-    private fun updateConfig(config: YggstackConfig) {
+    private fun updateConfig(config: YggstackConfig, debouncePersist: Boolean = false) {
         // Power Save and exposed ports are mutually exclusive (exposed mappings
         // require the node to stay up to accept inbound network connections)
         val finalConfig = if (config.powerSaveEnabled && config.hasActiveExposedPorts()) {
@@ -536,8 +552,15 @@ class ConfigurationViewModel(
             config
         }
         _config.value = finalConfig
-        viewModelScope.launch {
-            repository.saveConfig(finalConfig)
+        // Text fields fire updateConfig on every keystroke; debouncing their
+        // persistence collapses a burst of typing into a single DataStore
+        // write instead of serializing all config lists per character
+        debouncedPersistJob?.cancel()
+        debouncedPersistJob = viewModelScope.launch {
+            if (debouncePersist) {
+                kotlinx.coroutines.delay(PERSIST_DEBOUNCE_MS)
+            }
+            repository.saveConfig(_config.value)
         }
     }
 

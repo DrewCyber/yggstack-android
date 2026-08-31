@@ -51,7 +51,7 @@ import java.util.Locale
 @Composable
 fun DiagnosticsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val repository = ConfigRepository(context)
+    val repository = remember { ConfigRepository(context) }
     val viewModel: DiagnosticsViewModel = viewModel(
         factory = DiagnosticsViewModel.Factory(repository, context)
     )
@@ -67,6 +67,7 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
     var initialTab by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
+        repository.migrateDiagnosticsTabIfNeeded()
         initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 3)
     }
     
