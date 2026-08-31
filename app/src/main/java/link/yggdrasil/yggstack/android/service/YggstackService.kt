@@ -2089,9 +2089,15 @@ class YggstackService : Service() {
             pendingIntentFlags
         )
 
+        // Two content lines under the app-name title, matching the layout of
+        // the "Connected" notification
+        val contentText = getString(R.string.power_save_notification_title) + "\n" +
+            getString(R.string.power_save_notification_text)
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Yggstack")
-            .setContentText(getString(R.string.power_save_notification_text))
+            .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .setSmallIcon(R.drawable.ic_power_save_idle)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

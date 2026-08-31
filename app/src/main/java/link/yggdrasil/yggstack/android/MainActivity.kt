@@ -12,6 +12,7 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
@@ -119,6 +120,9 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Full-frame layout: content draws behind transparent system bars
+        // instead of the system painting a colored status bar strip
+        enableEdgeToEdge()
         registerAutomationShortcuts()
         parseDeepLink(intent?.data)?.let { pendingDeepLinkFlow.value = it }
 
