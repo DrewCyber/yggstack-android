@@ -9,6 +9,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -22,19 +25,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.PeerDetail
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
-import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -115,9 +122,9 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigViewer(viewModel: DiagnosticsViewModel) {
-    val currentConfig by viewModel.currentConfig.collectAsState()
-    val yggstackConfig by viewModel.yggstackConfig.collectAsState()
-    val isServiceRunning by viewModel.isServiceRunning.collectAsState()
+    val currentConfig by viewModel.currentConfig.collectAsStateWithLifecycle()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsStateWithLifecycle()
+    val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboardManager = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
     val scope = rememberCoroutineScope()
@@ -677,38 +684,70 @@ fun ImportPreviewDialog(
 
 @Composable
 fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
-    val isServiceRunning by viewModel.isServiceRunning.collectAsState()
-    val peerCount by viewModel.peerCount.collectAsState()
-    val totalPeerCount by viewModel.totalPeerCount.collectAsState()
-    val peerDetails by viewModel.peerDetails.collectAsState()
-    val yggdrasilIp by viewModel.yggdrasilIp.collectAsState()
-    val yggdrasilPublicKey by viewModel.yggdrasilPublicKey.collectAsState()
+    val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
+    val peerCount by viewModel.peerCount.collectAsStateWithLifecycle()
+    val totalPeerCount by viewModel.totalPeerCount.collectAsStateWithLifecycle()
+    val peerDetails by viewModel.peerDetails.collectAsStateWithLifecycle()
+    val yggdrasilIp by viewModel.yggdrasilIp.collectAsStateWithLifecycle()
+    val yggdrasilPublicKey by viewModel.yggdrasilPublicKey.collectAsStateWithLifecycle()
+    val serviceConnected by viewModel.serviceConnected.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboardManager = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
-    val savedScrollPosition by viewModel.peerStatusScrollPosition.collectAsState()
-    val scrollState = rememberScrollState(initial = savedScrollPosition)
 
-    // Only collect peer details when this tab is visible and service is running
-    LaunchedEffect(isVisible, isServiceRunning) {
-        if (isVisible && isServiceRunning) {
-            viewModel.collectPeerDetails()
+    // Read the saved position once for restoration instead of collecting it:
+    // subscribing here would recompose the whole tab on every save
+    val savedScrollPosition = viewModel.peerStatusScrollPosition.value
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = savedScrollPosition.first,
+        initialFirstVisibleItemScrollOffset = savedScrollPosition.second
+    )
+
+    // Only collect peer details when this tab is visible, the service is
+    // running and bound, and the host is at least STARTED. Including the
+    // connection state re-fires the effect if the service binds after the tab
+    // is already on screen; the STARTED gating stops the service's 1s poller
+    // while the app is in the background.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(isVisible, isServiceRunning, serviceConnected, lifecycleOwner) {
+        if (isVisible && isServiceRunning && serviceConnected) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.collectPeerDetails()
+            }
         }
     }
 
-    // Save scroll position when it changes
-    LaunchedEffect(scrollState.value) {
-        viewModel.savePeerStatusScrollPosition(scrollState.value)
+    // Save the scroll position once per gesture — when scrolling settles — and
+    // when the page leaves composition (the pager disposes off-screen pages),
+    // instead of on every scrolled pixel
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling) {
+                    viewModel.savePeerStatusScrollPosition(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset
+                    )
+                }
+            }
+    }
+    DisposableEffect(listState, viewModel) {
+        onDispose {
+            viewModel.savePeerStatusScrollPosition(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp)
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp)
     ) {
         // Yggdrasil IP and Public Key Section
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(12.dp)) {
+        item(key = "identity") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
                 OutlinedTextField(
                     value = yggdrasilIp ?: context.getString(R.string.not_connected),
                     onValueChange = { },
@@ -752,14 +791,16 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         }
                     }
                 )
+                }
             }
+            Spacer(modifier = Modifier.height(8.dp))
         }
-        Spacer(modifier = Modifier.height(8.dp))
 
         if (!isServiceRunning) {
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            item(key = "notRunning") {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -781,12 +822,14 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                     }
                 }
+                }
             }
         } else {
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
+            item(key = "summary") {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Row(
@@ -816,116 +859,126 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
 
                     // Spacer(modifier = Modifier.height(8.dp))
 
-                }
+                    }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+            }
         }
-        
+
         // Display each peer's details as separate cards
         if (peerCount > 0) {
-            peerDetails.forEach { peer ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (peer.up) {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.errorContainer
-                        }
+            items(peerDetails, key = { "${it.inbound}|${it.uri}" }) { peer ->
+                PeerCard(peer = peer)
+            }
+        }
+    }
+}
+
+/**
+ * One peer's stats card, extracted so the 1 Hz data updates recompose at most
+ * the changed cards (PeerDetail is a stable data class) instead of the tab.
+ */
+@Composable
+private fun PeerCard(peer: PeerDetail) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (peer.up) {
+                MaterialTheme.colorScheme.surfaceVariant
+            } else {
+                MaterialTheme.colorScheme.errorContainer
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (peer.inbound) stringResource(R.string.inbound) else stringResource(R.string.outbound),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = if (peer.up) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                    contentDescription = null,
+                    tint = if (peer.up) MaterialTheme.colorScheme.primary else Color.Gray,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+                        
+            Spacer(modifier = Modifier.height(4.dp))
+                        
+            Text(
+                text = peer.uri,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace
+            )
+                        
+            Spacer(modifier = Modifier.height(8.dp))
+                        
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = stringResource(R.string.uptime),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (peer.inbound) stringResource(R.string.inbound) else stringResource(R.string.outbound),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Icon(
-                                imageVector = if (peer.up) Icons.Default.CheckCircle else Icons.Default.Cancel,
-                                contentDescription = null,
-                                tint = if (peer.up) MaterialTheme.colorScheme.primary else Color.Gray,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                    Text(
+                        text = formatUptime(peer.uptime),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Column {
+                    Text(
+                        text = stringResource(R.string.latency),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (peer.latency > 0) "${peer.latency} ms" else "-",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Column {
+                    Text(
+                        text = stringResource(R.string.cost),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${peer.cost}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
                         
-                        Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
                         
-                        Text(
-                            text = peer.uri,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.uptime),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = formatUptime(peer.uptime),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.latency),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = if (peer.latency > 0) "${peer.latency} ms" else "-",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.cost),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${peer.cost}",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.rx_label, formatBytes(peer.rxBytes)),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.tx_label, formatBytes(peer.txBytes)),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                    }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = stringResource(R.string.rx_label, formatBytes(peer.rxBytes)),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Column {
+                    Text(
+                        text = stringResource(R.string.tx_label, formatBytes(peer.txBytes)),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
@@ -939,131 +992,114 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
  */
 @Composable
 fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
-    val isServiceRunning by viewModel.isServiceRunning.collectAsState()
-    val portStats by viewModel.portStats.collectAsState()
-    val yggstackConfig by viewModel.yggstackConfig.collectAsState()
-    val compactMode by viewModel.portsCompactMode.collectAsState()
-    val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsState()
-    val idleCountdownSeconds by viewModel.idleCountdownSeconds.collectAsState()
-    val powerSaveIdleSince by viewModel.powerSaveIdleSince.collectAsState()
-    val isSessionActive by viewModel.isSessionActive.collectAsState()
-    val powerSaveUpMillis by viewModel.powerSaveUpMillis.collectAsState()
-    val powerSaveIdleMillis by viewModel.powerSaveIdleMillis.collectAsState()
-    val powerSaveStateSince by viewModel.powerSaveStateSince.collectAsState()
+    val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsStateWithLifecycle()
+    val compactMode by viewModel.portsCompactMode.collectAsStateWithLifecycle()
+    val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsStateWithLifecycle()
+    val idleCountdownSeconds by viewModel.idleCountdownSeconds.collectAsStateWithLifecycle()
+    val powerSaveIdleSince by viewModel.powerSaveIdleSince.collectAsStateWithLifecycle()
+    val isSessionActive by viewModel.isSessionActive.collectAsStateWithLifecycle()
+    val powerSaveUpMillis by viewModel.powerSaveUpMillis.collectAsStateWithLifecycle()
+    val powerSaveIdleMillis by viewModel.powerSaveIdleMillis.collectAsStateWithLifecycle()
+    val powerSaveStateSince by viewModel.powerSaveStateSince.collectAsStateWithLifecycle()
+    val serviceConnected by viewModel.serviceConnected.collectAsStateWithLifecycle()
+    val portSections by viewModel.portSections.collectAsStateWithLifecycle()
+    val activeTransitConnections by viewModel.activeTransitConnections.collectAsStateWithLifecycle()
 
-    // Only collect port stats when this tab is visible and service is running
-    LaunchedEffect(isVisible, isServiceRunning) {
-        if (isVisible && isServiceRunning) {
-            viewModel.collectPortStats()
-        }
-    }
-
-    // Live rates: bytes-per-second from deltas between consecutive 1s polls,
-    // matched by listener key so ordering changes don't corrupt them
-    val rates = remember { mutableStateMapOf<String, Pair<Double, Double>>() }
-    var prevStats by remember { mutableStateOf<List<PortStatsDetail>?>(null) }
-    var prevTimeMs by remember { mutableStateOf(0L) }
-
-    LaunchedEffect(portStats) {
-        val now = System.currentTimeMillis()
-        val prev = prevStats
-        if (prev != null && prevTimeMs > 0) {
-            val elapsedSec = (now - prevTimeMs) / 1000.0
-            if (elapsedSec >= 0.2) {
-                val prevByKey = prev.associateBy { it.key }
-                portStats.forEach { cur ->
-                    val old = prevByKey[cur.key]
-                    rates[cur.key] = if (old != null) {
-                        (cur.rxBytes - old.rxBytes) / elapsedSec to (cur.txBytes - old.txBytes) / elapsedSec
-                    } else {
-                        0.0 to 0.0
-                    }
-                }
+    // Only collect port stats when this tab is visible, the service is running
+    // and bound, and the host is at least STARTED (stops the service's 1s
+    // poller while the app is backgrounded)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(isVisible, isServiceRunning, serviceConnected, lifecycleOwner) {
+        if (isVisible && isServiceRunning && serviceConnected) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.collectPortStats()
             }
         }
-        prevStats = portStats
-        prevTimeMs = now
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp)
     ) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.ports_view_mode_label),
-                    style = MaterialTheme.typography.titleSmall
-                )
+        item(key = "viewMode") {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.ports_view_compact),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (compactMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        text = stringResource(R.string.ports_view_mode_label),
+                        style = MaterialTheme.typography.titleSmall
                     )
-                    Switch(
-                        checked = !compactMode,
-                        onCheckedChange = { viewModel.setPortsCompactMode(!it) },
-                        modifier = Modifier.scale(0.8f)
-                    )
-                    Text(
-                        text = stringResource(R.string.ports_view_extended),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (!compactMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ports_view_compact),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (compactMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Switch(
+                            checked = !compactMode,
+                            onCheckedChange = { viewModel.setPortsCompactMode(!it) },
+                            modifier = Modifier.scale(0.8f)
+                        )
+                        Text(
+                            text = stringResource(R.string.ports_view_extended),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (!compactMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (yggstackConfig?.powerSaveEnabled == true && isSessionActive) {
-            val activeTransitConnections = portStats.filter { it.section != "expose" }.sumOf { it.activeConnections }
-            PowerSaveStatusCard(
-                isRunning = isServiceRunning,
-                isIdle = isPowerSaveIdle,
-                countdownSeconds = idleCountdownSeconds,
-                idleSinceMs = powerSaveIdleSince,
-                activeConnections = activeTransitConnections,
-                upMillis = powerSaveUpMillis,
-                idleMillis = powerSaveIdleMillis,
-                stateSinceMs = powerSaveStateSince,
-                onWakeNow = { viewModel.wakeNow() }
-            )
             Spacer(modifier = Modifier.height(8.dp))
         }
 
+        if (yggstackConfig?.powerSaveEnabled == true && isSessionActive) {
+            item(key = "powerSave") {
+                PowerSaveStatusCard(
+                    isRunning = isServiceRunning,
+                    isIdle = isPowerSaveIdle,
+                    countdownSeconds = idleCountdownSeconds,
+                    idleSinceMs = powerSaveIdleSince,
+                    activeConnections = activeTransitConnections,
+                    upMillis = powerSaveUpMillis,
+                    idleMillis = powerSaveIdleMillis,
+                    stateSinceMs = powerSaveStateSince,
+                    onWakeNow = { viewModel.wakeNow() }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+
         if (!isSessionActive) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.ports_service_stopped),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            item(key = "stopped") {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.ports_service_stopped),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -1071,53 +1107,40 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             // Service session active: show port cards whether the node is
             // running or powered down in Power Save idle — during idle the
             // stats freeze at their last values until the node wakes or the
-            // service is fully stopped.
-            val config = yggstackConfig
-            val sections = listOf(
-                Triple("proxy", config?.proxyEnabled == true, R.string.ports_section_proxy),
-                Triple("expose", config?.exposeEnabled == true, R.string.ports_section_expose),
-                Triple("forward", config?.forwardEnabled == true, R.string.ports_section_forward)
-            )
-
-            var shownAny = false
-            sections.forEach { (section, enabled, titleRes) ->
-                val entries = portStats.filter { it.section == section }
-                if (enabled && entries.isNotEmpty()) {
-                    shownAny = true
-                    // Keep the same order as on the Configuration screen by
-                    // sorting on the mapped config entry's position; anything
-                    // not matching a config mapping falls back to the end
-                    val orderedEntries = if (section == "proxy") entries else entries.sortedBy { stat ->
-                        listenerConfigIndex(stat, config).let { if (it >= 0) it else Int.MAX_VALUE }
-                    }
+            // service is fully stopped. Sections arrive display-ready from
+            // the ViewModel (visibility, ordering, names, rates).
+            portSections.forEach { section ->
+                item(key = "header_${section.section}", contentType = "sectionHeader") {
                     Text(
-                        text = stringResource(titleRes),
+                        text = stringResource(section.titleRes),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                     )
-                    orderedEntries.forEach { stat ->
-                        PortStatItem(
-                            stat = stat,
-                            displayName = resolveListenerName(stat, config),
-                            rxRatePerSec = rates[stat.key]?.first,
-                            txRatePerSec = rates[stat.key]?.second,
-                            compact = compactMode
-                        )
-                    }
+                }
+                items(section.rows, key = { it.stat.key }, contentType = { "portRow" }) { row ->
+                    PortStatItem(
+                        stat = row.stat,
+                        displayName = row.displayName,
+                        rxRatePerSec = row.rxRatePerSec,
+                        txRatePerSec = row.txRatePerSec,
+                        compact = compactMode
+                    )
                 }
             }
 
-            if (!shownAny) {
-                Text(
-                    text = stringResource(R.string.ports_no_listeners),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp)
-                )
+            if (portSections.isEmpty()) {
+                item(key = "noListeners") {
+                    Text(
+                        text = stringResource(R.string.ports_no_listeners),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp)
+                    )
+                }
             }
         }
     }
@@ -1215,45 +1238,6 @@ fun PortStatItem(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * Index of the configured mapping a live listener corresponds to, or -1 when
- * unmatched. Used for showing the mapping's short name and for keeping the
- * Ports page in the same order as the Configuration screen.
- */
-private fun listenerConfigIndex(stat: PortStatsDetail, config: YggstackConfig?): Int {
-    config ?: return -1
-    val proto = if (stat.isTcp) Protocol.TCP else Protocol.UDP
-    return when (stat.section) {
-        "expose" -> config.exposeMappings.indexOfFirst { m ->
-            m.protocol == proto &&
-                m.yggPort.toString() == stat.listenAddr.substringAfterLast(':') &&
-                m.localPort.toString() == stat.targetAddr.substringAfterLast(':')
-        }
-        "forward" -> config.forwardMappings.indexOfFirst { m ->
-            m.protocol == proto &&
-                m.localPort.toString() == stat.listenAddr.substringAfterLast(':') &&
-                m.remotePort.toString() == stat.targetAddr.substringAfterLast(':')
-        }
-        else -> -1
-    }
-}
-
-/**
- * Best-effort match of a live listener against configured mappings to show
- * its short name; falls back to null (the card shows addresses instead).
- */
-private fun resolveListenerName(stat: PortStatsDetail, config: YggstackConfig?): String? {
-    val cfg = config ?: return null
-    return when (val index = listenerConfigIndex(stat, cfg)) {
-        -1 -> null
-        else -> when (stat.section) {
-            "expose" -> cfg.exposeMappings[index].shortName.takeIf { it.isNotBlank() }
-            "forward" -> cfg.forwardMappings[index].shortName.takeIf { it.isNotBlank() }
-            else -> null
         }
     }
 }
@@ -1385,31 +1369,35 @@ fun formatBytes(bytes: Long): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogsViewer(viewModel: DiagnosticsViewModel) {
-    val logs by viewModel.logs.collectAsState()
-    val scrollState = rememberScrollState()
+    val logs by viewModel.logs.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
     val context = LocalContext.current
     var userScrolled by remember { mutableStateOf(false) }
 
     // Initial scroll to bottom when screen opens
     LaunchedEffect(Unit) {
         if (logs.isNotEmpty()) {
-            scrollState.scrollTo(scrollState.maxValue)
+            listState.scrollToItem(logs.lastIndex)
         }
     }
 
-    // Track if user manually scrolled up
-    LaunchedEffect(scrollState.value) {
-        if (scrollState.value < scrollState.maxValue - 100) {
-            userScrolled = true
-        } else if (scrollState.value >= scrollState.maxValue - 50) {
-            userScrolled = false
-        }
+    // Track if the user manually scrolled away from the bottom, evaluated
+    // only when a scroll gesture settles instead of on every scrolled pixel
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling) {
+                    val info = listState.layoutInfo
+                    val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    userScrolled = lastVisible < info.totalItemsCount - 2
+                }
+            }
     }
 
     // Auto-scroll to bottom when new logs arrive, unless user scrolled up
-    LaunchedEffect(logs.size) {
+    LaunchedEffect(logs) {
         if (logs.isNotEmpty() && !userScrolled) {
-            scrollState.animateScrollTo(scrollState.maxValue)
+            listState.animateScrollToItem(logs.lastIndex)
         }
     }
 
@@ -1474,34 +1462,32 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
                 containerColor = Color.Black
             )
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(12.dp)
-            ) {
-                if (logs.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+            if (logs.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_logs_yet),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                // Lazy so a long log buffer composes only the visible lines
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp)
+                ) {
+                    items(logs.size) { index ->
                         Text(
-                            text = stringResource(R.string.no_logs_yet),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray
+                            text = logs[index],
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.Green,
+                            modifier = Modifier.padding(vertical = 2.dp)
                         )
-                    }
-                } else {
-                    Column {
-                        logs.forEach { log ->
-                            Text(
-                                text = log,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color.Green,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
                     }
                 }
             }

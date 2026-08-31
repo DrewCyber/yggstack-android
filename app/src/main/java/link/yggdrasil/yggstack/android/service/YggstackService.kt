@@ -138,6 +138,19 @@ class YggstackService : Service() {
     private var logsEnabled: Boolean = true
     private var currentLogLevel: String = "error"
 
+    // Raw GetListenersJSON payload from the port stats poller's last tick,
+    // shared with the Power Save idle monitor so the two loops don't each pay
+    // a JNI call per second while the Ports tab is open. Volatile: written by
+    // the poller, read by the monitor, both on serviceScope.
+    @Volatile private var lastRawListenersJSON: String? = null
+
+    // Last posted foreground notification content; identical updates are
+    // skipped so the 1s peer poll doesn't keep waking SystemUI
+    private var lastNotificationStatus: String? = null
+    private var lastNotificationPeerCount = -1
+    private var lastNotificationTotalPeerCount = -1
+    private var lastNotificationYggdrasilIp: String? = null
+
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
@@ -458,6 +471,7 @@ class YggstackService : Service() {
                 logInfo("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
                 logInfo("Commit: ${link.yggdrasil.yggstack.android.BuildConfig.COMMIT_HASH}")
                 startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
+                invalidateNotificationDedupe()
 
                 // Create Yggstack instance
                 yggstack = Mobile.newYggstack()
@@ -1493,6 +1507,7 @@ class YggstackService : Service() {
                     try {
                         val listenersJson = yggstack?.getListenersJSON()
                         if (listenersJson != null) {
+                            lastRawListenersJSON = listenersJson
                             val accumulated = accumulatePortStats(listenersJson)
                             // Skip empty polls: after a Power Save wake the first
                             // tick can race listener registration, and emitting an
@@ -1637,7 +1652,16 @@ class YggstackService : Service() {
                 if (!_isRunning.value) break
 
                 val activeConnections = try {
-                    yggstack?.getListenersJSON()?.let { sumActiveTransitConnections(it) } ?: 0L
+                    // Reuse the port stats poller's fresh raw payload while it
+                    // is running (Ports tab open) instead of making a second
+                    // identical JNI call every second; ActiveConns is a gauge
+                    // that accumulatePortStats passes through untouched
+                    val json = if (_portStatsJSON.subscriptionCount.value > 0) {
+                        lastRawListenersJSON ?: yggstack?.getListenersJSON()
+                    } else {
+                        yggstack?.getListenersJSON()
+                    }
+                    json?.let { sumActiveTransitConnections(it) } ?: 0L
                 } catch (e: Exception) {
                     logError("Power Save: error polling listener stats: ${e.message}")
                     0L
@@ -2014,7 +2038,34 @@ class YggstackService : Service() {
         return builder.build()
     }
 
+    /**
+     * Forces the next updateNotification to post. Called whenever the
+     * notification is replaced through another path (startForeground,
+     * idle Power Save) so the dedupe cache can't suppress it.
+     */
+    private fun invalidateNotificationDedupe() {
+        lastNotificationStatus = null
+        lastNotificationPeerCount = -1
+        lastNotificationTotalPeerCount = -1
+        lastNotificationYggdrasilIp = null
+    }
+
     private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
+        // The peer poller calls this every second; the notification content is
+        // fully determined by these four values, so skip identical re-posts
+        // instead of waking SystemUI to redraw the same notification
+        val ip = _yggdrasilIp.value
+        if (status == lastNotificationStatus &&
+            peerCount == lastNotificationPeerCount &&
+            totalPeerCount == lastNotificationTotalPeerCount &&
+            ip == lastNotificationYggdrasilIp
+        ) {
+            return
+        }
+        lastNotificationStatus = status
+        lastNotificationPeerCount = peerCount
+        lastNotificationTotalPeerCount = totalPeerCount
+        lastNotificationYggdrasilIp = ip
         val notification = createNotification(status, peerCount, totalPeerCount)
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)
@@ -2067,6 +2118,7 @@ class YggstackService : Service() {
     }
 
     private fun updateIdlePowerSaveNotification() {
+        invalidateNotificationDedupe()
         val notification = createIdlePowerSaveNotification()
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)

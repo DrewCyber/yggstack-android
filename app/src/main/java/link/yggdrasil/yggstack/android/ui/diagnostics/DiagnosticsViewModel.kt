@@ -11,9 +11,11 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
+import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.service.YggstackService
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,28 @@ import org.json.JSONException
 import java.io.File
 
 /**
+ * Display-ready Ports row: listener stats with the config-resolved name and
+ * live rates precomputed, so the UI does no sorting or matching work per
+ * recomposition.
+ */
+data class PortRow(
+    val stat: PortStatsDetail,
+    val displayName: String?,
+    val rxRatePerSec: Double?,
+    val txRatePerSec: Double?
+)
+
+/**
+ * One visible section of the Ports page (proxy / expose / forward) with its
+ * rows already ordered to match the Configuration screen.
+ */
+data class PortSection(
+    val section: String,
+    val titleRes: Int,
+    val rows: List<PortRow>
+)
+
+/**
  * ViewModel for Diagnostics screen
  */
 class DiagnosticsViewModel(
@@ -34,6 +58,9 @@ class DiagnosticsViewModel(
 
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
+
+    private val _serviceConnected = MutableStateFlow(false)
+    val serviceConnected: StateFlow<Boolean> = _serviceConnected.asStateFlow()
 
     private val _logs = MutableStateFlow<List<String>>(emptyList())
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
@@ -65,11 +92,25 @@ class DiagnosticsViewModel(
     private val _yggdrasilPublicKey = MutableStateFlow<String?>(null)
     val yggdrasilPublicKey: StateFlow<String?> = _yggdrasilPublicKey.asStateFlow()
 
-    private val _peerStatusScrollPosition = MutableStateFlow(0)
-    val peerStatusScrollPosition: StateFlow<Int> = _peerStatusScrollPosition.asStateFlow()
+    // First visible item index + pixel offset, restored when the Peers tab
+    // re-enters composition after the pager disposes the page
+    private val _peerStatusScrollPosition = MutableStateFlow(0 to 0)
+    val peerStatusScrollPosition: StateFlow<Pair<Int, Int>> = _peerStatusScrollPosition.asStateFlow()
 
     private val _portsCompactMode = MutableStateFlow(false)
     val portsCompactMode: StateFlow<Boolean> = _portsCompactMode.asStateFlow()
+
+    private val _portSections = MutableStateFlow<List<PortSection>>(emptyList())
+    val portSections: StateFlow<List<PortSection>> = _portSections.asStateFlow()
+
+    private val _activeTransitConnections = MutableStateFlow(0L)
+    val activeTransitConnections: StateFlow<Long> = _activeTransitConnections.asStateFlow()
+
+    // Consecutive-poll state for live per-listener rates (moved out of the
+    // composable so it survives recomposition and page switches)
+    private var prevPortStats: List<PortStatsDetail>? = null
+    private var prevPortStatsTimeMs = 0L
+    private val portRates = mutableMapOf<String, Pair<Double, Double>>()
 
     private val _isPowerSaveIdle = MutableStateFlow(false)
     val isPowerSaveIdle: StateFlow<Boolean> = _isPowerSaveIdle.asStateFlow()
@@ -97,6 +138,7 @@ class DiagnosticsViewModel(
             val localBinder = binder as? YggstackService.YggstackBinder
             yggstackService = localBinder?.getService()
             serviceBound = true
+            _serviceConnected.value = true
 
             // Observe service data
             yggstackService?.let { service ->
@@ -113,11 +155,6 @@ class DiagnosticsViewModel(
                 viewModelScope.launch {
                     service.peerCount.collect { count ->
                         _peerCount.value = count
-                    }
-                }
-                viewModelScope.launch {
-                    service.totalPeerCount.collect { count ->
-                        _totalPeerCount.value = count
                     }
                 }
                 viewModelScope.launch {
@@ -186,6 +223,7 @@ class DiagnosticsViewModel(
 
         override fun onServiceDisconnected(name: ComponentName?) {
             serviceBound = false
+            _serviceConnected.value = false
             yggstackService = null
         }
     }
@@ -198,6 +236,8 @@ class DiagnosticsViewModel(
         viewModelScope.launch {
             repository.configFlow.collect { config ->
                 _yggstackConfig.value = config
+                // Section visibility and display names depend on the config
+                _portSections.value = buildPortSections(_portStats.value, config)
             }
         }
 
@@ -219,6 +259,11 @@ class DiagnosticsViewModel(
                     _yggdrasilPublicKey.value = null
                     _peerDetails.value = emptyList()
                     _portStats.value = emptyList()
+                    _portSections.value = emptyList()
+                    _activeTransitConnections.value = 0L
+                    prevPortStats = null
+                    prevPortStatsTimeMs = 0L
+                    portRates.clear()
                 }
             }
         }
@@ -246,8 +291,8 @@ class DiagnosticsViewModel(
         // in onServiceConnected, so this method can be simplified or removed
     }
 
-    fun savePeerStatusScrollPosition(position: Int) {
-        _peerStatusScrollPosition.value = position
+    fun savePeerStatusScrollPosition(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
+        _peerStatusScrollPosition.value = firstVisibleItemIndex to firstVisibleItemScrollOffset
     }
 
     fun setPortsCompactMode(compact: Boolean) {
@@ -422,7 +467,117 @@ class DiagnosticsViewModel(
     suspend fun collectPortStats() {
         yggstackService?.let { service ->
             service.portStatsJSON.collect { json ->
-                _portStats.value = parsePortStats(json)
+                updatePortStats(parsePortStats(json))
+            }
+        }
+    }
+
+    /**
+     * Publishes a new port stats snapshot plus everything derived from it
+     * (live rates, transit-connection total, display-ready sections) so the
+     * composable only renders and never computes.
+     */
+    private fun updatePortStats(stats: List<PortStatsDetail>) {
+        // Live rates: bytes-per-second from deltas between consecutive polls,
+        // matched by listener key so ordering changes don't corrupt them
+        val now = System.currentTimeMillis()
+        val prev = prevPortStats
+        if (prev != null && prevPortStatsTimeMs > 0) {
+            val elapsedSec = (now - prevPortStatsTimeMs) / 1000.0
+            if (elapsedSec >= 0.2) {
+                val prevByKey = prev.associateBy { it.key }
+                for (cur in stats) {
+                    val old = prevByKey[cur.key]
+                    portRates[cur.key] = if (old != null) {
+                        (cur.rxBytes - old.rxBytes) / elapsedSec to (cur.txBytes - old.txBytes) / elapsedSec
+                    } else {
+                        0.0 to 0.0
+                    }
+                }
+            }
+        }
+        prevPortStats = stats
+        prevPortStatsTimeMs = now
+
+        _portStats.value = stats
+        _activeTransitConnections.value =
+            stats.filter { it.section != "expose" }.sumOf { it.activeConnections }
+        _portSections.value = buildPortSections(stats, _yggstackConfig.value)
+    }
+
+    /**
+     * Groups listener stats into the visible Ports sections, ordered to match
+     * the Configuration screen. Runs once per data change instead of on every
+     * recomposition.
+     */
+    private fun buildPortSections(
+        stats: List<PortStatsDetail>,
+        config: YggstackConfig?
+    ): List<PortSection> {
+        if (config == null) return emptyList()
+        val sections = listOf(
+            Triple("proxy", config.proxyEnabled, R.string.ports_section_proxy),
+            Triple("expose", config.exposeEnabled, R.string.ports_section_expose),
+            Triple("forward", config.forwardEnabled, R.string.ports_section_forward)
+        )
+        return sections.mapNotNull { (section, enabled, titleRes) ->
+            if (!enabled) return@mapNotNull null
+            val entries = stats.filter { it.section == section }
+            if (entries.isEmpty()) return@mapNotNull null
+            // Keep the same order as on the Configuration screen by sorting on
+            // the mapped config entry's position; anything not matching a
+            // config mapping falls back to the end
+            val orderedEntries = if (section == "proxy") entries else entries.sortedBy { stat ->
+                listenerConfigIndex(stat, config).let { if (it >= 0) it else Int.MAX_VALUE }
+            }
+            PortSection(
+                section = section,
+                titleRes = titleRes,
+                rows = orderedEntries.map { stat ->
+                    PortRow(
+                        stat = stat,
+                        displayName = resolveListenerName(stat, config),
+                        rxRatePerSec = portRates[stat.key]?.first,
+                        txRatePerSec = portRates[stat.key]?.second
+                    )
+                }
+            )
+        }
+    }
+
+    /**
+     * Index of the configured mapping a live listener corresponds to, or -1 when
+     * unmatched. Used for showing the mapping's short name and for keeping the
+     * Ports page in the same order as the Configuration screen.
+     */
+    private fun listenerConfigIndex(stat: PortStatsDetail, config: YggstackConfig): Int {
+        val proto = if (stat.isTcp) Protocol.TCP else Protocol.UDP
+        return when (stat.section) {
+            "expose" -> config.exposeMappings.indexOfFirst { m ->
+                m.protocol == proto &&
+                    m.yggPort.toString() == stat.listenAddr.substringAfterLast(':') &&
+                    m.localPort.toString() == stat.targetAddr.substringAfterLast(':')
+            }
+            "forward" -> config.forwardMappings.indexOfFirst { m ->
+                m.protocol == proto &&
+                    m.localPort.toString() == stat.listenAddr.substringAfterLast(':') &&
+                    m.remotePort.toString() == stat.targetAddr.substringAfterLast(':')
+            }
+            else -> -1
+        }
+    }
+
+    /**
+     * Best-effort match of a live listener against configured mappings to show
+     * its short name; falls back to null (the card shows addresses instead).
+     */
+    private fun resolveListenerName(stat: PortStatsDetail, config: YggstackConfig): String? {
+        return when (val index = listenerConfigIndex(stat, config)) {
+            -1 -> null
+            else -> when (stat.section) {
+                "expose" -> config.exposeMappings[index].shortName.takeIf { it.isNotBlank() }
+                "forward" -> config.forwardMappings[index].shortName.takeIf { it.isNotBlank() }
+                else -> null
             }
         }
     }
