@@ -195,8 +195,10 @@
 
     <!-- Power Save -->
     <string name="power_save_title">Power Save</string>
-    <string name="power_save_description">Turns off the node after this much idle time with no active connections; a new connection attempt or Wake Now brings it back up.</string>
     <string name="power_save_exposed_hint">Unavailable while an exposed port is enabled.</string>
+    <string name="power_save_how_it_works">How it works?</string>
+    <string name="power_save_how_it_works_title">How Power Save works</string>
+    <string name="power_save_how_it_works_body">When Power Save is enabled, the app watches active connections through the SOCKS proxy and forwarded ports. While at least one connection is active, the node keeps running normally.\n\nWhen the last connection closes, a countdown starts (the idle shutdown timeout). If no new connection arrives before it ends, the Yggdrasil node is powered down: all network listeners are closed and CPU, Wi-Fi and wake locks are released so the device can sleep.\n\nWhile the node is powered down, lightweight placeholder listeners keep holding the SOCKS and forwarded ports. Any incoming connection attempt (or the first packet on a UDP port) wakes the node: real listeners are restored within a few seconds and the client can retry. You can also wake it manually with the \"Wake Now\" button on the Ports screen or in the notification.\n\nThe \"Up for\" and \"Idle for\" counters on the Power Save card show how the time since the service was started is split between the running node and Power Save idle. They reset when the service is fully stopped.\n\nPower Save is unavailable while an exposed port is enabled, because exposed ports must accept connections at all times.</string>
     <string name="power_save_idle_timeout_label">Idle shutdown timeout</string>
     <string name="power_save_idle_timeout_description">How long to wait with zero active SOCKS/forwarded-port connections before powering down the node.</string>
     <string name="power_save_wake_now">Wake Now</string>
@@ -204,6 +206,8 @@
     <string name="power_save_countdown_status">Powering down in %1$s</string>
     <string name="power_save_armed_status">Power Save armed — active connections in progress</string>
     <string name="power_save_active_ports_status">Active ports: %1$d</string>
+    <string name="power_save_up_for">Up for: %1$s (%2$d%%)</string>
+    <string name="power_save_idle_for">Idle for: %1$s (%2$d%%)</string>
     <string name="power_save_notification_text">Power saving — waiting for connections</string>
 
     <!-- Transit Traffic Warning Dialog -->

@@ -80,6 +80,18 @@ class DiagnosticsViewModel(
     private val _powerSaveIdleSince = MutableStateFlow<Long?>(null)
     val powerSaveIdleSince: StateFlow<Long?> = _powerSaveIdleSince.asStateFlow()
 
+    private val _isSessionActive = MutableStateFlow(false)
+    val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
+
+    private val _powerSaveUpMillis = MutableStateFlow(0L)
+    val powerSaveUpMillis: StateFlow<Long> = _powerSaveUpMillis.asStateFlow()
+
+    private val _powerSaveIdleMillis = MutableStateFlow(0L)
+    val powerSaveIdleMillis: StateFlow<Long> = _powerSaveIdleMillis.asStateFlow()
+
+    private val _powerSaveStateSince = MutableStateFlow(0L)
+    val powerSaveStateSince: StateFlow<Long> = _powerSaveStateSince.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -135,6 +147,26 @@ class DiagnosticsViewModel(
                         _powerSaveIdleSince.value = since
                     }
                 }
+                viewModelScope.launch {
+                    service.isSessionActive.collect { active ->
+                        _isSessionActive.value = active
+                    }
+                }
+                viewModelScope.launch {
+                    service.powerSaveUpMillis.collect { millis ->
+                        _powerSaveUpMillis.value = millis
+                    }
+                }
+                viewModelScope.launch {
+                    service.powerSaveIdleMillis.collect { millis ->
+                        _powerSaveIdleMillis.value = millis
+                    }
+                }
+                viewModelScope.launch {
+                    service.powerSaveStateSince.collect { since ->
+                        _powerSaveStateSince.value = since
+                    }
+                }
 
                 // Sync initial state
                 _logs.value = service.logs.value
@@ -145,6 +177,10 @@ class DiagnosticsViewModel(
                 _isPowerSaveIdle.value = service.isPowerSaveIdle.value
                 _idleCountdownSeconds.value = service.idleCountdownSeconds.value
                 _powerSaveIdleSince.value = service.powerSaveIdleSince.value
+                _isSessionActive.value = service.isSessionActive.value
+                _powerSaveUpMillis.value = service.powerSaveUpMillis.value
+                _powerSaveIdleMillis.value = service.powerSaveIdleMillis.value
+                _powerSaveStateSince.value = service.powerSaveStateSince.value
             }
         }
 
@@ -172,14 +208,16 @@ class DiagnosticsViewModel(
             }
         }
         
-        // Clear IP and public key when service stops
+        // Clear node-derived UI state only when the service session ends. The
+        // service keeps running through Power Save idle, so port cards and
+        // their counters must stay frozen at their last values until a full
+        // stop (isSessionActive drops only then, never on idle entry).
         viewModelScope.launch {
-            _isServiceRunning.collect { isRunning ->
-                if (!isRunning) {
+            _isSessionActive.collect { active ->
+                if (!active) {
                     _yggdrasilIp.value = null
                     _yggdrasilPublicKey.value = null
                     _peerDetails.value = emptyList()
-                    // Port stats reset when the service stops
                     _portStats.value = emptyList()
                 }
             }

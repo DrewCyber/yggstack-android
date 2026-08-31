@@ -150,6 +150,25 @@ class YggstackService : Service() {
     private val _powerSaveIdleSince = MutableStateFlow<Long?>(null)
     val powerSaveIdleSince: StateFlow<Long?> = _powerSaveIdleSince.asStateFlow()
 
+    // True from a successful start until a full stop. Unlike isRunning it does
+    // NOT drop when Power Save powers the node down, so UI state tied to the
+    // service session (Ports cards, traffic counters) survives idle periods.
+    private val _isSessionActive = MutableStateFlow(false)
+    val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
+
+    // Power Save session accounting: cumulative up/idle time since the last
+    // full start. "Up" accrues while the node runs, "idle" while Power Save
+    // has it powered down; the segment currently in progress is derived from
+    // powerSaveStateSince. Both totals reset on full stop / fresh start.
+    private val _powerSaveUpMillis = MutableStateFlow(0L)
+    val powerSaveUpMillis: StateFlow<Long> = _powerSaveUpMillis.asStateFlow()
+
+    private val _powerSaveIdleMillis = MutableStateFlow(0L)
+    val powerSaveIdleMillis: StateFlow<Long> = _powerSaveIdleMillis.asStateFlow()
+
+    private val _powerSaveStateSince = MutableStateFlow(0L)
+    val powerSaveStateSince: StateFlow<Long> = _powerSaveStateSince.asStateFlow()
+
     private val _yggdrasilIp = MutableStateFlow<String?>(null)
     val yggdrasilIp: StateFlow<String?> = _yggdrasilIp.asStateFlow()
 
@@ -170,6 +189,17 @@ class YggstackService : Service() {
 
     private val _portStatsJSON = MutableSharedFlow<String>(replay = 1)
     val portStatsJSON: SharedFlow<String> = _portStatsJSON.asSharedFlow()
+
+    // Per-listener counters for the current service session. The Go node
+    // starts every instance (fresh start or Power Save wake) with zeroed
+    // stats, so the Ports screen is fed session-cumulative totals instead:
+    // each poll adds the delta between the node's raw counters and the last
+    // raw snapshot for the same listener key to the running total. Keys are
+    // derived from mapping addresses by the Go layer, so they match across
+    // node restarts.
+    private data class ListenerCounters(val totalConns: Long, val rxBytes: Long, val txBytes: Long)
+    private val rawPortCounters = java.util.concurrent.ConcurrentHashMap<String, ListenerCounters>()
+    private val cumulativePortCounters = java.util.concurrent.ConcurrentHashMap<String, ListenerCounters>()
 
     private val _generatedPrivateKey = MutableStateFlow<String?>(null)
     val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
@@ -332,6 +362,8 @@ class YggstackService : Service() {
         val instanceToStop = yggstack
         yggstack = null
         _isRunning.value = false
+        _isSessionActive.value = false
+        clearSessionPortCounters()
         if (instanceToStop != null) {
             try {
                 kotlinx.coroutines.runBlocking {
@@ -525,11 +557,24 @@ class YggstackService : Service() {
                 }
 
                 logDebug("Setting service running state...")
+                val wasIdle = _isPowerSaveIdle.value
                 _isRunning.value = true
+                _isSessionActive.value = true
                 _peerCount.value = 0
                 stopPlaceholderListeners()
                 _isPowerSaveIdle.value = false
                 _powerSaveIdleSince.value = null
+                // Power Save accounting: waking from idle continues the current
+                // session, a fresh start begins a new one
+                val stateChangedAt = System.currentTimeMillis()
+                if (wasIdle) {
+                    _powerSaveIdleMillis.value += (stateChangedAt - _powerSaveStateSince.value).coerceAtLeast(0)
+                } else {
+                    _powerSaveUpMillis.value = 0
+                    _powerSaveIdleMillis.value = 0
+                    clearSessionPortCounters()
+                }
+                _powerSaveStateSince.value = stateChangedAt
                 logInfo("Service state updated: isRunning=true")
 
                 // Register network callback to monitor WiFi/Cellular changes
@@ -566,10 +611,15 @@ class YggstackService : Service() {
                 }
                 yggstack = null
                 _isRunning.value = false
+                _isSessionActive.value = false
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
-                
+                _powerSaveUpMillis.value = 0
+                _powerSaveIdleMillis.value = 0
+                _powerSaveStateSince.value = 0
+                clearSessionPortCounters()
+
                 // Unregister network callback on error
                 unregisterNetworkCallback()
                 
@@ -622,6 +672,8 @@ class YggstackService : Service() {
                 val stale = yggstack
                 yggstack = null
                 _isRunning.value = false
+                _isSessionActive.value = false
+                clearSessionPortCounters()
                 _isTransitioning.value = false
                 if (stale != null) {
                     serviceScope.launch(Dispatchers.IO) {
@@ -707,6 +759,12 @@ class YggstackService : Service() {
                     // Real listeners are guaranteed closed by now (yggstack.stop() above),
                     // so it's safe to bind placeholders on the same host:port.
                     lastConfig?.let { startPlaceholderListeners(it) }
+                    // Session accounting: the up period ends here; idle accrues
+                    // until the node wakes. isSessionActive stays true so the
+                    // Ports screen keeps its cards and counters.
+                    val poweredDownAt = System.currentTimeMillis()
+                    _powerSaveUpMillis.value += (poweredDownAt - _powerSaveStateSince.value).coerceAtLeast(0)
+                    _powerSaveStateSince.value = poweredDownAt
                     _isPowerSaveIdle.value = true
                     if (_powerSaveIdleSince.value == null) {
                         _powerSaveIdleSince.value = System.currentTimeMillis()
@@ -717,6 +775,11 @@ class YggstackService : Service() {
                     stopPlaceholderListeners()
                     _isPowerSaveIdle.value = false
                     _powerSaveIdleSince.value = null
+                    _isSessionActive.value = false
+                    _powerSaveUpMillis.value = 0
+                    _powerSaveIdleMillis.value = 0
+                    _powerSaveStateSince.value = 0
+                    clearSessionPortCounters()
 
                     // Cancel the notification
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -737,6 +800,11 @@ class YggstackService : Service() {
                 stopPlaceholderListeners()
                 _isPowerSaveIdle.value = false
                 _powerSaveIdleSince.value = null
+                _isSessionActive.value = false
+                _powerSaveUpMillis.value = 0
+                _powerSaveIdleMillis.value = 0
+                _powerSaveStateSince.value = 0
+                clearSessionPortCounters()
                 yggstack = null
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
@@ -1425,7 +1493,13 @@ class YggstackService : Service() {
                     try {
                         val listenersJson = yggstack?.getListenersJSON()
                         if (listenersJson != null) {
-                            _portStatsJSON.emit(listenersJson)
+                            val accumulated = accumulatePortStats(listenersJson)
+                            // Skip empty polls: after a Power Save wake the first
+                            // tick can race listener registration, and emitting an
+                            // empty list would flash away the frozen cards
+                            if (accumulated != "[]") {
+                                _portStatsJSON.emit(accumulated)
+                            }
                         }
                     } catch (e: Exception) {
                         logError("Error fetching listener stats: ${e.message}")
@@ -1437,6 +1511,65 @@ class YggstackService : Service() {
                 }
             }
         }
+    }
+
+    /**
+     * Rewrites a raw GetListenersJSON payload into session-cumulative totals.
+     * While a node instance is up its counters are monotonically increasing,
+     * so the delta against the last raw snapshot is added to the running
+     * total; a counter that drops below its snapshot means the node was
+     * restarted (Power Save wake), and the new baseline counts from that
+     * point on top of the totals accumulated before the restart.
+     */
+    private fun accumulatePortStats(json: String): String {
+        return try {
+            val arr = JSONArray(json)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val key = obj.optString("Key", "")
+                if (key.isEmpty()) continue
+                val raw = ListenerCounters(
+                    totalConns = obj.optLong("TotalConns", 0),
+                    rxBytes = obj.optLong("RXBytes", 0),
+                    txBytes = obj.optLong("TXBytes", 0)
+                )
+                val prevRaw = rawPortCounters[key]
+                val delta = if (prevRaw != null &&
+                    raw.totalConns >= prevRaw.totalConns &&
+                    raw.rxBytes >= prevRaw.rxBytes &&
+                    raw.txBytes >= prevRaw.txBytes
+                ) {
+                    ListenerCounters(
+                        totalConns = raw.totalConns - prevRaw.totalConns,
+                        rxBytes = raw.rxBytes - prevRaw.rxBytes,
+                        txBytes = raw.txBytes - prevRaw.txBytes
+                    )
+                } else {
+                    raw
+                }
+                rawPortCounters[key] = raw
+                val prevCum = cumulativePortCounters[key] ?: ListenerCounters(0, 0, 0)
+                val cum = ListenerCounters(
+                    totalConns = prevCum.totalConns + delta.totalConns,
+                    rxBytes = prevCum.rxBytes + delta.rxBytes,
+                    txBytes = prevCum.txBytes + delta.txBytes
+                )
+                cumulativePortCounters[key] = cum
+                // ActiveConns is a gauge, not a counter - pass through as-is
+                obj.put("TotalConns", cum.totalConns)
+                obj.put("RXBytes", cum.rxBytes)
+                obj.put("TXBytes", cum.txBytes)
+            }
+            arr.toString()
+        } catch (e: Exception) {
+            logError("Error accumulating port stats: ${e.message}")
+            json
+        }
+    }
+
+    private fun clearSessionPortCounters() {
+        rawPortCounters.clear()
+        cumulativePortCounters.clear()
     }
 
     /**

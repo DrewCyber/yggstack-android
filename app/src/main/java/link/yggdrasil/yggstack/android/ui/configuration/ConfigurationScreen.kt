@@ -501,16 +501,30 @@ fun ConfigurationScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                     val exposedActive = config.hasActiveExposedPorts()
+                    var showHowItWorks by remember { mutableStateOf(false) }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(R.string.power_save_title),
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.power_save_title),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            IconButton(
+                                onClick = { showHowItWorks = true },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.HelpOutline,
+                                    contentDescription = stringResource(R.string.power_save_how_it_works),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                         Switch(
                             checked = config.powerSaveEnabled,
                             onCheckedChange = { viewModel.setPowerSaveEnabled(it) },
@@ -518,16 +532,18 @@ fun ConfigurationScreen(
                             modifier = Modifier.scale(0.8f)
                         )
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = if (exposedActive) {
-                            stringResource(R.string.power_save_exposed_hint)
-                        } else {
-                            stringResource(R.string.power_save_description)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (exposedActive) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.power_save_exposed_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (showHowItWorks) {
+                        PowerSaveHowItWorksDialog(onDismiss = { showHowItWorks = false })
+                    }
 
                     if (config.powerSaveEnabled) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1571,6 +1587,31 @@ fun MaxBackoffDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+fun PowerSaveHowItWorksDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.power_save_how_it_works_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = stringResource(R.string.power_save_how_it_works_body),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.ok))
             }
         }
     )

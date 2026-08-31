@@ -946,6 +946,10 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsState()
     val idleCountdownSeconds by viewModel.idleCountdownSeconds.collectAsState()
     val powerSaveIdleSince by viewModel.powerSaveIdleSince.collectAsState()
+    val isSessionActive by viewModel.isSessionActive.collectAsState()
+    val powerSaveUpMillis by viewModel.powerSaveUpMillis.collectAsState()
+    val powerSaveIdleMillis by viewModel.powerSaveIdleMillis.collectAsState()
+    val powerSaveStateSince by viewModel.powerSaveStateSince.collectAsState()
 
     // Only collect port stats when this tab is visible and service is running
     LaunchedEffect(isVisible, isServiceRunning) {
@@ -1023,7 +1027,7 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
         }
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (yggstackConfig?.powerSaveEnabled == true && (isServiceRunning || isPowerSaveIdle)) {
+        if (yggstackConfig?.powerSaveEnabled == true && isSessionActive) {
             val activeTransitConnections = portStats.filter { it.section != "expose" }.sumOf { it.activeConnections }
             PowerSaveStatusCard(
                 isRunning = isServiceRunning,
@@ -1031,12 +1035,15 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 countdownSeconds = idleCountdownSeconds,
                 idleSinceMs = powerSaveIdleSince,
                 activeConnections = activeTransitConnections,
+                upMillis = powerSaveUpMillis,
+                idleMillis = powerSaveIdleMillis,
+                stateSinceMs = powerSaveStateSince,
                 onWakeNow = { viewModel.wakeNow() }
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        if (!isServiceRunning && !isPowerSaveIdle) {
+        if (!isSessionActive) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
@@ -1060,7 +1067,11 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     }
                 }
             }
-        } else if (isServiceRunning) {
+        } else {
+            // Service session active: show port cards whether the node is
+            // running or powered down in Power Save idle — during idle the
+            // stats freeze at their last values until the node wakes or the
+            // service is fully stopped.
             val config = yggstackConfig
             val sections = listOf(
                 Triple("proxy", config?.proxyEnabled == true, R.string.ports_section_proxy),
@@ -1254,16 +1265,29 @@ fun PowerSaveStatusCard(
     countdownSeconds: Long?,
     idleSinceMs: Long?,
     activeConnections: Long,
+    upMillis: Long,
+    idleMillis: Long,
+    stateSinceMs: Long,
     onWakeNow: () -> Unit
 ) {
-    // Live-ticking clock so "idle for Xm" keeps advancing while the card is idle
+    // Live-ticking clock so the idle status and the up/idle session counters
+    // keep advancing while the card is on screen
     var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(isIdle) {
-        while (isIdle) {
+    LaunchedEffect(Unit) {
+        while (true) {
             nowMs = System.currentTimeMillis()
             kotlinx.coroutines.delay(1000)
         }
     }
+
+    // Session time split: accrued totals plus the segment currently in progress
+    val liveUpMillis = upMillis +
+        if (!isIdle && stateSinceMs > 0) (nowMs - stateSinceMs).coerceAtLeast(0) else 0L
+    val liveIdleMillis = idleMillis +
+        if (isIdle && stateSinceMs > 0) (nowMs - stateSinceMs).coerceAtLeast(0) else 0L
+    val totalMillis = liveUpMillis + liveIdleMillis
+    val upPercent = if (totalMillis > 0) ((liveUpMillis * 100) / totalMillis).toInt() else 0
+    val idlePercent = if (totalMillis > 0) 100 - upPercent else 0
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -1301,6 +1325,17 @@ fun PowerSaveStatusCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.power_save_up_for, formatDurationHMS(liveUpMillis / 1000), upPercent),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(R.string.power_save_idle_for, formatDurationHMS(liveIdleMillis / 1000), idlePercent),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -1320,6 +1355,21 @@ fun formatUptime(seconds: Double): String {
         hours > 0 -> String.format("%dh %dm", hours, minutes)
         minutes > 0 -> String.format("%dm %ds", minutes, secs)
         else -> String.format("%ds", secs)
+    }
+}
+
+/**
+ * Duration with seconds always shown (e.g. "1h 3m 40s", "5m 30s", "45s") —
+ * used for the Power Save card's Up/Idle session counters.
+ */
+fun formatDurationHMS(totalSeconds: Long): String {
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0 -> String.format("%dh %dm %ds", hours, minutes, seconds)
+        minutes > 0 -> String.format("%dm %ds", minutes, seconds)
+        else -> String.format("%ds", seconds)
     }
 }
 
