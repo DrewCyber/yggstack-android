@@ -392,6 +392,7 @@ class YggstackService : Service() {
             // Use mutex to prevent concurrent start/stop operations
             if (!operationMutex.tryLock()) {
                 logInfo("Operation already in progress - ignoring start request")
+                wakeInProgress = false
                 return@launch
             }
             
