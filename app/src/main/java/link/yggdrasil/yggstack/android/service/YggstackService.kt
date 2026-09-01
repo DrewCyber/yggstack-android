@@ -90,6 +90,20 @@ class YggstackService : Service() {
     private val placeholderListeners = mutableListOf<PlaceholderListener>()
     private val wakeTriggerLock = Any()
     @Volatile private var wakeInProgress = false
+
+    // Placeholder bind retry: the real listeners of a powering-down node can
+    // still hold the port briefly after stop() returns, and a single failed
+    // bind would leave the port permanently unable to wake the node.
+    private val PLACEHOLDER_BIND_ATTEMPTS = 10
+    private val PLACEHOLDER_BIND_RETRY_DELAY_MS = 500L
+
+    // Connections held between a placeholder wake trigger and the node's real
+    // listener coming up, relayed by the splice proxy (spliceHeldConnection).
+    private val heldSpliceSockets = java.util.concurrent.CopyOnWriteArrayList<java.net.Socket>()
+    private val heldSpliceJobs = java.util.concurrent.CopyOnWriteArrayList<Job>()
+    private val SPLICE_HOLD_TIMEOUT_MS = 25_000L
+    private val SPLICE_READY_POLL_MS = 250L
+    private val SPLICE_UPSTREAM_CONNECT_TIMEOUT_MS = 3_000L
     
     // Operation state management
     private val _isTransitioning = MutableStateFlow(false)
@@ -391,6 +405,7 @@ class YggstackService : Service() {
         releaseMulticastLock()
         releaseWakeLock()
         stopPlaceholderListeners()
+        abortSplices()
         idlePowerSaveMonitorJob?.cancel()
         serviceScope.cancel()
     }
@@ -624,6 +639,7 @@ class YggstackService : Service() {
                     logError("Error during cleanup: ${stopError.message}")
                 }
                 yggstack = null
+                abortSplices()
                 _isRunning.value = false
                 _isSessionActive.value = false
                 _yggdrasilIp.value = null
@@ -745,8 +761,16 @@ class YggstackService : Service() {
                         // service itself remains held during Power Save idle
                         releaseWakeLock()
                         
-                        // Stop yggstack
-                        yggstack?.stop()
+                        // Stop yggstack. A throwing stop must not divert to the
+                        // outer error handler: that path skips the Power Save
+                        // re-arm below and would leave the ports unable to wake
+                        // the node. The placeholder bind retries until the
+                        // ports are actually released even if this stop is slow.
+                        try {
+                            yggstack?.stop()
+                        } catch (e: Exception) {
+                            logError("Error stopping Yggstack during power-down: ${e.message}")
+                        }
                         yggstack = null
                         
                         _yggdrasilIp.value = null
@@ -787,6 +811,7 @@ class YggstackService : Service() {
                     logInfo("Power Save: node powered down, listening for wake triggers")
                 } else {
                     stopPlaceholderListeners()
+                    abortSplices()
                     _isPowerSaveIdle.value = false
                     _powerSaveIdleSince.value = null
                     _isSessionActive.value = false
@@ -1749,10 +1774,151 @@ class YggstackService : Service() {
     }
 
     /**
+     * Starts relaying a connection held from a placeholder wake trigger into
+     * the node's real listener for the same port. Runs on the service scope
+     * (not the placeholder's own job, which wakeNow cancels).
+     */
+    private fun beginSplice(client: java.net.Socket, host: String, port: Int) {
+        heldSpliceSockets.add(client)
+        val job = serviceScope.launch(Dispatchers.IO) {
+            spliceHeldConnection(client, host, port)
+        }
+        heldSpliceJobs.add(job)
+        job.invokeOnCompletion { heldSpliceJobs.remove(job) }
+    }
+
+    /**
+     * Holds a wake-triggering TCP connection open while the node starts, then
+     * splices it into the real listener once that listener is up. The client
+     * never sees a dropped connection: during the hold its early bytes are
+     * absorbed by the kernel socket buffer with natural TCP backpressure, and
+     * after the splice it talks to the real listener through a loopback relay.
+     */
+    private suspend fun spliceHeldConnection(client: java.net.Socket, host: String, port: Int) {
+        try {
+            client.tcpNoDelay = true
+
+            // Wait for the node's real listener on this port
+            var ready = false
+            val deadline = System.currentTimeMillis() + SPLICE_HOLD_TIMEOUT_MS
+            while (System.currentTimeMillis() < deadline) {
+                if (realListenerBound(host, port)) {
+                    ready = true
+                    break
+                }
+                kotlinx.coroutines.delay(SPLICE_READY_POLL_MS)
+            }
+            if (!ready) {
+                logWarn("Power Save: node listener on $host:$port not ready in time - releasing held connection")
+                return
+            }
+
+            val upstream = java.net.Socket()
+            try {
+                upstream.tcpNoDelay = true
+                upstream.connect(
+                    java.net.InetSocketAddress(host, port),
+                    SPLICE_UPSTREAM_CONNECT_TIMEOUT_MS.toInt()
+                )
+                logInfo("Power Save: splicing held connection into $host:$port")
+                pumpBothDirections(client, upstream)
+            } finally {
+                try { upstream.close() } catch (_: Exception) {}
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logWarn("Power Save: held connection to $host:$port ended: ${e.message}")
+        } finally {
+            heldSpliceSockets.remove(client)
+            try { client.close() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Whether the node's real listener for this local address is up, from the
+     * same source the Ports screen reads. Placeholder sockets are not listed,
+     * so a match can only be the real listener.
+     */
+    private fun realListenerBound(host: String, port: Int): Boolean {
+        val json = try {
+            yggstack?.getListenersJSON()
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        return try {
+            val arr = org.json.JSONArray(json)
+            val listenAddr = "$host:$port"
+            for (i in 0 until arr.length()) {
+                if (arr.getJSONObject(i).optString("Listen", "") == listenAddr) return true
+            }
+            false
+        } catch (_: org.json.JSONException) {
+            false
+        }
+    }
+
+    /**
+     * Bidirectional byte pump with half-close propagation: EOF on one side
+     * shuts down the peer's output; both sockets close once both directions
+     * finish (or on the first error, which force-closes and unblocks the
+     * other direction).
+     */
+    private suspend fun pumpBothDirections(a: java.net.Socket, b: java.net.Socket) {
+        kotlinx.coroutines.coroutineScope {
+            val finished = java.util.concurrent.atomic.AtomicInteger(0)
+            launch(Dispatchers.IO) { pump(a, b, finished) }
+            launch(Dispatchers.IO) { pump(b, a, finished) }
+        }
+    }
+
+    private suspend fun pump(
+        from: java.net.Socket,
+        to: java.net.Socket,
+        finished: java.util.concurrent.atomic.AtomicInteger
+    ) {
+        val buffer = ByteArray(8192)
+        try {
+            val input = from.getInputStream()
+            val output = to.getOutputStream()
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                if (n > 0) {
+                    output.write(buffer, 0, n)
+                    output.flush()
+                }
+            }
+            try { to.shutdownOutput() } catch (_: Exception) {}
+        } catch (_: Exception) {
+            // Abort: force both directions down so the sibling pump unblocks
+            try { from.close() } catch (_: Exception) {}
+            try { to.close() } catch (_: Exception) {}
+        } finally {
+            if (finished.incrementAndGet() >= 2) {
+                try { from.close() } catch (_: Exception) {}
+                try { to.close() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /** Closes every connection held by the splice proxy (full stop/teardown). */
+    private fun abortSplices() {
+        if (heldSpliceJobs.isNotEmpty() || heldSpliceSockets.isNotEmpty()) {
+            logInfo("Power Save: aborting ${heldSpliceSockets.size} held connection(s)")
+        }
+        heldSpliceJobs.forEach { it.cancel() }
+        heldSpliceJobs.clear()
+        heldSpliceSockets.forEach { try { it.close() } catch (_: Exception) {} }
+        heldSpliceSockets.clear()
+    }
+
+    /**
      * Binds a single local address/port while the node is powered down, so an
-     * incoming connection attempt (or first UDP packet) can wake the node back
-     * up. The triggering connection itself is always dropped - the client is
-     * expected to retry once the real mapping is back up (see design doc §4.3).
+     * incoming connection (or first UDP packet) can wake the node back up.
+     * TCP callers are held and relayed into the real listener once the node is
+     * up (beginSplice); UDP triggering packets are dropped - UDP clients
+     * retransmit by design.
      */
     private inner class PlaceholderListener(
         private val protocol: Protocol,
@@ -1770,17 +1936,26 @@ class YggstackService : Service() {
                         Protocol.TCP -> {
                             val socket = java.net.ServerSocket()
                             socket.reuseAddress = true
-                            socket.bind(java.net.InetSocketAddress(host, port))
+                            if (!bindWithRetry("TCP") { socket.bind(java.net.InetSocketAddress(host, port)) }) {
+                                return@launch
+                            }
                             serverSocket = socket
                             logInfo("Power Save: placeholder listening on TCP $host:$port")
                             val client = socket.accept()
-                            try { client.close() } catch (_: Exception) {}
+                            // Release the listening port so the waking node can
+                            // bind it, but KEEP the client connection and relay
+                            // it into the real listener once the node is up
+                            try { socket.close() } catch (_: Exception) {}
+                            serverSocket = null
+                            beginSplice(client, host, port)
                             onTriggered()
                         }
                         Protocol.UDP -> {
                             val socket = java.net.DatagramSocket(null)
                             socket.reuseAddress = true
-                            socket.bind(java.net.InetSocketAddress(host, port))
+                            if (!bindWithRetry("UDP") { socket.bind(java.net.InetSocketAddress(host, port)) }) {
+                                return@launch
+                            }
                             datagramSocket = socket
                             logInfo("Power Save: placeholder listening on UDP $host:$port")
                             val buffer = ByteArray(1)
@@ -1791,8 +1966,40 @@ class YggstackService : Service() {
                     }
                 } catch (e: java.net.SocketException) {
                     // Expected when stop() closes the socket to cancel listening
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // stop() cancelled the job (e.g. mid bind-retry)
+                    throw e
                 } catch (e: Exception) {
                     logError("Power Save: placeholder listener error on $host:$port: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Binds this listener's socket, retrying while the real listener of a
+         * powering-down node still holds the port (BindException). Any other
+         * SocketException (e.g. stop() closed the socket mid-retry) aborts via
+         * the outer catch. Returns false if the port never became available.
+         */
+        private suspend fun bindWithRetry(proto: String, bind: () -> Unit): Boolean {
+            var attempt = 1
+            while (true) {
+                try {
+                    bind()
+                    return true
+                } catch (e: java.net.BindException) {
+                    if (attempt == 1) {
+                        logWarn("Power Save: $proto $host:$port still in use - waiting for the node to release it")
+                    }
+                    if (attempt >= PLACEHOLDER_BIND_ATTEMPTS) {
+                        logError(
+                            "Power Save: could not bind $proto $host:$port after $attempt attempts - " +
+                                "wake trigger unavailable for this port, use Wake Now"
+                        )
+                        return false
+                    }
+                    attempt++
+                    kotlinx.coroutines.delay(PLACEHOLDER_BIND_RETRY_DELAY_MS)
                 }
             }
         }
