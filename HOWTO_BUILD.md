@@ -6,17 +6,23 @@ This guide explains how to build the Yggstack Android application from source.
 
 Before building, ensure you have the following installed:
 
-1. **Java Development Kit (JDK)** - Version 17 or later
+1. **Java Development Kit (JDK)** 17
 2. **Android SDK** - Typically installed via Android Studio
 3. **Android NDK** - Required for native libraries
-4. **Go** - Version 1.22 or later
-5. **gomobile tools** - For building mobile bindings
+4. **Go toolchain**
+5. **gomobile + gobind** - pinned versions, installed automatically by the build script if missing
+
+Toolchain versions (JDK, Go, gomobile/gobind, NDK) are pinned in
+[`.github/workflows/build-release.yml`](.github/workflows/build-release.yml) — that file is the
+source of truth; this guide does not duplicate them. Run `./scripts/check-environment.sh` from
+the repo root to verify your local JDK, Go, and NDK match the CI pins.
 
 ### Installing Prerequisites
 
 #### 1. Install Go
 
-Visit [https://golang.org/dl/](https://golang.org/dl/) and download Go 1.22 or later for your platform.
+Visit [https://golang.org/dl/](https://golang.org/dl/) and download the Go version pinned in
+`.github/workflows/build-release.yml` for your platform.
 
 Verify installation:
 ```bash
@@ -25,10 +31,18 @@ go version
 
 #### 2. Install gomobile
 
+Usually you can skip this: `lib/yggstack/mobile/build-android.sh` installs the pinned
+gomobile/gobind versions automatically if they are not on your PATH. To install them manually,
+use the exact version pinned in `.github/workflows/build-release.yml`:
+
 ```bash
-go install golang.org/x/mobile/cmd/gomobile@latest
-go install golang.org/x/mobile/cmd/gobind@latest
+go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260203041319-574ceaa2f723
+go install golang.org/x/mobile/cmd/gobind@v0.0.0-20260203041319-574ceaa2f723
 ```
+
+> **Never run `gomobile init` and never install with `@latest`.** `@latest` pulls a `gobind`
+> that requires a newer Go than the pinned toolchain, and `gomobile init` fetches it. The
+> build script creates `$GOPATH/pkg/gomobile` directly, which is all `gomobile bind` needs.
 
 #### 3. Set up Android SDK
 
@@ -48,16 +62,15 @@ export ANDROID_HOME=/path/to/your/android/sdk
 The first step is to build the yggstack mobile bindings as an Android AAR library:
 
 ```bash
-cd lib/yggstack
-chmod +x build-android.sh
+cd lib/yggstack/mobile
 ./build-android.sh
 ```
 
 This will:
-- Initialize gomobile
+- Install the pinned gomobile/gobind if missing and prepare `$GOPATH/pkg/gomobile` directly (no `gomobile init`)
 - Detect your Android SDK
 - Build the native library for all Android architectures (arm64, arm, amd64, 386)
-- Create `android-build/yggstack.aar` (approximately 37 MB)
+- Create `lib/yggstack/android-build/yggstack.aar` (approximately 37 MB)
 
 **Build Output:**
 - Location: `lib/yggstack/android-build/yggstack.aar`
@@ -86,9 +99,10 @@ For a release build (requires signing configuration):
 ./gradlew assembleRelease
 ```
 
-**Build Output:**
-- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
-- Release APK: `app/build/outputs/apk/release/app-release.apk` (if building release)
+**Build Output (ABI splits are enabled, so one APK per ABI is produced):**
+- Debug APKs: `app/build/outputs/apk/debug/app-<abi>-debug.apk` plus `app-universal-debug.apk`
+- Release APKs: `app/build/outputs/apk/release/app-<abi>-release.apk` plus `app-universal-release.apk`
+- `<abi>` is one of `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`
 
 ## Complete Build Script
 
@@ -102,8 +116,7 @@ cd /path/to/yggstack-android
 
 # Step 1: Build mobile bindings
 echo "Building yggstack mobile bindings..."
-cd lib/yggstack
-chmod +x build-android.sh
+cd lib/yggstack/mobile
 ./build-android.sh
 
 # Step 2: Copy AAR to app
@@ -117,7 +130,7 @@ echo "Building Android APK..."
 ./gradlew assembleDebug
 
 echo "Build complete!"
-echo "APK location: app/build/outputs/apk/debug/app-debug.apk"
+echo "APK location: app/build/outputs/apk/debug/ (one APK per ABI plus universal)"
 ```
 
 ## Building with Android Studio
@@ -195,7 +208,8 @@ The build script automatically detects CI environments (GitHub Actions, etc.) an
 
 ## Additional Resources
 
-- [Android Mobile Bindings Documentation](lib/yggstack/mobile/ANDROID.md)
+- [Mobile bindings API guide](lib/yggstack/mobile/API_USAGE.md)
+- [Mobile build modes](lib/yggstack/mobile/BUILD_MODES.md)
 - [Yggstack README](lib/yggstack/README.md)
 - [Project README](README.md)
 
@@ -203,17 +217,18 @@ The build script automatically detects CI environments (GitHub Actions, etc.) an
 
 | Task | Command |
 |------|---------|
-| Build mobile bindings | `cd lib/yggstack && ./build-android.sh` |
+| Build mobile bindings | `cd lib/yggstack/mobile && ./build-android.sh` |
 | Copy AAR | `cp lib/yggstack/android-build/yggstack.aar app/libs/` |
 | Build debug APK | `./gradlew assembleDebug` |
 | Build release APK | `./gradlew assembleRelease` |
 | Clean build | `./gradlew clean` |
 | Install on device | `./gradlew installDebug` |
 | Run tests | `./gradlew test` |
+| Verify local toolchain matches CI | `./scripts/check-environment.sh` |
 
 ## Output Locations
 
 - **Mobile bindings AAR**: `lib/yggstack/android-build/yggstack.aar`
 - **App library**: `app/libs/yggstack.aar`
-- **Debug APK**: `app/build/outputs/apk/debug/app-debug.apk`
-- **Release APK**: `app/build/outputs/apk/release/app-release.apk`
+- **Debug APKs**: `app/build/outputs/apk/debug/app-<abi>-debug.apk` (+ universal)
+- **Release APKs**: `app/build/outputs/apk/release/app-<abi>-release.apk` (+ universal)
