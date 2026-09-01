@@ -1007,12 +1007,14 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val portSections by viewModel.portSections.collectAsStateWithLifecycle()
     val activeTransitConnections by viewModel.activeTransitConnections.collectAsStateWithLifecycle()
 
-    // Only collect port stats when this tab is visible, the service is running
-    // and bound, and the host is at least STARTED (stops the service's 1s
-    // poller while the app is backgrounded)
+    // Only collect port stats when this tab is visible, the service is bound
+    // and the session is active. That covers both node states: running (the
+    // service's 1s poller feeds live updates) and Power Save idle (the frozen
+    // snapshot replays once so a freshly opened app still shows the cards),
+    // and suspends collection while the app is backgrounded either way.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(isVisible, isServiceRunning, serviceConnected, lifecycleOwner) {
-        if (isVisible && isServiceRunning && serviceConnected) {
+    LaunchedEffect(isVisible, isSessionActive, serviceConnected, lifecycleOwner) {
+        if (isVisible && isSessionActive && serviceConnected) {
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.collectPortStats()
             }

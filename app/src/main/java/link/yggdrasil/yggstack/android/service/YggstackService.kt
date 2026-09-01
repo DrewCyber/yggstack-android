@@ -809,7 +809,12 @@ class YggstackService : Service() {
                         _peerCount.value = 0
                         _totalPeerCount.value = 0
                         _generatedPrivateKey.value = null
-                        _portStatsJSON.resetReplayCache()
+                        // Power Save idle keeps the last stats snapshot (frozen
+                        // below) so a reopened Ports tab can still render the
+                        // cards; only a full stop discards them
+                        if (!enterPowerSaveIdle) {
+                            _portStatsJSON.resetReplayCache()
+                        }
 
                         logInfo("Yggstack stopped")
                     }
@@ -822,13 +827,29 @@ class YggstackService : Service() {
                     _peerCount.value = 0
                     _totalPeerCount.value = 0
                     _generatedPrivateKey.value = null
-                    _portStatsJSON.resetReplayCache()
+                    if (!enterPowerSaveIdle) {
+                        _portStatsJSON.resetReplayCache()
+                    }
                 }
                 
                 if (enterPowerSaveIdle) {
                     // Real listeners are guaranteed closed by now (yggstack.stop() above),
                     // so it's safe to bind placeholders on the same host:port.
                     lastConfig?.let { startPlaceholderListeners(it) }
+                    // Freeze the freshest stats into the replay cache so a Ports
+                    // tab opened later (app closed and reopened while idle) still
+                    // renders the cards frozen; counters resume from these
+                    // session totals when the node wakes
+                    lastRawListenersJSON?.let { raw ->
+                        try {
+                            val accumulated = accumulatePortStats(raw)
+                            if (accumulated != "[]") {
+                                _portStatsJSON.emit(accumulated)
+                            }
+                        } catch (e: Exception) {
+                            logError("Power Save: error freezing port stats: ${e.message}")
+                        }
+                    }
                     // Session accounting: the up period ends here; idle accrues
                     // until the node wakes. isSessionActive stays true so the
                     // Ports screen keeps its cards and counters.
@@ -1714,11 +1735,14 @@ class YggstackService : Service() {
                     // Reuse the port stats poller's fresh raw payload while it
                     // is running (Ports tab open) instead of making a second
                     // identical JNI call every second; ActiveConns is a gauge
-                    // that accumulatePortStats passes through untouched
+                    // that accumulatePortStats passes through untouched.
+                    // Either way the poll becomes the freshest snapshot, so
+                    // idle entry can freeze up-to-date counters into the
+                    // stats flow even when the Ports tab was never open.
                     val json = if (_portStatsJSON.subscriptionCount.value > 0) {
-                        lastRawListenersJSON ?: yggstack?.getListenersJSON()
+                        lastRawListenersJSON ?: yggstack?.getListenersJSON()?.also { lastRawListenersJSON = it }
                     } else {
-                        yggstack?.getListenersJSON()
+                        yggstack?.getListenersJSON()?.also { lastRawListenersJSON = it }
                     }
                     json?.let { sumActiveTransitConnections(it) } ?: 0L
                 } catch (e: Exception) {
