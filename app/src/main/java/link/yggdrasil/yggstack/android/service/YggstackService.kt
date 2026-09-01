@@ -294,8 +294,26 @@ class YggstackService : Service() {
     
     suspend fun getLogFile() = persistentLogger.getLogFile()
 
+    /**
+     * Persists whether a service session is active, for the "Keep last state"
+     * app-start policy: a process killed without a clean stop (app
+     * update/install, force kill, system kill) leaves the flag at true, and
+     * the next app launch restores the service. Power Save idle keeps it true
+     * - the session is still active while the node sleeps.
+     */
+    private fun persistServiceWasRunning(running: Boolean) {
+        serviceScope.launch {
+            try {
+                ConfigRepository(applicationContext).saveServiceWasRunning(running)
+            } catch (e: Exception) {
+                logWarn("Could not persist service running state: ${e.message}")
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        serviceAlive = true
         persistentLogger = PersistentLogger(this)
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
@@ -379,6 +397,7 @@ class YggstackService : Service() {
     override fun onDestroy() {
         logInfo("=== YggstackService onDestroy - service being destroyed ===")
         super.onDestroy()
+        serviceAlive = false
         unregisterScreenStateReceiver()
         unregisterNetworkCallback()
         // Stop the Go layer synchronously BEFORE cancelling serviceScope.
@@ -390,6 +409,12 @@ class YggstackService : Service() {
         yggstack = null
         _isRunning.value = false
         _isSessionActive.value = false
+        // Service scope is about to be cancelled - persist synchronously
+        try {
+            kotlinx.coroutines.runBlocking {
+                ConfigRepository(applicationContext).saveServiceWasRunning(false)
+            }
+        } catch (_: Exception) {}
         clearSessionPortCounters()
         if (instanceToStop != null) {
             try {
@@ -589,6 +614,7 @@ class YggstackService : Service() {
                 val wasIdle = _isPowerSaveIdle.value
                 _isRunning.value = true
                 _isSessionActive.value = true
+                persistServiceWasRunning(true)
                 _peerCount.value = 0
                 stopPlaceholderListeners()
                 _isPowerSaveIdle.value = false
@@ -642,6 +668,7 @@ class YggstackService : Service() {
                 abortSplices()
                 _isRunning.value = false
                 _isSessionActive.value = false
+                persistServiceWasRunning(false)
                 _yggdrasilIp.value = null
                 _peerCount.value = 0
                 _totalPeerCount.value = 0
@@ -703,6 +730,7 @@ class YggstackService : Service() {
                 yggstack = null
                 _isRunning.value = false
                 _isSessionActive.value = false
+                persistServiceWasRunning(false)
                 clearSessionPortCounters()
                 _isTransitioning.value = false
                 if (stale != null) {
@@ -719,6 +747,10 @@ class YggstackService : Service() {
                 // down placeholder listeners and the foreground service in that case
                 if (!_isRunning.value && yggstack == null && !_isPowerSaveIdle.value) {
                     logInfo("Service already stopped")
+                    // The service may have been (re)started just to receive this
+                    // stop request (e.g. the "Keep stopped" app-start policy);
+                    // shut it down so no idle instance lingers
+                    stopSelf()
                     return@launch
                 }
                 
@@ -815,6 +847,7 @@ class YggstackService : Service() {
                     _isPowerSaveIdle.value = false
                     _powerSaveIdleSince.value = null
                     _isSessionActive.value = false
+                    persistServiceWasRunning(false)
                     _powerSaveUpMillis.value = 0
                     _powerSaveIdleMillis.value = 0
                     _powerSaveStateSince.value = 0
@@ -840,6 +873,7 @@ class YggstackService : Service() {
                 _isPowerSaveIdle.value = false
                 _powerSaveIdleSince.value = null
                 _isSessionActive.value = false
+                persistServiceWasRunning(false)
                 _powerSaveUpMillis.value = 0
                 _powerSaveIdleMillis.value = 0
                 _powerSaveStateSince.value = 0
@@ -2280,15 +2314,9 @@ class YggstackService : Service() {
             pendingIntentFlags
         )
 
-        // Two content lines under the app-name title, matching the layout of
-        // the "Connected" notification
-        val contentText = getString(R.string.power_save_notification_title) + "\n" +
-            getString(R.string.power_save_notification_text)
-
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Yggstack")
-            .setContentText(contentText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
+            .setContentText(getString(R.string.power_save_notification_text))
             .setSmallIcon(R.drawable.ic_power_save_idle)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -3026,6 +3054,14 @@ class YggstackService : Service() {
         private const val LOG_TAG = "YggstackService"
         const val CHANNEL_ID = "yggstack_service_channel"
         const val NOTIFICATION_ID = 1
+
+        // Whether a service instance is alive in this process (running OR in
+        // Power Save idle). Read by the "Keep last state" app-start policy to
+        // distinguish "service already up, leave it alone" from "process was
+        // killed, restore the last state".
+        @Volatile var serviceAlive = false
+            private set
+
         const val ACTION_START = "link.yggdrasil.yggstack.android.action.START"
         const val ACTION_STOP = "link.yggdrasil.yggstack.android.action.STOP"
         const val ACTION_WAKE_NOW = "link.yggdrasil.yggstack.android.action.WAKE_NOW"

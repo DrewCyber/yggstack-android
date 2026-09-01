@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.BuildConfig
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.ServiceStartMode
 import link.yggdrasil.yggstack.android.data.VersionChecker
 import link.yggdrasil.yggstack.android.utils.AutostartHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
@@ -45,6 +46,7 @@ fun SettingsScreen(
     val selectedTheme by repository.themeFlow.collectAsStateWithLifecycle(initialValue = "system")
     val selectedLanguage by repository.languageFlow.collectAsStateWithLifecycle(initialValue = "en")
     val autostartEnabled by repository.autostartFlow.collectAsStateWithLifecycle(initialValue = false)
+    val serviceOnAppStart by repository.serviceOnAppStartFlow.collectAsStateWithLifecycle(initialValue = ServiceStartMode.STOPPED)
     val autoUpdateEnabled by repository.autoUpdateFlow.collectAsStateWithLifecycle(initialValue = true)
     // Initial value is read once at activity start (MainActivity) and passed
     // in, so opening this tab doesn't block on a DataStore read
@@ -257,14 +259,61 @@ fun SettingsScreen(
                         }
                     )
                 }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-        // Language Section
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
+                // Service on app start
+                var serviceStartExpanded by remember { mutableStateOf(false) }
+                val startModes = listOf(
+                    ServiceStartMode.ALWAYS to stringResource(R.string.service_on_app_start_always),
+                    ServiceStartMode.KEEP_STATE to stringResource(R.string.service_on_app_start_keep_state),
+                    ServiceStartMode.STOPPED to stringResource(R.string.service_on_app_start_stopped)
+                )
+                val selectedStartModeLabel = startModes.find { it.first == serviceOnAppStart }?.second
+                    ?: stringResource(R.string.service_on_app_start_stopped)
+
+                ExposedDropdownMenuBox(
+                    expanded = serviceStartExpanded,
+                    onExpandedChange = { serviceStartExpanded = !serviceStartExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedStartModeLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.service_on_app_start_label)) },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = serviceStartExpanded,
+                        onDismissRequest = { serviceStartExpanded = false }
+                    ) {
+                        startModes.forEach { (mode, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    serviceStartExpanded = false
+                                    coroutineScope.launch {
+                                        repository.saveServiceOnAppStart(mode)
+                                    }
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Language
                 var expanded by remember { mutableStateOf(false) }
                 val languages = listOf(
                     "system" to stringResource(R.string.language_system),

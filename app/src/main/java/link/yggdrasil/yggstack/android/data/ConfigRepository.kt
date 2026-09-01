@@ -14,6 +14,20 @@ import kotlinx.serialization.decodeFromString
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "yggstack_config")
 
 /**
+ * What the service should do when the app is opened by the user.
+ */
+enum class ServiceStartMode(val value: String) {
+    ALWAYS("always"),
+    KEEP_STATE("keep_state"),
+    STOPPED("stopped");
+
+    companion object {
+        fun fromValue(value: String?): ServiceStartMode =
+            entries.firstOrNull { it.value == value } ?: STOPPED
+    }
+}
+
+/**
  * Repository for managing Yggstack configuration persistence
  */
 class ConfigRepository(private val context: Context) {
@@ -57,6 +71,8 @@ class ConfigRepository(private val context: Context) {
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
+        private val SERVICE_ON_APP_START_KEY = stringPreferencesKey("service_on_app_start")
+        private val SERVICE_WAS_RUNNING_KEY = booleanPreferencesKey("service_was_running")
         private val PORTS_COMPACT_MODE = booleanPreferencesKey("ports_compact_mode")
         private val POWER_SAVE_ENABLED = booleanPreferencesKey("power_save_enabled")
         private val POWER_SAVE_IDLE_TIMEOUT = intPreferencesKey("power_save_idle_timeout")
@@ -203,6 +219,41 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveAutostart(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTOSTART_KEY] = enabled
+        }
+    }
+
+    /**
+     * Get the service-on-app-start policy
+     */
+    val serviceOnAppStartFlow: Flow<ServiceStartMode> = context.dataStore.data.map { preferences ->
+        ServiceStartMode.fromValue(preferences[SERVICE_ON_APP_START_KEY])
+    }
+
+    /**
+     * Save the service-on-app-start policy
+     */
+    suspend fun saveServiceOnAppStart(mode: ServiceStartMode) {
+        context.dataStore.edit { preferences ->
+            preferences[SERVICE_ON_APP_START_KEY] = mode.value
+        }
+    }
+
+    /**
+     * Whether the service session was running the last time it had a chance to
+     * record its state. Read by the "Keep last state" app-start policy to
+     * restore the service after the process was killed without a clean stop
+     * (app update/install, force kill, system kill).
+     */
+    val serviceWasRunningFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SERVICE_WAS_RUNNING_KEY] ?: false
+    }
+
+    /**
+     * Persist the service running state (see serviceWasRunningFlow)
+     */
+    suspend fun saveServiceWasRunning(running: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SERVICE_WAS_RUNNING_KEY] = running
         }
     }
 

@@ -33,14 +33,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
 import link.yggdrasil.yggstack.android.data.Protocol
+import link.yggdrasil.yggstack.android.data.ServiceStartMode
 import link.yggdrasil.yggstack.android.data.VersionChecker
 import link.yggdrasil.yggstack.android.data.VersionInfo
 import link.yggdrasil.yggstack.android.service.PeerFetcherService
+import link.yggdrasil.yggstack.android.service.YggstackConfigParcelable
+import link.yggdrasil.yggstack.android.service.YggstackService
 import link.yggdrasil.yggstack.android.ui.configuration.ConfigurationScreen
 import link.yggdrasil.yggstack.android.ui.configuration.ConfigurationViewModel
 import link.yggdrasil.yggstack.android.ui.configuration.PendingDeepLink
@@ -61,6 +65,9 @@ class MainActivity : ComponentActivity() {
         var tempSelectedScreen: Int? = null
         // Pending deep link as a StateFlow so Compose reacts every time it is set
         val pendingDeepLinkFlow = MutableStateFlow<PendingDeepLink?>(null)
+        // Guards applying the service-on-app-start policy to real app launches
+        // only (not activity recreations)
+        @Volatile private var startPolicyApplied = false
 
         fun parseDeepLink(uri: Uri?): PendingDeepLink? {
             if (uri == null || uri.scheme != "https" ||
@@ -133,6 +140,49 @@ class MainActivity : ComponentActivity() {
         // is rendered with the correct scheme (avoids a visible flash on launch).
         val initialTheme = runBlocking { repository.themeFlow.first() }
         val initialUseSystemColors = runBlocking { repository.useSystemColorsFlow.first() }
+
+        // Apply the service-on-app-start policy once per process (not on
+        // activity recreations like rotation or theme changes)
+        if (!startPolicyApplied) {
+            startPolicyApplied = true
+            lifecycleScope.launch {
+                suspend fun startServiceWithConfig() {
+                    val config = repository.configFlow.first()
+                    val serviceIntent = Intent(this@MainActivity, YggstackService::class.java).apply {
+                        action = YggstackService.ACTION_START
+                        putExtra(
+                            YggstackService.EXTRA_CONFIG,
+                            YggstackConfigParcelable.fromYggstackConfig(config)
+                        )
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+                }
+
+                when (repository.serviceOnAppStartFlow.first()) {
+                    ServiceStartMode.ALWAYS -> startServiceWithConfig()
+                    ServiceStartMode.STOPPED -> {
+                        val stopIntent = Intent(this@MainActivity, YggstackService::class.java).apply {
+                            action = YggstackService.ACTION_STOP
+                        }
+                        startService(stopIntent)
+                    }
+                    ServiceStartMode.KEEP_STATE -> {
+                        // A service alive in this process (running or Power Save
+                        // idle) already IS the last state - leave it untouched.
+                        // But if the process was killed without a clean stop
+                        // (app update/install, force kill, system kill), the
+                        // persisted state says whether to restore the service.
+                        if (!YggstackService.serviceAlive && repository.serviceWasRunningFlow.first()) {
+                            startServiceWithConfig()
+                        }
+                    }
+                }
+            }
+        }
 
         setContent {
             val theme by repository.themeFlow.collectAsStateWithLifecycle(initialValue = initialTheme)
