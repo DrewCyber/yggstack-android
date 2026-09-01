@@ -157,6 +157,8 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "link.yggdrasil.yggstack.android"
     compileSdk = 34
+    // Must match the NDK installed by CI (.github/workflows/build-release.yml)
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "link.yggdrasil.yggstack.android"
@@ -176,9 +178,6 @@ android {
         buildConfigField("String", "YGGDRASIL_VERSION_URL", "\"${yggdrasilVersionInfo.commitUrl}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
     }
 
     // Signing configuration
@@ -272,9 +271,9 @@ dependencies {
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
 
     // Compose
     implementation("androidx.activity:activity-compose:1.8.2")
@@ -296,7 +295,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     // DNS lookup for IP detection fallback
-    implementation("dnsjava:dnsjava:3.5.3")
+    implementation("dnsjava:dnsjava:3.6.5")
 
     // MIUI Autostart permission check
     implementation("com.github.XomaDev:MIUI-autostart:v1.3")

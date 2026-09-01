@@ -58,11 +58,14 @@
 -dontwarn androidx.compose.**
 
 # dnsjava library rules - ignore JVM-specific classes not available on Android
+# (dnsjava 3.6+ registers a JDK InetAddressResolverProvider service that does
+# not exist on Android)
 -dontwarn com.sun.jna.**
 -dontwarn javax.naming.**
 -dontwarn lombok.**
 -dontwarn org.slf4j.**
 -dontwarn sun.net.spi.**
+-dontwarn org.xbill.DNS.spi.DnsjavaInetAddressResolverProvider
 
 # Keep dnsjava core classes that we use
 -keep class org.xbill.DNS.** { *; }
