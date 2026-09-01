@@ -137,7 +137,6 @@ class DiagnosticsViewModel(
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
             yggstackService = localBinder?.getService()
-            serviceBound = true
             _serviceConnected.value = true
 
             // Observe service data
@@ -222,7 +221,9 @@ class DiagnosticsViewModel(
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            serviceBound = false
+            // Connectivity dropped, but the binding itself stays registered —
+            // serviceBound must NOT be cleared here, or the later unbind would
+            // be skipped and the connection leaked
             _serviceConnected.value = false
             yggstackService = null
         }
@@ -274,15 +275,34 @@ class DiagnosticsViewModel(
         unbindFromService()
     }
 
+    // The binding must live on the application context: the ViewModel (and
+    // thus the binding) survives activity recreation, but a binding made on
+    // an Activity context is silently unregistered by the framework when
+    // that activity instance is destroyed — a later unbind then crashed the
+    // app with "Service not registered" (see onCleared).
+    // NOTE: resolved per call from the constructor param — an appContext
+    // property declared below the init block would still be null when
+    // bindToService() runs (Kotlin initializes in declaration order).
     private fun bindToService() {
-        val intent = Intent(context, YggstackService::class.java)
-        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        val appContext = context.applicationContext
+        val intent = Intent(appContext, YggstackService::class.java)
+        serviceBound = try {
+            appContext.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        } catch (e: Exception) {
+            android.util.Log.e("DiagnosticsViewModel", "bindService failed: ${e.message}")
+            false
+        }
     }
 
     private fun unbindFromService() {
         if (serviceBound) {
-            context.unbindService(serviceConnection)
             serviceBound = false
+            try {
+                context.applicationContext.unbindService(serviceConnection)
+            } catch (_: IllegalArgumentException) {
+                // Already unregistered (e.g. reaped with a dead context) —
+                // nothing left to release
+            }
         }
     }
 

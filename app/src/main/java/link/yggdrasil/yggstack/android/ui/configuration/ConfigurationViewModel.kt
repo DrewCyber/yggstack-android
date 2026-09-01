@@ -151,7 +151,9 @@ class ConfigurationViewModel(
 
         override fun onServiceDisconnected(name: ComponentName?) {
             android.util.Log.d("ConfigViewModel", "onServiceDisconnected called")
-            serviceBound = false
+            // Connectivity dropped, but the binding itself stays registered —
+            // clearing serviceBound here would skip the later unbind and leak
+            // the connection
             yggstackService = null
             _serviceState.value = ServiceState.Stopped
             _yggdrasilIp.value = null
@@ -193,14 +195,23 @@ class ConfigurationViewModel(
     private fun bindToService() {
         android.util.Log.d("ConfigViewModel", "bindToService called, context=$context")
         val intent = Intent(context, YggstackService::class.java)
-        val bindResult = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-        android.util.Log.d("ConfigViewModel", "bindService result: $bindResult")
+        serviceBound = try {
+            context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        } catch (e: Exception) {
+            android.util.Log.e("ConfigViewModel", "bindService failed: ${e.message}")
+            false
+        }
+        android.util.Log.d("ConfigViewModel", "bindService result: $serviceBound")
     }
 
     private fun unbindFromService() {
         if (serviceBound) {
-            context.unbindService(serviceConnection)
             serviceBound = false
+            try {
+                context.unbindService(serviceConnection)
+            } catch (_: IllegalArgumentException) {
+                // Already unregistered — nothing left to release
+            }
         }
     }
 
