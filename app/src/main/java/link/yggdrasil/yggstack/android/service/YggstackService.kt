@@ -1798,11 +1798,18 @@ class YggstackService : Service() {
         try {
             client.tcpNoDelay = true
 
-            // Wait for the node's real listener on this port
+            // Wait for the node to finish starting. _isRunning flips true only
+            // after start() returns, and the real listeners are bound even
+            // before that (mappings are registered in setupPortMappings, prior
+            // to start()). Watching the state flow instead of polling
+            // getListenersJSON keeps this loop off the JNI boundary: every
+            // crossing multiplies exposure to a known arm64 cgo bug
+            // (golang/go#46893, "bulkBarrierPreWrite: unaligned arguments")
+            // that crashes the process probabilistically per call.
             var ready = false
             val deadline = System.currentTimeMillis() + SPLICE_HOLD_TIMEOUT_MS
             while (System.currentTimeMillis() < deadline) {
-                if (realListenerBound(host, port)) {
+                if (_isRunning.value) {
                     ready = true
                     break
                 }
@@ -1832,29 +1839,6 @@ class YggstackService : Service() {
         } finally {
             heldSpliceSockets.remove(client)
             try { client.close() } catch (_: Exception) {}
-        }
-    }
-
-    /**
-     * Whether the node's real listener for this local address is up, from the
-     * same source the Ports screen reads. Placeholder sockets are not listed,
-     * so a match can only be the real listener.
-     */
-    private fun realListenerBound(host: String, port: Int): Boolean {
-        val json = try {
-            yggstack?.getListenersJSON()
-        } catch (_: Exception) {
-            null
-        } ?: return false
-        return try {
-            val arr = org.json.JSONArray(json)
-            val listenAddr = "$host:$port"
-            for (i in 0 until arr.length()) {
-                if (arr.getJSONObject(i).optString("Listen", "") == listenAddr) return true
-            }
-            false
-        } catch (_: org.json.JSONException) {
-            false
         }
     }
 
