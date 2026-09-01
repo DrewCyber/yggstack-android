@@ -1,6 +1,7 @@
 package link.yggdrasil.yggstack.android.data
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -49,14 +50,28 @@ class VersionChecker(private val context: Context) {
             
             val downloadUrl = jsonObj.getJSONArray("assets")
                 .let { assets ->
+                    val apkAssets = mutableListOf<Pair<String, String>>() // lowercase name -> url
                     for (i in 0 until assets.length()) {
                         val asset = assets.getJSONObject(i)
                         val name = asset.getString("name")
                         if (name.endsWith(".apk")) {
-                            return@let asset.getString("browser_download_url")
+                            apkAssets.add(name.lowercase() to asset.getString("browser_download_url"))
                         }
                     }
-                    jsonObj.getString("html_url") // Fallback to release page
+                    // CI names assets yggstack-<version>-<abi>.apk. Pick the one
+                    // for this device's best ABI (Build.SUPPORTED_ABIS is ordered
+                    // best-first) instead of whichever asset the API lists first —
+                    // that was always arm64-v8a, which won't install on 32-bit
+                    // devices. Falls back to the universal build, then to the
+                    // release page. The "-<abi>.apk" suffix match keeps x86 and
+                    // x86_64 from matching each other.
+                    fun urlFor(suffix: String): String? =
+                        apkAssets.firstOrNull { (name, _) -> name.endsWith(suffix) }?.second
+
+                    Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi ->
+                        urlFor("-$abi.apk")
+                    } ?: urlFor("-universal.apk")
+                        ?: jsonObj.getString("html_url") // Fallback to release page
                 }
             
             val releaseNotes = jsonObj.optString("body", "")
