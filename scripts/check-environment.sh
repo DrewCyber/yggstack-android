@@ -98,6 +98,19 @@ else
     fi
 fi
 
+# --- targetSdk constraint (critical app requirement — see AGENTS.md) --------
+
+app_gradle="$ROOT/app/build.gradle.kts"
+if [[ -f "$app_gradle" ]]; then
+    target_sdk="$(grep -oE 'targetSdk = [0-9]+' "$app_gradle" | grep -oE '[0-9]+' | head -1)"
+    if [[ "$target_sdk" == "34" ]]; then
+        echo "OK   targetSdk: $target_sdk (critical requirement per AGENTS.md — must stay 34)"
+    else
+        echo "FAIL targetSdk: ${target_sdk:-not found} — AGENTS.md pins targetSdk 34 as a critical app requirement; do not raise it during upgrades"
+        fail=1
+    fi
+fi
+
 echo
 if [[ $fail -eq 0 ]]; then
     echo "Environment matches CI pins."
