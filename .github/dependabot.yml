@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "gomod"
+    directory: "/lib/yggstack"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # gvisor tip revisions are broken for Go module consumers (stray
+      # "package bridge" test file in pkg/tcpip/stack) and churn daily;
+      # revisit manually after upstream fixes module builds
+      - dependency-name: "gvisor.dev/gvisor"

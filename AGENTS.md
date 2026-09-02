@@ -21,6 +21,7 @@ lib/yggstack/              # Git submodule: upstream Go source, own AGENTS.md/to
 Docs/                      # DEV_README.md, DEV_QUICKSTART.md, PRD.md, etc. — MAY BE STALE,
                             # do not trust build/toolchain versions there; this file and
                             # .github/workflows/build-release.yml are the source of truth
+gradle/libs.versions.toml   # Version catalog — all app dependency/plugin versions live here
 .github/workflows/build-release.yml  # Canonical CI build — authoritative version pins
 ```
 

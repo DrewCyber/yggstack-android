@@ -53,10 +53,6 @@
 -keep class * extends android.app.Service
 -keep class * extends android.content.BroadcastReceiver
 
-# Compose
--keep class androidx.compose.** { *; }
--dontwarn androidx.compose.**
-
 # dnsjava library rules - ignore JVM-specific classes not available on Android
 # (dnsjava 3.6+ registers a JDK InetAddressResolverProvider service that does
 # not exist on Android)
