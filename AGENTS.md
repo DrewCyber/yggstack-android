@@ -29,7 +29,7 @@ Docs/                      # DEV_README.md, DEV_QUICKSTART.md, PRD.md, etc. — 
 ## Toolchain versions (pinned — match `.github/workflows/build-release.yml`)
 
 - JDK 17 (temurin)
-- Go 1.25.11
+- Go 1.26.8
 - gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260203041319-574ceaa2f723`
 - Android NDK `26.1.10909125`
 - compileSdk 36, targetSdk 34, minSdk 23
