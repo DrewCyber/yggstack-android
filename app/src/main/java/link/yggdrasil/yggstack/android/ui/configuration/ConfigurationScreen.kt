@@ -20,8 +20,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -378,11 +385,19 @@ fun ConfigurationScreen(
             }
             item(key = "proxy") {
             // Proxy Configuration Section
+            var showProxyHelp by remember { mutableStateOf(false) }
+
+            if (showProxyHelp) {
+                ProxyHowItWorksDialog(onDismiss = { showProxyHelp = false })
+            }
+
             ConfigSectionWithToggle(
                 title = stringResource(R.string.proxy_config_section),
                 enabled = config.proxyEnabled,
                 onToggle = { viewModel.toggleProxyEnabled() },
-                isServiceRunning = isServiceRunning
+                isServiceRunning = isServiceRunning,
+                helpContentDescription = stringResource(R.string.proxy_how_it_works),
+                onHelpClick = { showProxyHelp = true }
             ) {
                 OutlinedTextField(
                     value = config.socksProxy,
@@ -907,6 +922,8 @@ fun ConfigSectionWithToggle(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
     isServiceRunning: Boolean = false,
+    helpContentDescription: String? = null,
+    onHelpClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -920,10 +937,25 @@ fun ConfigSectionWithToggle(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    if (helpContentDescription != null && onHelpClick != null) {
+                        IconButton(
+                            onClick = onHelpClick,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.HelpOutline,
+                                contentDescription = helpContentDescription,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
                 Switch(
                     checked = enabled,
                     onCheckedChange = { onToggle() },
@@ -1650,6 +1682,64 @@ fun PowerSaveHowItWorksDialog(onDismiss: () -> Unit) {
             }
         }
     )
+}
+
+@Composable
+fun ProxyHowItWorksDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.proxy_how_it_works_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = linkifiedBody(stringResource(R.string.proxy_how_it_works_body)),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.ok))
+            }
+        }
+    )
+}
+
+private val URL_PATTERN = Regex("""https?://\S+""")
+
+// Turns plain http(s) URLs inside a localized string into tappable links,
+// so translations keep working without resource restructuring. Trailing
+// punctuation (e.g. the ")" after a parenthesized URL) stays plain text.
+@Composable
+private fun linkifiedBody(text: String): AnnotatedString {
+    val context = LocalContext.current
+    val linkStyles = TextLinkStyles(
+        style = SpanStyle(
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline
+        )
+    )
+    return buildAnnotatedString {
+        var lastEnd = 0
+        for (match in URL_PATTERN.findAll(text)) {
+            val url = match.value.trimEnd('.', ',', ';', ':', ')', ']', '}')
+            val start = match.range.first
+            append(text.substring(lastEnd, start))
+            withLink(
+                LinkAnnotation.Url(url, linkStyles) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            ) {
+                append(url)
+            }
+            lastEnd = start + url.length
+        }
+        append(text.substring(lastEnd))
+    }
 }
 
 @Composable

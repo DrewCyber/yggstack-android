@@ -26,6 +26,9 @@
     <string name="copy_ip">Copy IP</string>
     <string name="not_connected">Not connected</string>
     <string name="proxy_config_section">Yggdrasil Proxy</string>
+    <string name="proxy_how_it_works">How it works?</string>
+    <string name="proxy_how_it_works_title">How Yggdrasil Proxy works</string>
+    <string name="proxy_how_it_works_body">The Yggdrasil network hosts a number of internal websites and its own DNS zone, *.ygg. Together with the configured DNS server, this proxy lets your browser open those internal Yggdrasil sites, for example:\n\nhttp://howto.ygg\nhttp://nmap.ygg\nhttp://myip.ygg\nhttp://portal.ygg\n\nTip: if you run your own DNS64+NAT64 gateway (https://github.com/DrewCyber/ydn64), this proxy can also provide access to the global Internet. Learn more about NAT64: https://yggwiki.cc/yggdrasil:tunnels:nat64</string>
     <string name="socks_proxy">SOCKS Proxy</string>
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="dns_server">DNS Server</string>

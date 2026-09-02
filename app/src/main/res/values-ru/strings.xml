@@ -26,6 +26,9 @@
     <string name="copy_ip">Копировать IP</string>
     <string name="not_connected">Не подключено</string>
     <string name="proxy_config_section">Yggdrasil прокси</string>
+    <string name="proxy_how_it_works">Как это работает?</string>
+    <string name="proxy_how_it_works_title">Как работает прокси Yggdrasil</string>
+    <string name="proxy_how_it_works_body">В сети Yggdrasil работает ряд внутренних сайтов и собственный DNS с зоной *.ygg. Вместе с указанным DNS-сервером этот прокси позволяет браузеру открывать внутренние сайты Yggdrasil, например:\n\nhttp://howto.ygg\nhttp://nmap.ygg\nhttp://myip.ygg\nhttp://portal.ygg\n\nP.S.: Если развернуть собственный шлюз DNS64+NAT64 (https://github.com/DrewCyber/ydn64), этот прокси может предоставить доступ и к глобальному интернету. Подробнее о NAT64: https://yggwiki.cc/yggdrasil:tunnels:nat64</string>
     <string name="socks_proxy">SOCKS прокси</string>
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="dns_server">DNS сервер</string>
