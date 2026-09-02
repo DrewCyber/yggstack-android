@@ -160,7 +160,7 @@ android {
     namespace = "link.yggdrasil.yggstack.android"
     compileSdk = 36
     // Must match the NDK installed by CI (.github/workflows/build-release.yml)
-    ndkVersion = "26.1.10909125"
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "link.yggdrasil.yggstack.android"

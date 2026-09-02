@@ -30,8 +30,8 @@ Docs/                      # DEV_README.md, DEV_QUICKSTART.md, PRD.md, etc. — 
 
 - JDK 17 (temurin)
 - Go 1.26.8
-- gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260203041319-574ceaa2f723`
-- Android NDK `26.1.10909125`
+- gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260821190718-4776eadac327`
+- Android NDK `28.2.13676358`
 - compileSdk 36, targetSdk 34, minSdk 23
 
 **targetSdk must stay 34 — critical app requirement.** Do not raise it as part of
