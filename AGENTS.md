@@ -32,7 +32,7 @@ Docs/                      # DEV_README.md, DEV_QUICKSTART.md, PRD.md, etc. — 
 - Go 1.25.11
 - gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260203041319-574ceaa2f723`
 - Android NDK `26.1.10909125`
-- compileSdk / targetSdk 34, minSdk 23
+- compileSdk 36, targetSdk 34, minSdk 23
 
 If any doc under `Docs/` or `lib/yggstack/` states different versions, the workflow file wins. Run `./scripts/check-environment.sh` to verify the local JDK/Go/NDK against these pins.
 

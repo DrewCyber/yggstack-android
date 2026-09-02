@@ -1,13 +1,15 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
     id("kotlin-parcelize")
 }
 
 import java.util.Properties
 import java.io.FileInputStream
 import java.io.File
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 data class RepoVersionInfo(
     val tag: String?,
@@ -156,7 +158,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "link.yggdrasil.yggstack.android"
-    compileSdk = 34
+    compileSdk = 36
     // Must match the NDK installed by CI (.github/workflows/build-release.yml)
     ndkVersion = "26.1.10909125"
 
@@ -238,17 +240,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.10"
     }
 
     packaging {
@@ -262,6 +256,12 @@ android {
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
