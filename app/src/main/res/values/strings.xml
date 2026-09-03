@@ -83,7 +83,7 @@
     <string name="service_on_app_start_label">Service on app start</string>
     <string name="service_on_app_start_always">Always start</string>
     <string name="service_on_app_start_keep_state">Keep last state</string>
-    <string name="service_on_app_start_stopped">Keep stopped</string>
+    <string name="service_on_app_start_do_nothing">Do nothing</string>
     <string name="autostart_description">Note: Xiaomi, Huawei, Oppo may require additional autostart permission in their system settings.</string>
     <string name="system_section">System</string>
     <string name="auto_update_section">Check for updates</string>

@@ -164,11 +164,9 @@ class MainActivity : ComponentActivity() {
 
                 when (repository.serviceOnAppStartFlow.first()) {
                     ServiceStartMode.ALWAYS -> startServiceWithConfig()
-                    ServiceStartMode.STOPPED -> {
-                        val stopIntent = Intent(this@MainActivity, YggstackService::class.java).apply {
-                            action = YggstackService.ACTION_STOP
-                        }
-                        startService(stopIntent)
+                    ServiceStartMode.DO_NOTHING -> {
+                        // Opening the app must never stop a running service:
+                        // leave it exactly as it is
                     }
                     ServiceStartMode.KEEP_STATE -> {
                         // A service alive in this process (running or Power Save

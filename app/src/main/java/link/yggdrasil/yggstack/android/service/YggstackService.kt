@@ -747,9 +747,9 @@ class YggstackService : Service() {
                 // down placeholder listeners and the foreground service in that case
                 if (!_isRunning.value && yggstack == null && !_isPowerSaveIdle.value) {
                     logInfo("Service already stopped")
-                    // The service may have been (re)started just to receive this
-                    // stop request (e.g. the "Keep stopped" app-start policy);
-                    // shut it down so no idle instance lingers
+                    // The service may have been started just to receive this
+                    // stop request (tile, automation, or config UI stop while
+                    // not running); shut it down so no idle instance lingers
                     stopSelf()
                     return@launch
                 }

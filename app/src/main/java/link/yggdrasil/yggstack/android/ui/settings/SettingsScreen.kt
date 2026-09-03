@@ -46,7 +46,7 @@ fun SettingsScreen(
     val selectedTheme by repository.themeFlow.collectAsStateWithLifecycle(initialValue = "system")
     val selectedLanguage by repository.languageFlow.collectAsStateWithLifecycle(initialValue = "en")
     val autostartEnabled by repository.autostartFlow.collectAsStateWithLifecycle(initialValue = false)
-    val serviceOnAppStart by repository.serviceOnAppStartFlow.collectAsStateWithLifecycle(initialValue = ServiceStartMode.STOPPED)
+    val serviceOnAppStart by repository.serviceOnAppStartFlow.collectAsStateWithLifecycle(initialValue = ServiceStartMode.DO_NOTHING)
     val autoUpdateEnabled by repository.autoUpdateFlow.collectAsStateWithLifecycle(initialValue = true)
     // Initial value is read once at activity start (MainActivity) and passed
     // in, so opening this tab doesn't block on a DataStore read
@@ -267,10 +267,10 @@ fun SettingsScreen(
                 val startModes = listOf(
                     ServiceStartMode.ALWAYS to stringResource(R.string.service_on_app_start_always),
                     ServiceStartMode.KEEP_STATE to stringResource(R.string.service_on_app_start_keep_state),
-                    ServiceStartMode.STOPPED to stringResource(R.string.service_on_app_start_stopped)
+                    ServiceStartMode.DO_NOTHING to stringResource(R.string.service_on_app_start_do_nothing)
                 )
                 val selectedStartModeLabel = startModes.find { it.first == serviceOnAppStart }?.second
-                    ?: stringResource(R.string.service_on_app_start_stopped)
+                    ?: stringResource(R.string.service_on_app_start_do_nothing)
 
                 ExposedDropdownMenuBox(
                     expanded = serviceStartExpanded,

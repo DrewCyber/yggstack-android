@@ -83,7 +83,7 @@
     <string name="service_on_app_start_label">Служба при запуске приложения</string>
     <string name="service_on_app_start_always">Всегда запускать</string>
     <string name="service_on_app_start_keep_state">Сохранять последнее состояние</string>
-    <string name="service_on_app_start_stopped">Держать остановленной</string>
+    <string name="service_on_app_start_do_nothing">Ничего не делать</string>
     <string name="autostart_description">Примечание: Xiaomi, Huawei, Oppo могут требовать дополнительные разрешения на автозапуск в настройках системы.</string>
     <string name="system_section">Система</string>
     <string name="auto_update_section">Проверка обновлений</string>

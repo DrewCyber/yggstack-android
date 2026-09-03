@@ -19,11 +19,15 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 enum class ServiceStartMode(val value: String) {
     ALWAYS("always"),
     KEEP_STATE("keep_state"),
-    STOPPED("stopped");
+    DO_NOTHING("do_nothing");
 
     companion object {
-        fun fromValue(value: String?): ServiceStartMode =
-            entries.firstOrNull { it.value == value } ?: STOPPED
+        fun fromValue(value: String?): ServiceStartMode = when (value) {
+            // "stopped" is the legacy name of DO_NOTHING from before it was
+            // changed to leave the service alone instead of force-stopping it
+            "stopped" -> DO_NOTHING
+            else -> entries.firstOrNull { it.value == value } ?: DO_NOTHING
+        }
     }
 }
 
