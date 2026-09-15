@@ -140,13 +140,13 @@ class ConfigRepository(private val context: Context) {
             cachedPeers = preferences[CACHED_PEERS]?.let {
                 json.decodeFromString<List<CachedPeer>>(it)
             } ?: emptyList(),
-            maxBackoffEnabled = preferences[MAX_BACKOFF_ENABLED] ?: true,
+            maxBackoffEnabled = preferences[MAX_BACKOFF_ENABLED] ?: false,
             maxBackoff = preferences[MAX_BACKOFF] ?: 5,
             disabledPeers = preferences[DISABLED_PEERS]?.let {
                 json.decodeFromString<List<String>>(it)
             } ?: emptyList(),
             powerSaveEnabled = preferences[POWER_SAVE_ENABLED] ?: false,
-            powerSaveIdleTimeoutSeconds = preferences[POWER_SAVE_IDLE_TIMEOUT] ?: 15
+            powerSaveIdleTimeoutSeconds = preferences[POWER_SAVE_IDLE_TIMEOUT] ?: 25
         )
     }
 
