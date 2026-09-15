@@ -65,6 +65,8 @@ class ConfigRepository(private val context: Context) {
         private val LOG_LEVEL = stringPreferencesKey("log_level")
         private val CACHED_PEERS = stringPreferencesKey("cached_peers")
         private val MAX_BACKOFF_ENABLED = booleanPreferencesKey("max_backoff_enabled")
+        private val YGGDRASIL_CONF_EXPANDED = booleanPreferencesKey("yggdrasil_conf_expanded")
+        private val MULTICAST_EXPANDED = booleanPreferencesKey("multicast_expanded")
         private val MAX_BACKOFF = intPreferencesKey("max_backoff")
         private val LOGS_ENABLED = booleanPreferencesKey("logs_enabled")
         private val DISABLED_PEERS = stringPreferencesKey("disabled_peers")
@@ -274,6 +276,30 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveAutoUpdate(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_UPDATE_KEY] = enabled
+        }
+    }
+
+    /**
+     * Expansion state of the collapsible cards on the Configuration screen,
+     * persisted so it survives app restarts
+     */
+    val yggdrasilConfExpandedFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[YGGDRASIL_CONF_EXPANDED] ?: false
+    }
+
+    val multicastExpandedFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[MULTICAST_EXPANDED] ?: false
+    }
+
+    suspend fun saveYggdrasilConfExpanded(expanded: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[YGGDRASIL_CONF_EXPANDED] = expanded
+        }
+    }
+
+    suspend fun saveMulticastExpanded(expanded: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[MULTICAST_EXPANDED] = expanded
         }
     }
 

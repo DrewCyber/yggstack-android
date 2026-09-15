@@ -144,36 +144,6 @@ fun ConfigurationScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             }
-            item(key = "privateKey") {
-            // Private Key Section
-            Card(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = config.privateKey,
-                    onValueChange = { viewModel.updatePrivateKey(it) },
-                    label = { Text(stringResource(R.string.private_key_section)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    enabled = !isServiceRunning,
-                    visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    singleLine = !showPrivateKey,
-                    maxLines = if (showPrivateKey) Int.MAX_VALUE else 1,
-                    trailingIcon = {
-                        IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
-                            Icon(
-                                if (showPrivateKey) Icons.Default.Lock else Icons.Default.Edit,
-                                contentDescription = if (showPrivateKey)
-                                    stringResource(R.string.hide_private_key)
-                                else
-                                    stringResource(R.string.show_private_key)
-                            )
-                        }
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            }
             item(key = "peers") {
             // Peers Section with clickable header
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -231,95 +201,6 @@ fun ConfigurationScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // MaxBackoff setting
-                    var showMaxBackoffDialog by remember { mutableStateOf(false) }
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "MaxBackoff",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            TextButton(
-                                onClick = { showMaxBackoffDialog = true },
-                                enabled = !isServiceRunning && config.maxBackoffEnabled
-                            ) {
-                                Text(
-                                    text = "${config.maxBackoff}s",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                            Switch(
-                                checked = config.maxBackoffEnabled,
-                                onCheckedChange = { viewModel.setMaxBackoffEnabled(it) },
-                                enabled = !isServiceRunning,
-                                modifier = Modifier.scale(0.6f)
-                            )
-                        }
-                    }
-                    
-                    if (showMaxBackoffDialog) {
-                        MaxBackoffDialog(
-                            currentValue = config.maxBackoff,
-                            onConfirm = { newValue ->
-                                viewModel.updateMaxBackoff(newValue)
-                                showMaxBackoffDialog = false
-                            },
-                            onDismiss = { showMaxBackoffDialog = false }
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = config.groupPassword,
-                            onValueChange = { viewModel.updateGroupPassword(it) },
-                            label = { Text(stringResource(R.string.group_password_label)) },
-                            modifier = Modifier.weight(1f),
-                            enabled = !isServiceRunning,
-                            singleLine = true,
-                            visualTransformation = if (showGroupPassword) {
-                                VisualTransformation.None
-                            } else {
-                                PasswordVisualTransformation()
-                            },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = { showGroupPassword = !showGroupPassword },
-                                    enabled = !isServiceRunning
-                                ) {
-                                    Icon(
-                                        if (showGroupPassword) Icons.Default.Lock else Icons.Default.Edit,
-                                        contentDescription = if (showGroupPassword)
-                                            stringResource(R.string.hide_private_key)
-                                        else
-                                            stringResource(R.string.show_private_key)
-                                    )
-                                }
-                            }
-                        )
-                        Switch(
-                            checked = config.groupPasswordEnabled,
-                            onCheckedChange = { viewModel.setGroupPasswordEnabled(it) },
-                            enabled = !isServiceRunning &&
-                                    (config.groupPasswordEnabled || config.groupPassword.isNotBlank()),
-                            modifier = Modifier
-                                .align(Alignment.CenterVertically)
-                                .scale(0.6f)
-                        )
-                    }
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
@@ -327,55 +208,72 @@ fun ConfigurationScreen(
             Spacer(modifier = Modifier.height(3.dp))
             }
             item(key = "multicast") {
-            // Multicast Discovery Card
+            // Multicast Discovery Card (collapsed by default; persisted)
+            val multicastExpanded by viewModel.multicastExpanded.collectAsStateWithLifecycle()
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    // Multicast Discovery title
-                    Text(
-                        text = stringResource(R.string.multicast_discovery),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                    
-                    // Multicast switches - closer together
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    // Multicast Discovery title with expand/collapse toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setMulticastExpanded(!multicastExpanded) },
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Discover Switch
-                        Row(
+                        Text(
+                            text = stringResource(R.string.multicast_discovery),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 8.dp)
+                        )
+                        Icon(
+                            imageVector = if (multicastExpanded) Icons.Default.KeyboardArrowUp
+                                else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+
+                    if (multicastExpanded) {
+                        // Multicast switches - closer together
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.multicast_discover),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Switch(
-                                checked = config.multicastListen,
-                                onCheckedChange = { viewModel.setMulticastListen(it) },
-                                enabled = !isServiceRunning,
-                                modifier = Modifier.scale(0.6f)
-                            )
-                        }
-                        
-                        // Advertise Switch
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.multicast_advertise),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Switch(
-                                checked = config.multicastBeacon,
-                                onCheckedChange = { viewModel.setMulticastBeacon(it) },
-                                enabled = !isServiceRunning,
-                                modifier = Modifier.scale(0.6f)
-                            )
+                            // Discover Switch
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.multicast_discover),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Switch(
+                                    checked = config.multicastListen,
+                                    onCheckedChange = { viewModel.setMulticastListen(it) },
+                                    enabled = !isServiceRunning,
+                                    modifier = Modifier.scale(0.6f)
+                                )
+                            }
+
+                            // Advertise Switch
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.multicast_advertise),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Switch(
+                                    checked = config.multicastBeacon,
+                                    onCheckedChange = { viewModel.setMulticastBeacon(it) },
+                                    enabled = !isServiceRunning,
+                                    modifier = Modifier.scale(0.6f)
+                                )
+                            }
                         }
                     }
                 }
@@ -627,6 +525,152 @@ fun ConfigurationScreen(
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            }
+            item(key = "yggdrasilConf") {
+            // Yggdrasil.conf card: private key, group password and MaxBackoff,
+            // collapsed by default; expansion state is persisted
+            val yggdrasilConfExpanded by viewModel.yggdrasilConfExpanded.collectAsStateWithLifecycle()
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setYggdrasilConfExpanded(!yggdrasilConfExpanded) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Yggdrasil.conf",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 12.dp)
+                        )
+                        Icon(
+                            imageVector = if (yggdrasilConfExpanded) Icons.Default.KeyboardArrowUp
+                                else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+
+                    if (yggdrasilConfExpanded) {
+                        OutlinedTextField(
+                            value = config.privateKey,
+                            onValueChange = { viewModel.updatePrivateKey(it) },
+                            label = { Text(stringResource(R.string.private_key_section)) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            enabled = !isServiceRunning,
+                            visualTransformation = if (showPrivateKey) VisualTransformation.None else PasswordVisualTransformation(),
+                            singleLine = !showPrivateKey,
+                            maxLines = if (showPrivateKey) Int.MAX_VALUE else 1,
+                            trailingIcon = {
+                                IconButton(onClick = { viewModel.toggleShowPrivateKey() }) {
+                                    Icon(
+                                        if (showPrivateKey) Icons.Default.Lock else Icons.Default.Edit,
+                                        contentDescription = if (showPrivateKey)
+                                            stringResource(R.string.hide_private_key)
+                                        else
+                                            stringResource(R.string.show_private_key)
+                                    )
+                                }
+                            }
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = config.groupPassword,
+                                onValueChange = { viewModel.updateGroupPassword(it) },
+                                label = { Text(stringResource(R.string.group_password_label)) },
+                                modifier = Modifier.weight(1f),
+                                enabled = !isServiceRunning,
+                                singleLine = true,
+                                visualTransformation = if (showGroupPassword) {
+                                    VisualTransformation.None
+                                } else {
+                                    PasswordVisualTransformation()
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { showGroupPassword = !showGroupPassword },
+                                        enabled = !isServiceRunning
+                                    ) {
+                                        Icon(
+                                            if (showGroupPassword) Icons.Default.Lock else Icons.Default.Edit,
+                                            contentDescription = if (showGroupPassword)
+                                                stringResource(R.string.hide_private_key)
+                                            else
+                                                stringResource(R.string.show_private_key)
+                                        )
+                                    }
+                                }
+                            )
+                            Switch(
+                                checked = config.groupPasswordEnabled,
+                                onCheckedChange = { viewModel.setGroupPasswordEnabled(it) },
+                                enabled = !isServiceRunning &&
+                                        (config.groupPasswordEnabled || config.groupPassword.isNotBlank()),
+                                modifier = Modifier
+                                    .align(Alignment.CenterVertically)
+                                    .scale(0.6f)
+                            )
+                        }
+
+                        // MaxBackoff setting
+                        var showMaxBackoffDialog by remember { mutableStateOf(false) }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "MaxBackoff",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(
+                                    onClick = { showMaxBackoffDialog = true },
+                                    enabled = !isServiceRunning && config.maxBackoffEnabled
+                                ) {
+                                    Text(
+                                        text = "${config.maxBackoff}s",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                }
+                                Switch(
+                                    checked = config.maxBackoffEnabled,
+                                    onCheckedChange = { viewModel.setMaxBackoffEnabled(it) },
+                                    enabled = !isServiceRunning,
+                                    modifier = Modifier.scale(0.6f)
+                                )
+                            }
+                        }
+
+                        if (showMaxBackoffDialog) {
+                            MaxBackoffDialog(
+                                currentValue = config.maxBackoff,
+                                onConfirm = { newValue ->
+                                    viewModel.updateMaxBackoff(newValue)
+                                    showMaxBackoffDialog = false
+                                },
+                                onDismiss = { showMaxBackoffDialog = false }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
             }

@@ -60,6 +60,14 @@ class ConfigurationViewModel(
     private val _logsEnabled = MutableStateFlow(true)
     val logsEnabled: StateFlow<Boolean> = _logsEnabled.asStateFlow()
 
+    // Expansion state of the collapsible Configuration cards; persisted in
+    // DataStore so it survives app restarts
+    private val _yggdrasilConfExpanded = MutableStateFlow(false)
+    val yggdrasilConfExpanded: StateFlow<Boolean> = _yggdrasilConfExpanded.asStateFlow()
+
+    private val _multicastExpanded = MutableStateFlow(false)
+    val multicastExpanded: StateFlow<Boolean> = _multicastExpanded.asStateFlow()
+
     private val _suppressTransitWarning = MutableStateFlow(false)
     private val _showTransitTrafficWarning = MutableStateFlow(false)
     val showTransitTrafficWarning: StateFlow<Boolean> = _showTransitTrafficWarning.asStateFlow()
@@ -176,6 +184,18 @@ class ConfigurationViewModel(
         viewModelScope.launch {
             repository.suppressTransitWarningFlow.collect { suppressed ->
                 _suppressTransitWarning.value = suppressed
+            }
+        }
+
+        // Restore collapsible-card expansion states
+        viewModelScope.launch {
+            repository.yggdrasilConfExpandedFlow.collect { expanded ->
+                _yggdrasilConfExpanded.value = expanded
+            }
+        }
+        viewModelScope.launch {
+            repository.multicastExpandedFlow.collect { expanded ->
+                _multicastExpanded.value = expanded
             }
         }
     }
@@ -425,6 +445,20 @@ class ConfigurationViewModel(
     fun setLogsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             repository.saveLogsEnabled(enabled)
+        }
+    }
+
+    fun setYggdrasilConfExpanded(expanded: Boolean) {
+        _yggdrasilConfExpanded.value = expanded
+        viewModelScope.launch {
+            repository.saveYggdrasilConfExpanded(expanded)
+        }
+    }
+
+    fun setMulticastExpanded(expanded: Boolean) {
+        _multicastExpanded.value = expanded
+        viewModelScope.launch {
+            repository.saveMulticastExpanded(expanded)
         }
     }
     
