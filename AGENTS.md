@@ -30,7 +30,7 @@ gradle/libs.versions.toml   # Version catalog — all app dependency/plugin vers
 ## Toolchain versions (pinned — match `.github/workflows/build-release.yml`)
 
 - JDK 17 (temurin)
-- Go 1.26.8
+- Go 1.27.1
 - gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260821190718-4776eadac327`
 - Android NDK `28.2.13676358`
 - compileSdk 36, targetSdk 34, minSdk 23
