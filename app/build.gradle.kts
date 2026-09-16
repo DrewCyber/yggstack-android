@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     id("kotlin-parcelize")
@@ -159,7 +158,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "link.yggdrasil.yggstack.android"
-    compileSdk = 36
+    compileSdk = 37
     // Must match the NDK installed by CI (.github/workflows/build-release.yml)
     ndkVersion = "28.2.13676358"
 

@@ -1,5 +1,5 @@
 [versions]
-agp = "8.13.2"
+agp = "9.4.0"
 kotlin = "2.4.20"
 coreKtx = "1.18.0"
 lifecycle = "2.10.0"
@@ -43,6 +43,5 @@ espresso-core = { group = "androidx.test.espresso", name = "espresso-core", vers
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

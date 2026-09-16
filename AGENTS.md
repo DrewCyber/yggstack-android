@@ -33,7 +33,7 @@ gradle/libs.versions.toml   # Version catalog — all app dependency/plugin vers
 - Go 1.27.1
 - gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260821190718-4776eadac327`
 - Android NDK `28.2.13676358`
-- compileSdk 36, targetSdk 34, minSdk 23
+- compileSdk 37, targetSdk 34, minSdk 23
 
 **targetSdk must stay 34 — critical app requirement.** Do not raise it as part of
 dependency/toolchain upgrades: Android 15+ behavior gates (notably the ~6-hour dataSync
