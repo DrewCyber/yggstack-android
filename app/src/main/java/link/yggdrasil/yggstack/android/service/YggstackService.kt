@@ -46,7 +46,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
 import link.yggdrasil.yggstack.mobile.Yggstack
@@ -70,7 +69,7 @@ class YggstackService : Service() {
     }
 
     private val binder = YggstackBinder()
-    private var yggstack: Yggstack? = null
+    @Volatile private var yggstack: Yggstack? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -108,7 +107,16 @@ class YggstackService : Service() {
     // Operation state management
     private val _isTransitioning = MutableStateFlow(false)
     val isTransitioning: StateFlow<Boolean> = _isTransitioning.asStateFlow()
-    private val operationMutex = kotlinx.coroutines.sync.Mutex()
+    private val lifecycle = lifecycleQueue.session(
+        cleanup = {
+            try {
+                stopNode(enterPowerSaveIdle = false, destroying = true)
+            } finally {
+                serviceScope.cancel()
+            }
+        },
+        failure = { error -> logError("Lifecycle operation failed: ${error.message}") }
+    )
     
     // Screen state monitoring
     private var screenStateReceiver: BroadcastReceiver? = null
@@ -301,13 +309,11 @@ class YggstackService : Service() {
      * the next app launch restores the service. Power Save idle keeps it true
      * - the session is still active while the node sleeps.
      */
-    private fun persistServiceWasRunning(running: Boolean) {
-        serviceScope.launch {
-            try {
-                ConfigRepository(applicationContext).saveServiceWasRunning(running)
-            } catch (e: Exception) {
-                logWarn("Could not persist service running state: ${e.message}")
-            }
+    private suspend fun persistServiceWasRunning(running: Boolean) {
+        try {
+            ConfigRepository(applicationContext).saveServiceWasRunning(running)
+        } catch (e: Exception) {
+            logWarn("Could not persist service running state: ${e.message}")
         }
     }
 
@@ -395,46 +401,12 @@ class YggstackService : Service() {
     }
 
     override fun onDestroy() {
-        logInfo("=== YggstackService onDestroy - service being destroyed ===")
-        super.onDestroy()
         serviceAlive = false
         unregisterScreenStateReceiver()
-        unregisterNetworkCallback()
-        // Stop the Go layer synchronously BEFORE cancelling serviceScope.
-        // stopYggstack() is coroutine-based: if we called it here, the immediately
-        // following serviceScope.cancel() would cancel that coroutine before it even
-        // executes, leaving Go goroutines running and UDP/TCP ports bound.
-        // That causes "address already in use" on the next START_STICKY restart.
-        val instanceToStop = yggstack
-        yggstack = null
-        _isRunning.value = false
-        _isSessionActive.value = false
-        // Service scope is about to be cancelled - persist synchronously
-        try {
-            kotlinx.coroutines.runBlocking {
-                ConfigRepository(applicationContext).saveServiceWasRunning(false)
-            }
-        } catch (_: Exception) {}
-        clearSessionPortCounters()
-        if (instanceToStop != null) {
-            try {
-                kotlinx.coroutines.runBlocking {
-                    kotlinx.coroutines.withTimeout(4500L) {
-                        instanceToStop.stop()
-                    }
-                }
-            } catch (_: Exception) {
-                logWarn("onDestroy: stop timed out or errored - process will clean up remaining resources")
-            }
-        }
-        releaseMulticastLock()
-        releaseWakeLock()
-        stopPlaceholderListeners()
-        abortSplices()
-        idlePowerSaveMonitorJob?.cancel()
-        serviceScope.cancel()
+        lifecycle.destroy()
+        super.onDestroy()
     }
-    
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         logInfo("=== onTaskRemoved called - app task removed from recent apps ===")
         logInfo("Reason: User swiped app away from recents or system cleared task")
@@ -473,46 +445,29 @@ class YggstackService : Service() {
     }
 
     fun startYggstack(config: YggstackConfig) {
-        serviceScope.launch {
-            // Use mutex to prevent concurrent start/stop operations
-            if (!operationMutex.tryLock()) {
-                logInfo("Operation already in progress - ignoring start request")
-                wakeInProgress = false
-                return@launch
+        lifecycle.publish {
+            if (!_isSessionActive.value) {
+                startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
+                invalidateNotificationDedupe()
             }
-            
-            try {
-                if (_isRunning.value) {
-                    logInfo("Yggstack is already running")
-                    return@launch
-                }
-                
-                _isTransitioning.value = true
-                
+        }
+        lifecycle.submit(acquire = true) { startNode(config) }
+    }
+
+    private suspend fun startNode(config: YggstackConfig, recovering: Boolean = false) {
+        if (lifecycle.isDestroyed || _isRunning.value) return
+        _isTransitioning.value = true
+        try {
+                stopPlaceholderListeners()
                 // Store config for crash recovery and persistence
                 lastConfig = config
                 saveLastConfigToPreferences(config)
                 logDebug("Config saved to persistent storage")
-                crashRestartAttempts = 0
+                if (!recovering) crashRestartAttempts = 0
                 
-                // Force cleanup any zombie instance before starting
-                if (yggstack != null) {
-                    logInfo("Cleaning up existing Yggstack instance...")
-                    try {
-                        yggstack?.stop()
-                    } catch (e: Exception) {
-                        logError("Error cleaning up old instance: ${e.message}")
-                    }
-                    yggstack = null
-                    kotlinx.coroutines.delay(500) // Give it time to fully stop
-                }
-                
+                stopNativeNode()
+                if (lifecycle.isDestroyed) return
                 logInfo("Starting Yggstack...")
-                logInfo("App version: ${link.yggdrasil.yggstack.android.BuildConfig.VERSION_NAME}")
-                logInfo("Commit: ${link.yggdrasil.yggstack.android.BuildConfig.COMMIT_HASH}")
-                startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
-                invalidateNotificationDedupe()
-
                 // Create Yggstack instance
                 yggstack = Mobile.newYggstack()
                 
@@ -594,26 +549,16 @@ class YggstackService : Service() {
                 yggstack?.start(socksAddress, dnsServer)
                 logInfo("Start() completed successfully")
 
-                // Get and store the Yggdrasil IP AFTER starting (with timeout to prevent hangs)
-                logDebug("Getting Yggdrasil IP address...")
-                try {
-                    val address = kotlinx.coroutines.withTimeout(5000L) {
-                        yggstack?.address
-                    }
-                    _yggdrasilIp.value = address
-                    logInfo("Yggdrasil IP: $address")
-                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    logWarn("WARNING: Timeout getting Yggdrasil IP (continuing anyway)")
-                    _yggdrasilIp.value = null
-                } catch (e: Exception) {
-                    logError("WARNING: Failed to get Yggdrasil IP: ${e.message} (continuing anyway)")
-                    _yggdrasilIp.value = null
-                }
+                if (lifecycle.isDestroyed) return
+                _yggdrasilIp.value = yggstack?.address
 
                 logDebug("Setting service running state...")
                 val wasIdle = _isPowerSaveIdle.value
-                _isRunning.value = true
-                _isSessionActive.value = true
+                lifecycle.publish {
+                    _isRunning.value = true
+                    _isSessionActive.value = true
+                }
+                if (lifecycle.isDestroyed) return
                 persistServiceWasRunning(true)
                 _peerCount.value = 0
                 stopPlaceholderListeners()
@@ -654,230 +599,78 @@ class YggstackService : Service() {
                 // (Re)start the Power Save idle monitor if eligible; harmless no-op otherwise
                 syncPowerSaveMonitor(config)
 
-            } catch (e: Exception) {
-                logError("ERROR starting Yggstack: ${e.message}")
-                logError("Stack trace: ${e.stackTraceToString().take(500)}")
-
-                // Clean up properly on error
-                try {
-                    yggstack?.stop()
-                } catch (stopError: Exception) {
-                    logError("Error during cleanup: ${stopError.message}")
-                }
-                yggstack = null
-                abortSplices()
-                _isRunning.value = false
-                _isSessionActive.value = false
-                persistServiceWasRunning(false)
-                _yggdrasilIp.value = null
-                _peerCount.value = 0
-                _totalPeerCount.value = 0
-                _powerSaveUpMillis.value = 0
-                _powerSaveIdleMillis.value = 0
-                _powerSaveStateSince.value = 0
-                clearSessionPortCounters()
-
-                // Unregister network callback on error
-                unregisterNetworkCallback()
-                
-                // Release MulticastLock on error
-                releaseMulticastLock()
-
-                // Cancel notification
+        } catch (e: Exception) {
+            logError("ERROR starting Yggstack: ${e.message}")
+            stopNode(enterPowerSaveIdle = false, destroying = lifecycle.isDestroyed)
+            lifecycle.publish {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(NOTIFICATION_ID)
-
-                // Stop foreground and service to force UI sync
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
-                }
-                
-                // Update notification with error state
-                val errorNotification = createNotification("Failed to start - check logs", 0, 0, showStopButton = false)
-                notificationManager.notify(NOTIFICATION_ID, errorNotification)
-                
-                logError("Service stopped due to error. Please check configuration and try again.")
-            } finally {
-                logDebug("Cleanup: Releasing operation mutex and resetting transitioning state")
-                wakeInProgress = false
-                _isTransitioning.value = false
-                operationMutex.unlock()
-                logInfo("Operation mutex released, transitioning state reset")
+                notificationManager.notify(
+                    NOTIFICATION_ID,
+                    createNotification("Failed to start - check logs", 0, 0, showStopButton = false)
+                )
             }
+        } finally {
+            wakeInProgress = false
+            _isTransitioning.value = false
         }
     }
 
     fun stopYggstack(enterPowerSaveIdle: Boolean = false) {
-        serviceScope.launch {
-            // Wait up to 2 s for any concurrent start operation to release the mutex.
-            // Using tryLock() and silently dropping the stop leaves the service in a
-            // half-alive state (broken peer connections, no recovery) when a network
-            // switch triggers stop while start is still initialising.
-            val lockAcquired = try {
-                kotlinx.coroutines.withTimeout(2000L) {
-                    operationMutex.lock()
-                    true
-                }
-            } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
-                false
-            }
-            if (!lockAcquired) {
-                logWarn("Stop: could not acquire operation lock within 2s - forcing minimal cleanup")
-                val stale = yggstack
-                yggstack = null
-                _isRunning.value = false
-                _isSessionActive.value = false
-                persistServiceWasRunning(false)
-                clearSessionPortCounters()
-                _isTransitioning.value = false
-                if (stale != null) {
-                    serviceScope.launch(Dispatchers.IO) {
-                        try { stale.stop() } catch (_: Exception) {}
-                    }
-                }
-                return@launch
-            }
-            
+        lifecycle.submit { stopNode(enterPowerSaveIdle) }
+    }
+
+    private suspend fun stopNode(enterPowerSaveIdle: Boolean, destroying: Boolean = false) {
+        if (enterPowerSaveIdle && (!_isRunning.value || !_isSessionActive.value)) return
+        _isTransitioning.value = true
+        try {
+            stopNodeObservers()
+            stopPlaceholderListeners()
+            if (!enterPowerSaveIdle) abortSplices()
             try {
-                // Force cleanup even if _isRunning is false (handles desync state),
-                // but not while intentionally idle - a full stop must still tear
-                // down placeholder listeners and the foreground service in that case
-                if (!_isRunning.value && yggstack == null && !_isPowerSaveIdle.value) {
-                    logInfo("Service already stopped")
-                    // The service may have been started just to receive this
-                    // stop request (tile, automation, or config UI stop while
-                    // not running); shut it down so no idle instance lingers
-                    stopSelf()
-                    return@launch
-                }
-                
-                if (!_isRunning.value && yggstack != null) {
-                    logWarn("WARNING: State desync detected - forcing cleanup of zombie instance")
-                }
-                
-                _isTransitioning.value = true
+                stopNativeNode()
+            } finally {
+                releaseWifiLock()
+                releaseMulticastLock()
+                releaseWakeLock()
+            }
+            _isRunning.value = false
+            _yggdrasilIp.value = null
+            _yggdrasilPublicKey.value = null
+            _peerCount.value = 0
+            _totalPeerCount.value = 0
+            _generatedPrivateKey.value = null
+            hasNoNetwork = false
 
-                logInfo(if (enterPowerSaveIdle) "Power Save: powering down node..." else "Stopping Yggstack...")
-                // NOTE: Keep _isRunning = true during stop so UI shows correct state
-                // It will be set to false in the finally block after everything completes
-                
-                // Wrap entire stop operation with safety timeout
-                try {
-                    kotlinx.coroutines.withTimeout(3000L) {
-                        // Cancel peer/port stats jobs and the idle monitor
-                        peerDetailsJob?.cancel()
-                        peerDetailsJob = null
-                        portStatsJob?.cancel()
-                        portStatsJob = null
-                        peerDetailsSubscriptionJob?.cancel()
-                        peerDetailsSubscriptionJob = null
-                        portStatsSubscriptionJob?.cancel()
-                        portStatsSubscriptionJob = null
-                        idlePowerSaveMonitorJob?.cancel()
-                        idlePowerSaveMonitorJob = null
-                        _idleCountdownSeconds.value = null
-                        
-                        // Unregister network callback
-                        unregisterNetworkCallback()
-                        
-                        // Release WiFi lock if held
-                        releaseWifiLock()
-                        
-                        // Release MulticastLock if held
-                        releaseMulticastLock()
-
-                        // Release the partial wake lock - only the foreground
-                        // service itself remains held during Power Save idle
-                        releaseWakeLock()
-                        
-                        // Stop yggstack. A throwing stop must not divert to the
-                        // outer error handler: that path skips the Power Save
-                        // re-arm below and would leave the ports unable to wake
-                        // the node. The placeholder bind retries until the
-                        // ports are actually released even if this stop is slow.
-                        try {
-                            yggstack?.stop()
-                        } catch (e: Exception) {
-                            logError("Error stopping Yggstack during power-down: ${e.message}")
-                        }
-                        yggstack = null
-                        
-                        _yggdrasilIp.value = null
-                        _peerCount.value = 0
-                        _totalPeerCount.value = 0
-                        _generatedPrivateKey.value = null
-                        // Power Save idle keeps the last stats snapshot (frozen
-                        // below) so a reopened Ports tab can still render the
-                        // cards; only a full stop discards them
-                        if (!enterPowerSaveIdle) {
-                            _portStatsJSON.resetReplayCache()
-                        }
-
-                        logInfo("Yggstack stopped")
-                    }
-                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    logWarn("WARNING: Stop operation timed out after 3 seconds - forcing cleanup")
-                    // Force cleanup on timeout
-                    releaseWakeLock()
-                    yggstack = null
-                    _yggdrasilIp.value = null
-                    _peerCount.value = 0
-                    _totalPeerCount.value = 0
-                    _generatedPrivateKey.value = null
-                    if (!enterPowerSaveIdle) {
-                        _portStatsJSON.resetReplayCache()
-                    }
+            if (enterPowerSaveIdle && !lifecycle.isDestroyed) {
+                lastRawListenersJSON?.let { raw ->
+                    val accumulated = accumulatePortStats(raw)
+                    if (accumulated != "[]") _portStatsJSON.emit(accumulated)
                 }
-                
-                if (enterPowerSaveIdle) {
-                    // Real listeners are guaranteed closed by now (yggstack.stop() above),
-                    // so it's safe to bind placeholders on the same host:port.
-                    lastConfig?.let { startPlaceholderListeners(it) }
-                    // Freeze the freshest stats into the replay cache so a Ports
-                    // tab opened later (app closed and reopened while idle) still
-                    // renders the cards frozen; counters resume from these
-                    // session totals when the node wakes
-                    lastRawListenersJSON?.let { raw ->
-                        try {
-                            val accumulated = accumulatePortStats(raw)
-                            if (accumulated != "[]") {
-                                _portStatsJSON.emit(accumulated)
-                            }
-                        } catch (e: Exception) {
-                            logError("Power Save: error freezing port stats: ${e.message}")
-                        }
-                    }
-                    // Session accounting: the up period ends here; idle accrues
-                    // until the node wakes. isSessionActive stays true so the
-                    // Ports screen keeps its cards and counters.
-                    val poweredDownAt = System.currentTimeMillis()
-                    _powerSaveUpMillis.value += (poweredDownAt - _powerSaveStateSince.value).coerceAtLeast(0)
-                    _powerSaveStateSince.value = poweredDownAt
+                val poweredDownAt = System.currentTimeMillis()
+                _powerSaveUpMillis.value += (poweredDownAt - _powerSaveStateSince.value).coerceAtLeast(0)
+                _powerSaveStateSince.value = poweredDownAt
+                lifecycle.publish {
                     _isPowerSaveIdle.value = true
-                    if (_powerSaveIdleSince.value == null) {
-                        _powerSaveIdleSince.value = System.currentTimeMillis()
-                    }
+                    _powerSaveIdleSince.value = poweredDownAt
                     updateIdlePowerSaveNotification()
-                    logInfo("Power Save: node powered down, listening for wake triggers")
-                } else {
-                    stopPlaceholderListeners()
-                    abortSplices()
-                    _isPowerSaveIdle.value = false
-                    _powerSaveIdleSince.value = null
-                    _isSessionActive.value = false
-                    persistServiceWasRunning(false)
-                    _powerSaveUpMillis.value = 0
-                    _powerSaveIdleMillis.value = 0
-                    _powerSaveStateSince.value = 0
-                    clearSessionPortCounters()
-
-                    // Cancel the notification
+                    lastConfig?.let { startPlaceholderListeners(it) }
+                }
+                logInfo("Power Save: node powered down, listening for wake triggers")
+            } else {
+                abortSplices()
+                _isPowerSaveIdle.value = false
+                _powerSaveIdleSince.value = null
+                _isSessionActive.value = false
+                _powerSaveUpMillis.value = 0
+                _powerSaveIdleMillis.value = 0
+                _powerSaveStateSince.value = 0
+                clearSessionPortCounters()
+                lastRawListenersJSON = null
+                _portStatsJSON.resetReplayCache()
+                persistServiceWasRunning(false)
+                if (!destroying && !lifecycle.isDestroyed) {
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     notificationManager.cancel(NOTIFICATION_ID)
-                    
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                     } else {
@@ -886,49 +679,43 @@ class YggstackService : Service() {
                     }
                     stopSelf()
                 }
+            }
+        } finally {
+            _isTransitioning.value = false
+        }
+    }
+
+    private fun stopNativeNode() {
+        // A failed teardown must retain the instance; a replacement cannot safely bind its ports.
+        // A rolled-back failed start already stopped the node; its stop() is a no-op error,
+        // so tolerate it rather than crashing the cleanup path.
+        yggstack?.let { instance ->
+            try {
+                instance.stop()
             } catch (e: Exception) {
-                logError("Error stopping Yggstack: ${e.message}")
-                // Force cleanup even on error
-                releaseWakeLock()
-                stopPlaceholderListeners()
-                _isPowerSaveIdle.value = false
-                _powerSaveIdleSince.value = null
-                _isSessionActive.value = false
-                persistServiceWasRunning(false)
-                _powerSaveUpMillis.value = 0
-                _powerSaveIdleMillis.value = 0
-                _powerSaveStateSince.value = 0
-                clearSessionPortCounters()
-                yggstack = null
-                _yggdrasilIp.value = null
-                _peerCount.value = 0
-                _totalPeerCount.value = 0
-                _generatedPrivateKey.value = null
-                hasNoNetwork = false
-                
-                // Unregister network callback on error too
-                unregisterNetworkCallback()
-                
-                // Stop peer cache updater on error
-                stopPeerCacheUpdater()
-                
-                // Release MulticastLock on error too
-                releaseMulticastLock()
-                
-                // Cancel notification on error too
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(NOTIFICATION_ID)
-            } finally {
-                // IMPORTANT: Set _isRunning = false here, AFTER everything is truly stopped
-                // This ensures UI doesn't show "Start" button until stop is complete
-                _isRunning.value = false
-                _isTransitioning.value = false
-                hasNoNetwork = false  // Reset network state
-                logInfo("Cleanup: Releasing stop operation mutex and resetting transitioning state")
-                operationMutex.unlock()
-                logInfo("Stop operation complete - state set to stopped")
+                logWarn("Native stop returned: ${e.message}")
             }
         }
+        yggstack = null
+    }
+
+    private suspend fun stopNodeObservers() {
+        unregisterNetworkCallback()
+        val jobs = listOfNotNull(
+            peerDetailsSubscriptionJob, portStatsSubscriptionJob,
+            peerDetailsJob, portStatsJob, idlePowerSaveMonitorJob,
+            peerCacheUpdateJob, networkRetryJob
+        )
+        jobs.forEach { it.cancel() }
+        jobs.forEach { it.join() }
+        peerDetailsSubscriptionJob = null
+        portStatsSubscriptionJob = null
+        peerDetailsJob = null
+        portStatsJob = null
+        idlePowerSaveMonitorJob = null
+        peerCacheUpdateJob = null
+        networkRetryJob = null
+        _idleCountdownSeconds.value = null
     }
 
     /**
@@ -1496,39 +1283,19 @@ class YggstackService : Service() {
                             }
                         }
                     } else {
-                        // Yggstack returned null - instance crashed/corrupted
-                        logError("ERROR: getPeersJSON returned null - Yggstack instance is corrupted")
-                        if (_isRunning.value) {
-                            logError("Detected Yggstack crash - attempting automatic restart...")
+                        val failedInstance = yggstack
+                        lifecycle.submit {
+                            if (yggstack !== failedInstance || !_isRunning.value) return@submit
+                            val config = lastConfig
+                            stopNodeObservers()
+                            stopNativeNode()
                             _isRunning.value = false
-                            _peerCount.value = 0
-                            _totalPeerCount.value = 0
-                            
-                            // Attempt automatic restart if we have the config
-                            if (lastConfig != null && crashRestartAttempts < MAX_CRASH_RESTART_ATTEMPTS) {
+                            if (config != null && crashRestartAttempts < MAX_CRASH_RESTART_ATTEMPTS) {
                                 crashRestartAttempts++
-                                val backoffDelay = (crashRestartAttempts * 2000L).coerceAtMost(10000L)
-                                logError("Crash restart attempt $crashRestartAttempts/$MAX_CRASH_RESTART_ATTEMPTS (waiting ${backoffDelay}ms)...")
-                                updateNotification("Restarting after crash...", 0, 0)
-                                
-                                kotlinx.coroutines.delay(backoffDelay)
-                                
-                                // Force cleanup of corrupted instance
-                                try {
-                                    yggstack?.stop()
-                                } catch (e: Exception) {
-                                    logError("Error stopping corrupted instance: ${e.message}")
-                                }
-                                yggstack = null
-                                kotlinx.coroutines.delay(1000)
-                                
-                                // Restart with same config
-                                logError("Restarting Yggstack after crash...")
-                                startYggstack(lastConfig!!)
+                                logWarn("Restarting after node failure (attempt $crashRestartAttempts)")
+                                startNode(config, recovering = true)
                             } else {
-                                val reason = if (lastConfig == null) "no config available" else "max restart attempts reached"
-                                logError("ERROR: Cannot auto-restart - $reason")
-                                updateNotification("Crashed - manual restart required", 0, 0)
+                                stopNode(enterPowerSaveIdle = false)
                             }
                         }
                         break
@@ -1782,19 +1549,22 @@ class YggstackService : Service() {
      * the first call proceeds.
      */
     fun wakeNow(reason: String = "manual") {
-        if (!_isPowerSaveIdle.value) return
+        if (lifecycle.isDestroyed || !_isPowerSaveIdle.value) return
         synchronized(wakeTriggerLock) {
             if (wakeInProgress) return
             wakeInProgress = true
         }
         logInfo("Power Save: waking node ($reason)")
-        stopPlaceholderListeners()
-        val cfg = lastConfig
-        if (cfg != null) {
-            startYggstack(cfg)
-        } else {
-            logWarn("Power Save: cannot wake, no saved config")
-            wakeInProgress = false
+        lifecycle.submit {
+            if (!_isPowerSaveIdle.value || !_isSessionActive.value) {
+                wakeInProgress = false
+                return@submit
+            }
+            val cfg = lastConfig
+            if (cfg != null) startNode(cfg) else {
+                wakeInProgress = false
+                logWarn("Power Save: cannot wake, no saved config")
+            }
         }
     }
 
@@ -1879,6 +1649,7 @@ class YggstackService : Service() {
             }
 
             val upstream = java.net.Socket()
+            heldSpliceSockets.add(upstream)
             try {
                 upstream.tcpNoDelay = true
                 upstream.connect(
@@ -1888,6 +1659,7 @@ class YggstackService : Service() {
                 logInfo("Power Save: splicing held connection into $host:$port")
                 pumpBothDirections(client, upstream)
             } finally {
+                heldSpliceSockets.remove(upstream)
                 try { upstream.close() } catch (_: Exception) {}
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1970,6 +1742,8 @@ class YggstackService : Service() {
         private var serverSocket: java.net.ServerSocket? = null
         private var datagramSocket: java.net.DatagramSocket? = null
         private var job: kotlinx.coroutines.Job? = null
+        private val socketLock = Any()
+        private var stopped = false
 
         fun start(onTriggered: () -> Unit) {
             job = serviceScope.launch(Dispatchers.IO) {
@@ -1977,28 +1751,37 @@ class YggstackService : Service() {
                     when (protocol) {
                         Protocol.TCP -> {
                             val socket = java.net.ServerSocket()
+                            synchronized(socketLock) {
+                                if (stopped) { socket.close(); return@launch }
+                                serverSocket = socket
+                            }
                             socket.reuseAddress = true
                             if (!bindWithRetry("TCP") { socket.bind(java.net.InetSocketAddress(host, port)) }) {
                                 return@launch
                             }
-                            serverSocket = socket
                             logInfo("Power Save: placeholder listening on TCP $host:$port")
                             val client = socket.accept()
                             // Release the listening port so the waking node can
                             // bind it, but KEEP the client connection and relay
                             // it into the real listener once the node is up
                             try { socket.close() } catch (_: Exception) {}
-                            serverSocket = null
-                            beginSplice(client, host, port)
-                            onTriggered()
+                            synchronized(socketLock) {
+                                if (stopped) client.close() else {
+                                    beginSplice(client, host, port)
+                                    onTriggered()
+                                }
+                            }
                         }
                         Protocol.UDP -> {
                             val socket = java.net.DatagramSocket(null)
+                            synchronized(socketLock) {
+                                if (stopped) { socket.close(); return@launch }
+                                datagramSocket = socket
+                            }
                             socket.reuseAddress = true
                             if (!bindWithRetry("UDP") { socket.bind(java.net.InetSocketAddress(host, port)) }) {
                                 return@launch
                             }
-                            datagramSocket = socket
                             logInfo("Power Save: placeholder listening on UDP $host:$port")
                             val buffer = ByteArray(1)
                             val packet = java.net.DatagramPacket(buffer, buffer.size)
@@ -2013,6 +1796,8 @@ class YggstackService : Service() {
                     throw e
                 } catch (e: Exception) {
                     logError("Power Save: placeholder listener error on $host:$port: ${e.message}")
+                } finally {
+                    closeSockets()
                 }
             }
         }
@@ -2046,12 +1831,19 @@ class YggstackService : Service() {
             }
         }
 
-        fun stop() {
-            job?.cancel()
+        private fun closeSockets() = synchronized(socketLock) {
             try { serverSocket?.close() } catch (_: Exception) {}
             try { datagramSocket?.close() } catch (_: Exception) {}
             serverSocket = null
             datagramSocket = null
+        }
+
+        fun stop() {
+            synchronized(socketLock) {
+                stopped = true
+                closeSockets()
+            }
+            job?.cancel()
         }
     }
 
@@ -2374,6 +2166,7 @@ class YggstackService : Service() {
     }
 
     private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -2476,10 +2269,10 @@ class YggstackService : Service() {
     }
 
     private fun handleMulticastForNetwork(isWifi: Boolean) {
-        serviceScope.launch {
+        lifecycle.submit {
             try {
                 if (!_isRunning.value || (lastConfig?.multicastBeacon != true && lastConfig?.multicastListen != true)) {
-                    return@launch
+                    return@submit
                 }
 
                 if (isWifi && !isOnWifi) {
@@ -3075,6 +2868,7 @@ class YggstackService : Service() {
     }
 
     companion object {
+        private val lifecycleQueue = LifecycleQueue()
         private const val LOG_TAG = "YggstackService"
         const val CHANNEL_ID = "yggstack_service_channel"
         const val NOTIFICATION_ID = 1
