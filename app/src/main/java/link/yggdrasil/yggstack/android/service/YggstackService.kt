@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import link.yggdrasil.yggstack.android.data.ConfigSerializer
+import link.yggdrasil.yggstack.android.data.NativeConfigJson
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
 import link.yggdrasil.yggstack.mobile.Yggstack
@@ -256,38 +258,7 @@ class YggstackService : Service() {
     /**
      * Sanitize config JSON by replacing private key with truncated version
      */
-    private fun sanitizeConfigJson(json: String): String {
-        return json.replace(
-            Regex("\"PrivateKey\":\\s*\"([^\"]{20,})\""),
-        ) { matchResult ->
-            val key = matchResult.groupValues[1]
-            "\"PrivateKey\": \"${truncatePrivateKey(key)}\""
-        }
-    }
-
-    private fun jsonEscape(value: String): String {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"")
-    }
-
-    private fun applyGroupPasswordToConfigJson(configJson: String, config: YggstackConfig): String {
-        val groupPassword = if (config.groupPasswordEnabled && config.groupPassword.isNotBlank()) {
-            config.groupPassword
-        } else {
-            ""
-        }
-        val escapedGroupPassword = jsonEscape(groupPassword)
-        return if (Regex("\"GroupPassword\":\\s*\"[^\"]*\"").containsMatchIn(configJson)) {
-            configJson.replace(
-                Regex("\"GroupPassword\":\\s*\"[^\"]*\""),
-                "\"GroupPassword\": \"$escapedGroupPassword\""
-            )
-        } else {
-            configJson.replace(
-                Regex("\"IfName\":"),
-                "\"GroupPassword\": \"$escapedGroupPassword\",\n  \"IfName\":"
-            )
-        }
-    }
+    private fun sanitizeConfigJson(json: String): String = NativeConfigJson.sanitize(json)
 
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
@@ -779,206 +750,15 @@ class YggstackService : Service() {
     }
 
     private fun buildConfigJson(config: YggstackConfig): String {
-        // If no private key is provided, generate a complete new config
-        if (config.privateKey.isBlank()) {
-            logInfo("No private key found - generating new configuration...")
-            val newConfigJson = Mobile.generateConfig()
-            logInfo("Generated config length: ${newConfigJson.length} chars")
-
-            // Add Certificate field if missing (required by core.New)
-            val configWithCert = if (!newConfigJson.contains("\"Certificate\"")) {
-                // Insert Certificate field after PrivateKey
-                newConfigJson.replace(
-                    Regex("(\"PrivateKey\":\\s*\"[^\"]+\",)"),
-                    "$1\n  \"Certificate\": null,"
-                )
-            } else {
-                newConfigJson
-            }
-
-            // Extract the private key to save it back to the repository
-            val keyMatch = Regex("\"PrivateKey\":\\s*\"([^\"]+)\"").find(newConfigJson)
-            val extractedKey = keyMatch?.groupValues?.get(1) ?: ""
-
-            if (extractedKey.isNotBlank()) {
-                logDebug("Private key extracted (length: ${extractedKey.length}, key: ${truncatePrivateKey(extractedKey)})")
-                _generatedPrivateKey.value = extractedKey
-                
-                // CRITICAL FIX: Update lastConfig with the generated key and re-save to SharedPreferences
-                // This ensures the key persists across service restarts
-                lastConfig = lastConfig?.copy(privateKey = extractedKey)
-                lastConfig?.let { saveLastConfigToPreferences(it) }
-                logDebug("Generated key saved to persistent storage")
-            } else {
-                logError("ERROR: Failed to extract generated private key from config!")
-            }
-
-            // Apply peers and multicast configuration
-            var finalConfig = configWithCert
-            
-            // Combine static peers with cached peers for fast reconnection (only if multicast listen is enabled)
-            val allPeers = config.peers.filter { it !in config.disabledPeers }.toMutableList()
-            val now = System.currentTimeMillis()
-            val recentCutoff = now - PEER_CACHE_STALE_TIME_MS
-            
-            // Only use cached peers if multicast listen is enabled (beacon creates inbound connections we can't reconnect to)
-            val recentCachedPeers = if (config.multicastListen) {
-                config.cachedPeers.filter { cached ->
-                    cached.lastSeen > recentCutoff && 
-                    cached.successCount > cached.failureCount &&
-                    !allPeers.contains(cached.uri) &&
-                    !config.disabledPeers.contains(cached.uri)
-                }
-            } else {
-                emptyList()
-            }
-            
-            if (recentCachedPeers.isNotEmpty()) {
-                allPeers.addAll(recentCachedPeers.map { it.uri })
-                logInfo("Added ${recentCachedPeers.size} cached peer(s) for fast reconnection:")
-                recentCachedPeers.forEachIndexed { index, cached ->
-                    logInfo("  Cached ${index + 1}: ${cached.uri} (last seen ${(now - cached.lastSeen) / 1000}s ago)")
-                }
-            }
-            
-            if (allPeers.isNotEmpty()) {
-                val staticActive = config.peers.count { it !in config.disabledPeers }
-                logInfo("Configuring $staticActive static + ${recentCachedPeers.size} cached = ${allPeers.size} total peer(s):")
-                config.peers.forEachIndexed { index, peer ->
-                    val state = if (peer in config.disabledPeers) " [disabled]" else ""
-                    logInfo("  Static ${index + 1}: ${peer}${state}")
-                }
-                
-                val peersWithBackoff = allPeers.map { peer ->
-                    if (!config.maxBackoffEnabled) {
-                        peer
-                    } else {
-                        val maxBackoffValue = "${config.maxBackoff}s"
-                        if (peer.contains("?")) {
-                            if (!peer.contains("maxbackoff=")) {
-                                "$peer&maxbackoff=$maxBackoffValue"
-                            } else {
-                                peer // Already has maxbackoff
-                            }
-                        } else {
-                            "$peer?maxbackoff=$maxBackoffValue"
-                        }
-                    }
-                }
-                val peersJson = peersWithBackoff.joinToString("\",\"", "[\"", "\"]")
-                finalConfig = finalConfig.replace(
-                    Regex("\"Peers\":\\s*\\[\\s*\\]"),
-                    "\"Peers\": $peersJson"
-                )
-            }
-            
-            // Handle multicast discovery switch
-            if (!config.multicastBeacon && !config.multicastListen) {
-                logInfo("Multicast discovery disabled - removing MulticastInterfaces")
-                finalConfig = finalConfig.replace(
-                    Regex("\"MulticastInterfaces\":\\s*\\[[^\\]]*\\]"),
-                    "\"MulticastInterfaces\": []"
-                )
-            } else {
-                logInfo("Multicast discovery enabled (beacon=${config.multicastBeacon}, listen=${config.multicastListen}) - using configured settings")
-                // Update the generated config with specific beacon/listen values
-                val beaconValue = config.multicastBeacon.toString().lowercase()
-                val listenValue = config.multicastListen.toString().lowercase()
-                finalConfig = finalConfig.replace(
-                    Regex("\"Beacon\":\\s*(true|false)"),
-                    "\"Beacon\": $beaconValue"
-                )
-                finalConfig = finalConfig.replace(
-                    Regex("\"Listen\":\\s*(true|false)"),
-                    "\"Listen\": $listenValue"
-                )
-            }
-
-            finalConfig = applyGroupPasswordToConfigJson(finalConfig, config)
-
-            return finalConfig
+        val generated = if (config.privateKey.isBlank()) Mobile.generateConfig() else null
+        val result = NativeConfigJson.build(config, generated)
+        if (generated != null) {
+            val key = NativeConfigJson.privateKey(result)
+            _generatedPrivateKey.value = key
+            lastConfig = (lastConfig ?: config).copy(privateKey = key)
+            lastConfig?.let { saveLastConfigToPreferences(it) }
         }
-
-        // Build config with existing private key
-        // IMPORTANT: Must match the structure from Mobile.generateConfig()
-        logInfo("Using existing private key (length: ${config.privateKey.length}, key: ${truncatePrivateKey(config.privateKey)})")
-        
-        // Log peer configuration
-        val activePeers = config.peers.filter { it !in config.disabledPeers }
-        if (config.peers.isEmpty()) {
-            logWarn("No peers configured - node will be isolated without multicast discovery")
-        } else {
-            val disabledCount = config.disabledPeers.size
-            logInfo("Configuring ${activePeers.size}/${config.peers.size} peer(s) (${disabledCount} disabled):")
-            config.peers.forEachIndexed { index, peer ->
-                val state = if (peer in config.disabledPeers) " [disabled]" else ""
-                logInfo("  Peer ${index + 1}: ${peer}${state}")
-            }
-        }
-        
-        val peers = if (activePeers.isEmpty()) {
-            "[]"
-        } else {
-            val peersWithBackoff = activePeers.map { peer ->
-                if (!config.maxBackoffEnabled) {
-                    peer
-                } else {
-                    val maxBackoffValue = "${config.maxBackoff}s"
-                    if (peer.contains("?")) {
-                        if (!peer.contains("maxbackoff=")) {
-                            "$peer&maxbackoff=$maxBackoffValue"
-                        } else {
-                            peer // Already has maxbackoff
-                        }
-                    } else {
-                        "$peer?maxbackoff=$maxBackoffValue"
-                    }
-                }
-            }
-            peersWithBackoff.joinToString("\", \"", "[\"", "\"]")
-        }
-
-        val multicastInterfaces = if (config.multicastBeacon || config.multicastListen) {
-            logInfo("Multicast discovery enabled (beacon=${config.multicastBeacon}, listen=${config.multicastListen})")
-            """[
-    {
-      "Regex": ".*",
-      "Beacon": ${config.multicastBeacon.toString().lowercase()},
-      "Listen": ${config.multicastListen.toString().lowercase()},
-      "Password": ""
-    }
-  ]"""
-        } else {
-            logInfo("Multicast discovery disabled - using empty configuration")
-            "[]"
-        }
-
-        val groupPassword = if (config.groupPasswordEnabled && config.groupPassword.isNotBlank()) {
-            config.groupPassword
-        } else {
-            ""
-        }
-        val escapedGroupPassword = jsonEscape(groupPassword)
-
-        // Use the same structure as generated config
-        val manualConfig = """{
-  "PrivateKey": "${config.privateKey}",
-  "Certificate": null,
-  "Peers": $peers,
-  "InterfacePeers": {},
-  "Listen": [],
-  "AdminListen": "none",
-  "MulticastInterfaces": $multicastInterfaces,
-  "AllowedPublicKeys": [],
-    "GroupPassword": "$escapedGroupPassword",
-  "IfName": "auto",
-  "IfMTU": 65535,
-  "NodeInfoPrivacy": false,
-  "NodeInfo": null
-}"""
-
-        logDebug("Built manual config matching generated structure")
-        return manualConfig
+        return result
     }
 
     private fun setupPortMappings(config: YggstackConfig) {
@@ -2599,67 +2379,8 @@ class YggstackService : Service() {
      */
     private fun saveLastConfigToPreferences(config: YggstackConfig) {
         try {
-            val json = JSONObject().apply {
-                put("privateKey", config.privateKey)
-                put("peers", JSONArray(config.peers))
-                put("socksProxy", config.socksProxy)
-                put("dnsServer", config.dnsServer)
-                put("proxyEnabled", config.proxyEnabled)
-                put("multicastBeacon", config.multicastBeacon)
-                put("multicastListen", config.multicastListen)
-                put("groupPasswordEnabled", config.groupPasswordEnabled)
-                put("groupPassword", config.groupPassword)
-                put("logLevel", config.logLevel)
-                put("maxBackoff", config.maxBackoff)
-                put("exposeEnabled", config.exposeEnabled)
-                put("forwardEnabled", config.forwardEnabled)
-                put("powerSaveEnabled", config.powerSaveEnabled)
-                put("powerSaveIdleTimeoutSeconds", config.powerSaveIdleTimeoutSeconds)
-                
-                // Save expose mappings
-                val exposeMappingsArray = JSONArray()
-                config.exposeMappings.forEach { mapping ->
-                    exposeMappingsArray.put(JSONObject().apply {
-                        put("protocol", mapping.protocol.name)
-                        put("localPort", mapping.localPort)
-                        put("localIp", mapping.localIp)
-                        put("yggPort", mapping.yggPort)
-                    })
-                }
-                put("exposeMappings", exposeMappingsArray)
-                
-                // Save forward mappings
-                val forwardMappingsArray = JSONArray()
-                config.forwardMappings.forEach { mapping ->
-                    forwardMappingsArray.put(JSONObject().apply {
-                        put("protocol", mapping.protocol.name)
-                        put("localIp", mapping.localIp)
-                        put("localPort", mapping.localPort)
-                        put("remoteIp", mapping.remoteIp)
-                        put("remotePort", mapping.remotePort)
-                    })
-                }
-                put("forwardMappings", forwardMappingsArray)
-                
-                // Save disabledPeers
-                put("disabledPeers", JSONArray(config.disabledPeers))
-                
-                // Save cachedPeers
-                val cachedPeersArray = JSONArray()
-                config.cachedPeers.forEach { cached ->
-                    cachedPeersArray.put(JSONObject().apply {
-                        put("uri", cached.uri)
-                        put("discoverySource", cached.discoverySource)
-                        put("lastSeen", cached.lastSeen)
-                        put("successCount", cached.successCount)
-                        put("failureCount", cached.failureCount)
-                    })
-                }
-                put("cachedPeers", cachedPeersArray)
-            }
-            
             sharedPreferences.edit()
-                .putString(PREF_LAST_CONFIG, json.toString())
+                .putString(PREF_LAST_CONFIG, ConfigSerializer.encode(config))
                 .apply()
         } catch (e: Exception) {
             logError("ERROR saving config to SharedPreferences: ${e.message}")
@@ -2673,100 +2394,8 @@ class YggstackService : Service() {
         try {
             val configJson = sharedPreferences.getString(PREF_LAST_CONFIG, null)
             if (configJson != null) {
-                val json = JSONObject(configJson)
-                
-                // Parse expose mappings
-                val exposeMappings = mutableListOf<ExposeMapping>()
-                val exposeMappingsArray = json.optJSONArray("exposeMappings")
-                if (exposeMappingsArray != null) {
-                    for (i in 0 until exposeMappingsArray.length()) {
-                        val mappingJson = exposeMappingsArray.getJSONObject(i)
-                        exposeMappings.add(
-                            ExposeMapping(
-                                protocol = Protocol.valueOf(mappingJson.getString("protocol")),
-                                localPort = mappingJson.getInt("localPort"),
-                                localIp = mappingJson.getString("localIp"),
-                                yggPort = mappingJson.getInt("yggPort")
-                            )
-                        )
-                    }
-                }
-                
-                // Parse forward mappings
-                val forwardMappings = mutableListOf<ForwardMapping>()
-                val forwardMappingsArray = json.optJSONArray("forwardMappings")
-                if (forwardMappingsArray != null) {
-                    for (i in 0 until forwardMappingsArray.length()) {
-                        val mappingJson = forwardMappingsArray.getJSONObject(i)
-                        forwardMappings.add(
-                            ForwardMapping(
-                                protocol = Protocol.valueOf(mappingJson.getString("protocol")),
-                                localIp = mappingJson.getString("localIp"),
-                                localPort = mappingJson.getInt("localPort"),
-                                remoteIp = mappingJson.getString("remoteIp"),
-                                remotePort = mappingJson.getInt("remotePort")
-                            )
-                        )
-                    }
-                }
-                
-                // Parse peers array
-                val peers = mutableListOf<String>()
-                val peersArray = json.optJSONArray("peers")
-                if (peersArray != null) {
-                    for (i in 0 until peersArray.length()) {
-                        peers.add(peersArray.getString(i))
-                    }
-                }
-                
-                // Parse disabledPeers array
-                val disabledPeers = mutableListOf<String>()
-                val disabledPeersArray = json.optJSONArray("disabledPeers")
-                if (disabledPeersArray != null) {
-                    for (i in 0 until disabledPeersArray.length()) {
-                        disabledPeers.add(disabledPeersArray.getString(i))
-                    }
-                }
-                
-                // Parse cachedPeers array
-                val cachedPeers = mutableListOf<CachedPeer>()
-                val cachedPeersArray = json.optJSONArray("cachedPeers")
-                if (cachedPeersArray != null) {
-                    for (i in 0 until cachedPeersArray.length()) {
-                        val cached = cachedPeersArray.getJSONObject(i)
-                        cachedPeers.add(CachedPeer(
-                            uri = cached.getString("uri"),
-                            discoverySource = cached.getString("discoverySource"),
-                            lastSeen = cached.getLong("lastSeen"),
-                            successCount = cached.optInt("successCount", 0),
-                            failureCount = cached.optInt("failureCount", 0)
-                        ))
-                    }
-                }
-                
-                lastConfig = YggstackConfig(
-                    privateKey = json.optString("privateKey", ""),
-                    peers = peers,
-                    socksProxy = json.optString("socksProxy", ""),
-                    dnsServer = json.optString("dnsServer", ""),
-                    proxyEnabled = json.optBoolean("proxyEnabled", false),
-                    multicastBeacon = json.optBoolean("multicastBeacon", true),
-                    multicastListen = json.optBoolean("multicastListen", true),
-                    groupPasswordEnabled = json.optBoolean("groupPasswordEnabled", false),
-                    groupPassword = json.optString("groupPassword", ""),
-                    logLevel = json.optString("logLevel", "info"),
-                    maxBackoff = json.optInt("maxBackoff", 5),
-                    exposeEnabled = json.optBoolean("exposeEnabled", false),
-                    forwardEnabled = json.optBoolean("forwardEnabled", false),
-                    powerSaveEnabled = json.optBoolean("powerSaveEnabled", false),
-                    powerSaveIdleTimeoutSeconds = json.optInt("powerSaveIdleTimeoutSeconds", 15),
-                    exposeMappings = exposeMappings,
-                    forwardMappings = forwardMappings,
-                    disabledPeers = disabledPeers,
-                    cachedPeers = cachedPeers
-                )
-                
-                logInfo("Loaded config from SharedPreferences: ${peers.size} peer(s), key present=${lastConfig!!.privateKey.isNotBlank()}")
+                lastConfig = ConfigSerializer.decode(configJson)
+                logInfo("Loaded saved configuration: ${lastConfig!!.peers.size} peer(s)")
             } else {
                 logInfo("No saved config found in SharedPreferences")
             }

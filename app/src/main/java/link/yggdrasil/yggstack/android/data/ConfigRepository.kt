@@ -45,6 +45,7 @@ class ConfigRepository(private val context: Context) {
         private val HOST_PORT_REGEX = Regex("^[^:\\[\\]]+:\\d+$")
         private val PORT_ONLY_REGEX = Regex("^:\\d+$")
         private val DEFAULT_PORT_SUFFIX_REGEX = Regex("(:53)+$")
+        private val CONFIG_SNAPSHOT = stringPreferencesKey("config_snapshot")
         private val PEERS_KEY = stringPreferencesKey("peers")
         private val PRIVATE_KEY = stringPreferencesKey("private_key")
         private val SOCKS_PROXY = stringPreferencesKey("socks_proxy")
@@ -118,6 +119,7 @@ class ConfigRepository(private val context: Context) {
      * Get configuration as Flow
      */
     val configFlow: Flow<YggstackConfig> = context.dataStore.data.map { preferences ->
+        preferences[CONFIG_SNAPSHOT]?.let { return@map ConfigSerializer.decode(it) }
         YggstackConfig(
             peers = preferences[PEERS_KEY]?.let {
                 json.decodeFromString<List<String>>(it)
@@ -157,26 +159,7 @@ class ConfigRepository(private val context: Context) {
      */
     suspend fun saveConfig(config: YggstackConfig) {
         context.dataStore.edit { preferences ->
-            preferences[PEERS_KEY] = json.encodeToString(config.peers)
-            preferences[PRIVATE_KEY] = config.privateKey
-            preferences[SOCKS_PROXY] = config.socksProxy
-            preferences[DNS_SERVER] = config.dnsServer
-            preferences[PROXY_ENABLED] = config.proxyEnabled
-            preferences[EXPOSE_MAPPINGS] = json.encodeToString(config.exposeMappings)
-            preferences[EXPOSE_ENABLED] = config.exposeEnabled
-            preferences[FORWARD_MAPPINGS] = json.encodeToString(config.forwardMappings)
-            preferences[FORWARD_ENABLED] = config.forwardEnabled
-            preferences[MULTICAST_BEACON] = config.multicastBeacon
-            preferences[MULTICAST_LISTEN] = config.multicastListen
-            preferences[GROUP_PASSWORD_ENABLED] = config.groupPasswordEnabled
-            preferences[GROUP_PASSWORD] = config.groupPassword
-            preferences[LOG_LEVEL] = config.logLevel
-            preferences[CACHED_PEERS] = json.encodeToString(config.cachedPeers)
-            preferences[MAX_BACKOFF_ENABLED] = config.maxBackoffEnabled
-            preferences[MAX_BACKOFF] = config.maxBackoff
-            preferences[DISABLED_PEERS] = json.encodeToString(config.disabledPeers)
-            preferences[POWER_SAVE_ENABLED] = config.powerSaveEnabled
-            preferences[POWER_SAVE_IDLE_TIMEOUT] = config.powerSaveIdleTimeoutSeconds
+            preferences[CONFIG_SNAPSHOT] = ConfigSerializer.encode(config)
         }
     }
 
