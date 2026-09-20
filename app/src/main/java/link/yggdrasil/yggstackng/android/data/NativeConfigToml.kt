@@ -59,6 +59,9 @@ internal object NativeConfigToml {
             appendLine("if_name = \"none\"")
             appendLine("if_mtu = 65535")
             appendLine("node_info_privacy = false")
+            // Closed-network group encryption (yggdrasil-ng core); empty = open network
+            val groupPassword = if (config.groupPasswordEnabled) config.groupPassword else ""
+            appendLine("group_password = \"${groupPassword.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
             appendLine()
             appendLine(multicastSection)
         }.trim() + "\n"
@@ -67,4 +70,7 @@ internal object NativeConfigToml {
     fun sanitize(value: String): String = value.replace(
         privateKeyRegex
     ) { _ -> "private_key = \"***\"" }
+        .replace(
+            Regex("""group_password\s*=\s*"([^"]*)"""")
+        ) { _ -> "group_password = \"***\"" }
 }

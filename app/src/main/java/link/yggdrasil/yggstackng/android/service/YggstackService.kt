@@ -854,20 +854,70 @@ class YggstackService : Service() {
 
     /**
      * Enable or disable a single expose (remote) mapping while the service is running.
-     * NOTE: The Rust library does not support adding/removing individual mappings at
-     * runtime; mapping changes take effect on the next service restart. The UI
-     * prevents toggling while the service is running; this method is a safety no-op.
+     * Calls the corresponding Add/Remove binding on the native layer and logs the change.
      */
     fun enableExposeMapping(mapping: link.yggdrasil.yggstackng.android.data.ExposeMapping, enable: Boolean) {
-        logInfo("enableExposeMapping: ${mapping.protocol.name} port ${mapping.yggPort} enable=$enable — restart required to apply")
+        val localAddr = "${mapping.localIp}:${mapping.localPort}"
+        val action = if (enable) "Enabling" else "Disabling"
+        logInfo("$action expose rule: ${mapping.protocol.name} port ${mapping.yggPort} -> $localAddr")
+        try {
+            when (mapping.protocol) {
+                link.yggdrasil.yggstackng.android.data.Protocol.TCP -> {
+                    if (enable) {
+                        yggstack?.addRemoteTcp("${mapping.yggPort}:${mapping.localIp}:${mapping.localPort}")
+                        logInfo("✓ Enabled TCP expose: port ${mapping.yggPort} -> $localAddr")
+                    } else {
+                        yggstack?.removeRemoteTcp("${mapping.yggPort}:${mapping.localIp}:${mapping.localPort}")
+                        logInfo("✓ Disabled TCP expose: port ${mapping.yggPort} -> $localAddr")
+                    }
+                }
+                link.yggdrasil.yggstackng.android.data.Protocol.UDP -> {
+                    if (enable) {
+                        yggstack?.addRemoteUdp("${mapping.yggPort}:${mapping.localIp}:${mapping.localPort}")
+                        logInfo("✓ Enabled UDP expose: port ${mapping.yggPort} -> $localAddr")
+                    } else {
+                        yggstack?.removeRemoteUdp("${mapping.yggPort}:${mapping.localIp}:${mapping.localPort}")
+                        logInfo("✓ Disabled UDP expose: port ${mapping.yggPort} -> $localAddr")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logError("✗ Error ${action.lowercase()} expose rule: ${e.message}")
+        }
     }
 
     /**
      * Enable or disable a single forward (local) mapping while the service is running.
-     * NOTE: Same limitation as enableExposeMapping — restart required to apply.
      */
     fun enableForwardMapping(mapping: link.yggdrasil.yggstackng.android.data.ForwardMapping, enable: Boolean) {
-        logInfo("enableForwardMapping: ${mapping.protocol.name} ${mapping.localIp}:${mapping.localPort} enable=$enable — restart required to apply")
+        val localAddr = "${mapping.localIp}:${mapping.localPort}"
+        val remoteAddr = "[${mapping.remoteIp}]:${mapping.remotePort}"
+        val action = if (enable) "Enabling" else "Disabling"
+        logInfo("$action forward rule: ${mapping.protocol.name} $localAddr -> $remoteAddr")
+        try {
+            when (mapping.protocol) {
+                link.yggdrasil.yggstackng.android.data.Protocol.TCP -> {
+                    if (enable) {
+                        yggstack?.addLocalTcp("${mapping.localIp}:${mapping.localPort}:[${mapping.remoteIp}]:${mapping.remotePort}")
+                        logInfo("✓ Enabled TCP forward: $localAddr -> $remoteAddr")
+                    } else {
+                        yggstack?.removeLocalTcp("${mapping.localIp}:${mapping.localPort}:[${mapping.remoteIp}]:${mapping.remotePort}")
+                        logInfo("✓ Disabled TCP forward: $localAddr -> $remoteAddr")
+                    }
+                }
+                link.yggdrasil.yggstackng.android.data.Protocol.UDP -> {
+                    if (enable) {
+                        yggstack?.addLocalUdp("${mapping.localIp}:${mapping.localPort}:[${mapping.remoteIp}]:${mapping.remotePort}")
+                        logInfo("✓ Enabled UDP forward: $localAddr -> $remoteAddr")
+                    } else {
+                        yggstack?.removeLocalUdp("${mapping.localIp}:${mapping.localPort}:[${mapping.remoteIp}]:${mapping.remotePort}")
+                        logInfo("✓ Disabled UDP forward: $localAddr -> $remoteAddr")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logError("✗ Error ${action.lowercase()} forward rule: ${e.message}")
+        }
     }
 
     // Log level helper functions
@@ -1077,17 +1127,16 @@ class YggstackService : Service() {
             portStatsJob = serviceScope.launch {
                 while (_isRunning.value) {
                     try {
-                        // TODO(ng): yggstack-ng does not expose per-listener stats yet;
-                        // emit an empty snapshot so the Ports screen shows no stale data
-                        // and Power Save's idle poll observes zero active connections.
-                        val listenersJson = "[]"
-                        lastRawListenersJSON = listenersJson
-                        val accumulated = accumulatePortStats(listenersJson)
-                        // Skip empty polls: after a Power Save wake the first
-                        // tick can race listener registration, and emitting an
-                        // empty list would flash away the frozen cards
-                        if (accumulated != "[]") {
-                            _portStatsJSON.emit(accumulated)
+                        val listenersJson = yggstack?.getListenersJson()
+                        if (listenersJson != null) {
+                            lastRawListenersJSON = listenersJson
+                            val accumulated = accumulatePortStats(listenersJson)
+                            // Skip empty polls: after a Power Save wake the first
+                            // tick can race listener registration, and emitting an
+                            // empty list would flash away the frozen cards
+                            if (accumulated != "[]") {
+                                _portStatsJSON.emit(accumulated)
+                            }
                         }
                     } catch (e: Exception) {
                         logError("Error fetching listener stats: ${e.message}")
@@ -1225,10 +1274,18 @@ class YggstackService : Service() {
                 if (!_isRunning.value) break
 
                 val activeConnections = try {
-                    // TODO(ng): listener stats are not exposed by the Rust core yet
-                    // (see startPortStatsUpdater); zero active connections means
-                    // idle detection is purely timeout-based until that lands.
-                    val json = lastRawListenersJSON
+                    // Reuse the port stats poller's fresh raw payload while it
+                    // is running (Ports tab open) instead of making a second
+                    // identical FFI call every second; ActiveConns is a gauge
+                    // that accumulatePortStats passes through untouched.
+                    // Either way the poll becomes the freshest snapshot, so
+                    // idle entry can freeze up-to-date counters into the
+                    // stats flow even when the Ports tab was never open.
+                    val json = if (_portStatsJSON.subscriptionCount.value > 0) {
+                        lastRawListenersJSON ?: yggstack?.getListenersJson()?.also { lastRawListenersJSON = it }
+                    } else {
+                        yggstack?.getListenersJson()?.also { lastRawListenersJSON = it }
+                    }
                     json?.let { sumActiveTransitConnections(it) } ?: 0L
                 } catch (e: Exception) {
                     logError("Power Save: error polling listener stats: ${e.message}")

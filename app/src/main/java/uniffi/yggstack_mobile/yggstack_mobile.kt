@@ -787,6 +787,16 @@ internal open class UniffiVTableCallbackInterfaceLogCallback(
 
 
 
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -826,6 +836,8 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_address(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_config(
 ): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_listeners_json(
+): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_peers_json(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_public_key(
@@ -837,6 +849,14 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_is_running(
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_load_config(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_live_peer(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_local_tcp(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_local_udp(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_remote_tcp(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_remote_udp(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_retry_peers_now(
 ): Short
@@ -930,6 +950,8 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_get_address(`ptr`: Pointer,u
 ): RustBuffer.ByValue
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_get_config(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_get_listeners_json(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_get_peers_json(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_get_public_key(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -941,6 +963,14 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_is_running(`ptr`: Pointer,un
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_load_config(`ptr`: Pointer,`tomlConfig`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_live_peer(`ptr`: Pointer,`uri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_local_tcp(`ptr`: Pointer,`spec`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_local_udp(`ptr`: Pointer,`spec`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_remote_tcp(`ptr`: Pointer,`spec`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_remote_udp(`ptr`: Pointer,`spec`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_retry_peers_now(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1126,6 +1156,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_config() != 56559.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_listeners_json() != 28587.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_get_peers_json() != 50663.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1142,6 +1175,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_live_peer() != 39839.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_local_tcp() != 42738.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_local_udp() != 30340.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_remote_tcp() != 669.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_remote_udp() != 28284.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_retry_peers_now() != 8089.toShort()) {
@@ -1556,6 +1601,7 @@ public interface YggstackMobileInterface {
     
     /**
      * Add a local-tcp forwarding spec, e.g. "8080:[addr]:80".
+     * While the node is running the listener starts immediately.
      */
     fun `addLocalTcp`(`spec`: kotlin.String)
     
@@ -1595,6 +1641,14 @@ public interface YggstackMobileInterface {
     fun `getConfig`(): kotlin.String
     
     /**
+     * Return JSON array of per-listener connection/traffic stats, the same
+     * shape as the Go yggstack GetListenersJSON: [{"Key","Kind","Listen",
+     * "Target","ActiveConns","TotalConns","RXBytes","TXBytes"}].
+     * Returns "[]" when not running.
+     */
+    fun `getListenersJson`(): kotlin.String
+    
+    /**
      * Return JSON array of connected peer stats, compatible with the
      * Android peer details panel. Returns "[]" when not running.
      */
@@ -1624,6 +1678,26 @@ public interface YggstackMobileInterface {
      * Remove a peer from a running node without restarting.
      */
     fun `removeLivePeer`(`uri`: kotlin.String)
+    
+    /**
+     * Remove a single local-tcp mapping (stops its listener while running).
+     */
+    fun `removeLocalTcp`(`spec`: kotlin.String)
+    
+    /**
+     * Remove a single local-udp mapping.
+     */
+    fun `removeLocalUdp`(`spec`: kotlin.String)
+    
+    /**
+     * Remove a single remote-tcp mapping.
+     */
+    fun `removeRemoteTcp`(`spec`: kotlin.String)
+    
+    /**
+     * Remove a single remote-udp mapping.
+     */
+    fun `removeRemoteUdp`(`spec`: kotlin.String)
     
     /**
      * Wake all sleeping peer reconnect loops so they retry immediately.
@@ -1770,6 +1844,7 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
     
     /**
      * Add a local-tcp forwarding spec, e.g. "8080:[addr]:80".
+     * While the node is running the listener starts immediately.
      */
     @Throws(YggstackException::class)override fun `addLocalTcp`(`spec`: kotlin.String)
         = 
@@ -1889,6 +1964,24 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
 
     
     /**
+     * Return JSON array of per-listener connection/traffic stats, the same
+     * shape as the Go yggstack GetListenersJSON: [{"Key","Kind","Listen",
+     * "Target","ActiveConns","TotalConns","RXBytes","TXBytes"}].
+     * Returns "[]" when not running.
+     */override fun `getListenersJson`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_get_listeners_json(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Return JSON array of connected peer stats, compatible with the
      * Android peer details panel. Returns "[]" when not running.
      */override fun `getPeersJson`(): kotlin.String {
@@ -1975,6 +2068,66 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
     uniffiRustCallWithError(YggstackException) { _status ->
     UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_live_peer(
         it, FfiConverterString.lower(`uri`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Remove a single local-tcp mapping (stops its listener while running).
+     */
+    @Throws(YggstackException::class)override fun `removeLocalTcp`(`spec`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(YggstackException) { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_local_tcp(
+        it, FfiConverterString.lower(`spec`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Remove a single local-udp mapping.
+     */
+    @Throws(YggstackException::class)override fun `removeLocalUdp`(`spec`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(YggstackException) { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_local_udp(
+        it, FfiConverterString.lower(`spec`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Remove a single remote-tcp mapping.
+     */
+    @Throws(YggstackException::class)override fun `removeRemoteTcp`(`spec`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(YggstackException) { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_remote_tcp(
+        it, FfiConverterString.lower(`spec`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Remove a single remote-udp mapping.
+     */
+    @Throws(YggstackException::class)override fun `removeRemoteUdp`(`spec`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(YggstackException) { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_remote_udp(
+        it, FfiConverterString.lower(`spec`),_status)
 }
     }
     

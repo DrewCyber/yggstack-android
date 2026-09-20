@@ -5,3 +5,4 @@
 [submodule "lib/yggstack-ng"]
 	path = lib/yggstack-ng
 	url = git@github.com:DrewCyber/yggstack-ng.git
+	branch = android-ng
