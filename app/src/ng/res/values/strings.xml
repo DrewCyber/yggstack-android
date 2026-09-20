@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Yggstack-ng</string>
+    <string name="yggstack_version">Yggstack-ng version</string>
+    <string name="yggdrasil_version">Yggdrasil-ng version</string>
 </resources>
