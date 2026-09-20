@@ -104,3 +104,6 @@ release.keystore
 keystore.properties
 *.keystore
 *.jks
+
+# Native shared libraries (compiled per-ABI — build locally or via CI, never commit)
+*.so
