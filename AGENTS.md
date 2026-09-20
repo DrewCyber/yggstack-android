@@ -4,20 +4,28 @@ Instructions for AI coding agents working in this repository. Keep this file sho
 
 ## What this is
 
-Native Android app (Kotlin + Jetpack Compose) that wraps the [Yggstack](https://github.com/yggdrasil-network/yggstack) Go CLI (SOCKS5 proxy / port forwarder over the Yggdrasil network). The Go code is compiled into a `.aar` via `gomobile` and consumed as a prebuilt library.
+Native Android app (Kotlin + Jetpack Compose) that wraps Yggstack (SOCKS5 proxy / port forwarder over the Yggdrasil network). One codebase, two engine flavors selected by Gradle product flavor:
+
+- **`go`** (default) — the Go [Yggstack](https://github.com/yggdrasil-network/yggstack), compiled into a `.aar` via `gomobile`
+- **`ng`** — Rust [yggstack-ng](https://github.com/DrewCyber/yggstack-ng) over yggdrasil-ng, consumed as `.so` + UniFFI Kotlin bindings
+
+Both apps can be installed side by side: `ng` appends an `.ng` applicationId suffix and is labeled "Yggstack NG". Shared Kotlin code lives in `app/src/main`; engine-specific code in `app/src/go` / `app/src/ng`, each providing an `EngineFactory` + `NativeEngine` implementation (`app/src/main/.../engine/NativeEngine.kt` is the seam). CKR is Rust-only; gate UI on `BuildConfig.ENGINE_SUPPORTS_CKR`.
 
 ## Repository layout
 
 ```
 app/                      # Android app module (Kotlin, Gradle)
-  src/main/java/io/github/yggstack/android/
+  src/main/java/link/yggdrasil/yggstack/android/
     data/                 # Data models and repositories
+    engine/               # NativeEngine interface (flavor seam)
     ui/{configuration,diagnostics,settings,theme}/
-    MainActivity.kt
-    YggstackApplication.kt
-  libs/yggstack.aar        # PREBUILT — do not hand-edit; rebuilt from lib/yggstack
+  src/go/                 # go flavor: GoEngine + NativeConfigJson (JSON config)
+  src/ng/                 # ng flavor: RustEngine + NativeConfigToml + uniffi bindings
+    jniLibs/              # .so per ABI — gitignored, built from lib/yggstack-ng
+  libs/yggstack.aar        # go flavor PREBUILT — do not hand-edit; rebuilt from lib/yggstack
   build/                   # Generated Gradle output — never read or search here
 lib/yggstack/              # Git submodule: upstream Go source, own AGENTS.md/toolchain
+lib/yggstack-ng/           # Git submodule: Rust yggstack-ng (branch android-ng)
 Docs/                      # DEV_README.md, DEV_QUICKSTART.md, PRD.md, etc. — MAY BE STALE,
                             # do not trust build/toolchain versions there; this file and
                             # .github/workflows/build-release.yml are the source of truth
@@ -30,8 +38,9 @@ gradle/libs.versions.toml   # Version catalog — all app dependency/plugin vers
 ## Toolchain versions (pinned — match `.github/workflows/build-release.yml`)
 
 - JDK 17 (temurin)
-- Go 1.27.1
+- Go 1.27.1 (go flavor)
 - gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260821190718-4776eadac327`
+- Rust stable + `cargo-ndk` (ng flavor), Android targets: aarch64, armv7, i686, x86_64 `-linux-android`
 - Android NDK `28.2.13676358`
 - compileSdk 37, targetSdk 34, minSdk 23
 
@@ -49,20 +58,31 @@ Note: never run `gomobile init` — it fetches `gobind@latest`, which now requir
 ## Build commands
 
 ```bash
-# Android app only (uses whatever yggstack.aar is already in app/libs/)
-./gradlew assembleDebug
-./gradlew assembleRelease   # needs KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD env vars
+# App only (go flavor uses whatever yggstack.aar is in app/libs/;
+# ng flavor needs .so in app/src/ng/jniLibs/ — see below)
+./gradlew assembleGoDebug
+./gradlew assembleNgDebug
+./gradlew assembleGoRelease   # needs KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD env vars
+./gradlew assembleNgRelease
 
-# Rebuild the Go library and refresh the AAR consumed by the app
+# Refresh the go engine AAR
 cd lib/yggstack
 ./mobile/build-android.sh
 cp android-build/yggstack.aar ../../app/libs/
+
+# Refresh the ng engine native libs (4 ABIs)
+cd lib/yggstack-ng
+for t in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
+  cargo ndk -t $t -o ../../app/src/ng/jniLibs build -p yggstack-mobile --release
+done
 ```
 
-Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal) and published on tag push (`[0-9]+.[0-9]+.[0-9]+`) via `build-release.yml`.
+Editing engine sources has no effect until the AAR / `.so` are rebuilt as above. After changing the UniFFI UDL, also regenerate the Kotlin bindings (`crates/yggstack-mobile` README in the submodule) and update `app/src/ng/java/uniffi/`.
+
+Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal) for both flavors and published on tag push (`[0-9]+.[0-9]+.[0-9]+`) via `build-release.yml`. go APKs keep the legacy names `yggstack-<version>-<abi>.apk`; ng APKs are `ng-yggstack-<version>-<abi>.apk`.
 
 ## Conventions
 
-- Editing Go code under `lib/yggstack/` has no effect on the app until the AAR is rebuilt and copied into `app/libs/`. See [lib/yggstack/AGENTS.md](lib/yggstack/AGENTS.md).
-- `lib/yggstack` is a separate git submodule with its own history/remote — don't assume root-repo git commands apply there.
+- `lib/yggstack` and `lib/yggstack-ng` are separate git submodules with their own histories/remotes — don't assume root-repo git commands apply there.
 - Prefer editing existing Kotlin files under `app/src/main/java/...` over creating new top-level packages.
+- Shared behavior belongs in `src/main`; anything touching the native engine goes through `NativeEngine` and lives in the matching flavor source set.

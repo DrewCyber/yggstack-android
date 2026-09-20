@@ -88,6 +88,28 @@ fun resolveGoModuleVersion(moduleDir: File, moduleName: String, fallbackRepoUrl:
     )
 }
 
+// ng flavor: resolve a git dependency (yggdrasil-ng) from Cargo.lock.
+// source lines look like: git+https://github.com/Revertron/Yggdrasil-ng#<40-hex-rev>
+fun resolveCargoGitDependencyVersion(lockFile: File, packageName: String, fallbackRepoUrl: String): RepoVersionInfo {
+    if (!lockFile.exists()) return RepoVersionInfo(tag = null, commit = null, repoUrl = fallbackRepoUrl)
+    val block = lockFile.readText()
+        .split("[[package]]")
+        .firstOrNull { it.lineSequence().any { l -> l.trim() == "name = \"$packageName\"" } }
+        ?: return RepoVersionInfo(tag = null, commit = null, repoUrl = fallbackRepoUrl)
+    val version = Regex("version = \"([^\"]+)\"").find(block)?.groupValues?.get(1)
+    val source = Regex("source = \"([^\"]+)\"").find(block)?.groupValues?.get(1)
+    val commit = source
+        ?.let { Regex("#([0-9a-f]{7,40})").find(it)?.groupValues?.get(1) }
+        ?.take(7)
+    val repoUrl = source
+        ?.removePrefix("git+")
+        ?.substringBefore("#")
+        ?.removeSuffix(".git")
+        ?.takeIf { it.isNotBlank() }
+        ?: fallbackRepoUrl
+    return RepoVersionInfo(tag = version, commit = commit, repoUrl = repoUrl)
+}
+
 val appVersionInfo by lazy {
     resolveGitRepoVersion(
         repoDir = rootProject.projectDir,
@@ -95,18 +117,33 @@ val appVersionInfo by lazy {
     )
 }
 
-val yggstackVersionInfo by lazy {
+val goYggstackVersionInfo by lazy {
     resolveGitRepoVersion(
         repoDir = rootProject.file("lib/yggstack"),
         fallbackRepoUrl = "https://github.com/DrewCyber/yggstack"
     )
 }
 
-val yggdrasilVersionInfo by lazy {
+val goYggdrasilVersionInfo by lazy {
     resolveGoModuleVersion(
         moduleDir = rootProject.file("lib/yggstack"),
         moduleName = "github.com/yggdrasil-network/yggdrasil-go",
         fallbackRepoUrl = "https://github.com/yggdrasil-network/yggdrasil-go"
+    )
+}
+
+val ngYggstackVersionInfo by lazy {
+    resolveGitRepoVersion(
+        repoDir = rootProject.file("lib/yggstack-ng"),
+        fallbackRepoUrl = "https://github.com/DrewCyber/yggstack-ng"
+    )
+}
+
+val ngYggdrasilVersionInfo by lazy {
+    resolveCargoGitDependencyVersion(
+        lockFile = rootProject.file("lib/yggstack-ng/Cargo.lock"),
+        packageName = "yggdrasil",
+        fallbackRepoUrl = "https://github.com/Revertron/Yggdrasil-ng"
     )
 }
 
@@ -174,12 +211,36 @@ android {
         buildConfigField("String", "COMMIT_HASH", "\"${getCommitHash()}\"")
         buildConfigField("String", "APP_VERSION_DISPLAY", "\"${appVersionInfo.displayValue}\"")
         buildConfigField("String", "APP_VERSION_URL", "\"${appVersionInfo.commitUrl}\"")
-        buildConfigField("String", "YGGSTACK_VERSION_DISPLAY", "\"${yggstackVersionInfo.displayValue}\"")
-        buildConfigField("String", "YGGSTACK_VERSION_URL", "\"${yggstackVersionInfo.commitUrl}\"")
-        buildConfigField("String", "YGGDRASIL_VERSION_DISPLAY", "\"${yggdrasilVersionInfo.displayValue}\"")
-        buildConfigField("String", "YGGDRASIL_VERSION_URL", "\"${yggdrasilVersionInfo.commitUrl}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Engine flavors: `go` (gomobile AAR) and `ng` (Rust yggstack-ng).
+    // One codebase; the flavor picks the native engine implementation and
+    // its library. `ng` gets an applicationId suffix so both apps can be
+    // installed side by side.
+    flavorDimensions += listOf("engine")
+    productFlavors {
+        create("go") {
+            dimension = "engine"
+            isDefault = true
+            buildConfigField("String", "ENGINE_ID", "\"go\"")
+            buildConfigField("boolean", "ENGINE_SUPPORTS_CKR", "false")
+            buildConfigField("String", "YGGSTACK_VERSION_DISPLAY", "\"${goYggstackVersionInfo.displayValue}\"")
+            buildConfigField("String", "YGGSTACK_VERSION_URL", "\"${goYggstackVersionInfo.commitUrl}\"")
+            buildConfigField("String", "YGGDRASIL_VERSION_DISPLAY", "\"${goYggdrasilVersionInfo.displayValue}\"")
+            buildConfigField("String", "YGGDRASIL_VERSION_URL", "\"${goYggdrasilVersionInfo.commitUrl}\"")
+        }
+        create("ng") {
+            dimension = "engine"
+            applicationIdSuffix = ".ng"
+            buildConfigField("String", "ENGINE_ID", "\"ng\"")
+            buildConfigField("boolean", "ENGINE_SUPPORTS_CKR", "true")
+            buildConfigField("String", "YGGSTACK_VERSION_DISPLAY", "\"${ngYggstackVersionInfo.displayValue}\"")
+            buildConfigField("String", "YGGSTACK_VERSION_URL", "\"${ngYggstackVersionInfo.commitUrl}\"")
+            buildConfigField("String", "YGGDRASIL_VERSION_DISPLAY", "\"${ngYggdrasilVersionInfo.displayValue}\"")
+            buildConfigField("String", "YGGDRASIL_VERSION_URL", "\"${ngYggdrasilVersionInfo.commitUrl}\"")
+        }
     }
 
     // Signing configuration
@@ -266,8 +327,13 @@ kotlin {
 }
 
 dependencies {
-    // Yggstack library
-    implementation(files("libs/yggstack.aar"))
+    // Native engines (one per flavor)
+    // go: gomobile AAR (built from lib/yggstack, committed prebuilt)
+    add("goImplementation", files("libs/yggstack.aar"))
+    // ng: Rust .so files live in src/ng/jniLibs (built from lib/yggstack-ng
+    // with cargo-ndk; gitignored), UniFFI Kotlin bindings in src/ng/java;
+    // JNA is required by the UniFFI 0.29 generated bindings
+    add("ngImplementation", "net.java.dev.jna:jna:5.14.0@aar")
 
     // Core Android
     implementation(libs.core.ktx)

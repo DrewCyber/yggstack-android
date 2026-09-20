@@ -88,16 +88,37 @@ cp lib/yggstack/android-build/yggstack.aar app/libs/
 
 ### Step 3: Build the Android APK
 
-Build the debug APK using Gradle:
+The app has two engine flavors. `go` uses the AAR from Step 2; `ng` uses the
+Rust libraries built below. Both can be installed side by side (the ng build
+gets an `.ng` application id suffix and the label "Yggstack NG").
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleGoDebug    # go engine (default)
+./gradlew assembleNgDebug    # Rust engine
 ```
 
-For a release build (requires signing configuration):
+For release builds (requires signing configuration):
 ```bash
-./gradlew assembleRelease
+./gradlew assembleGoRelease
+./gradlew assembleNgRelease
 ```
+
+### Building the ng (Rust) engine libraries
+
+The Rust `.so` files are not committed; build them from the
+`lib/yggstack-ng` submodule (requires Rust + cargo-ndk and the NDK):
+
+```bash
+cd lib/yggstack-ng
+export ANDROID_NDK_HOME=$HOME/Library/Android/sdk/ndk/28.2.13676358
+for t in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
+  cargo ndk -t $t -o ../../app/src/ng/jniLibs build -p yggstack-mobile --release
+done
+```
+
+The UniFFI Kotlin bindings in `app/src/ng/java/uniffi/` are committed; regenerate
+them only when the UDL in `crates/yggstack-mobile/src/` changes (see the
+submodule's README).
 
 **Build Output (ABI splits are enabled, so one APK per ABI is produced):**
 - Debug APKs: `app/build/outputs/apk/debug/app-<abi>-debug.apk` plus `app-universal-debug.apk`
@@ -127,7 +148,7 @@ cp lib/yggstack/android-build/yggstack.aar app/libs/
 
 # Step 3: Build APK
 echo "Building Android APK..."
-./gradlew assembleDebug
+./gradlew assembleGoDebug
 
 echo "Build complete!"
 echo "APK location: app/build/outputs/apk/debug/ (one APK per ABI plus universal)"
@@ -219,8 +240,9 @@ The build script automatically detects CI environments (GitHub Actions, etc.) an
 |------|---------|
 | Build mobile bindings | `cd lib/yggstack/mobile && ./build-android.sh` |
 | Copy AAR | `cp lib/yggstack/android-build/yggstack.aar app/libs/` |
-| Build debug APK | `./gradlew assembleDebug` |
-| Build release APK | `./gradlew assembleRelease` |
+| Build go debug APK | `./gradlew assembleGoDebug` |
+| Build ng debug APK | `./gradlew assembleNgDebug` |
+| Build release APKs | `./gradlew assembleGoRelease assembleNgRelease` |
 | Clean build | `./gradlew clean` |
 | Install on device | `./gradlew installDebug` |
 | Run tests | `./gradlew test` |
