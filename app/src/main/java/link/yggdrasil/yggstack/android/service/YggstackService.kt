@@ -47,10 +47,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.data.ConfigSerializer
-import link.yggdrasil.yggstack.android.data.NativeConfigJson
-import link.yggdrasil.yggstack.mobile.LogCallback
-import link.yggdrasil.yggstack.mobile.Mobile
-import link.yggdrasil.yggstack.mobile.Yggstack
+import link.yggdrasil.yggstack.android.engine.EngineFactory
+import link.yggdrasil.yggstack.android.engine.NativeEngine
+import link.yggdrasil.yggstack.android.engine.NativeLogCallback
 import org.json.JSONArray
 import org.json.JSONObject
 import android.content.SharedPreferences
@@ -71,7 +70,7 @@ class YggstackService : Service() {
     }
 
     private val binder = YggstackBinder()
-    @Volatile private var yggstack: Yggstack? = null
+    @Volatile private var yggstack: NativeEngine? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -256,9 +255,10 @@ class YggstackService : Service() {
     }
 
     /**
-     * Sanitize config JSON by replacing private key with truncated version
+     * Sanitize native config text by replacing secrets with masked values
      */
-    private fun sanitizeConfigJson(json: String): String = NativeConfigJson.sanitize(json)
+    private fun sanitizeConfigJson(json: String): String =
+        yggstack?.sanitizeNativeConfig(json) ?: ""
 
     inner class YggstackBinder : Binder() {
         fun getService(): YggstackService = this@YggstackService
@@ -440,14 +440,12 @@ class YggstackService : Service() {
                 if (lifecycle.isDestroyed) return
                 logInfo("Starting Yggstack...")
                 // Create Yggstack instance
-                yggstack = Mobile.newYggstack()
+                yggstack = EngineFactory.create()
                 
                 // Only set log callback if logging is enabled
                 if (logsEnabled) {
-                    yggstack?.setLogCallback(object : LogCallback {
-                        override fun onLog(message: String) {
-                            addLog(message.trim())
-                        }
+                    yggstack?.setLogCallback(NativeLogCallback { message ->
+                        addLog(message.trim())
                     })
                 }
                 
@@ -466,7 +464,7 @@ class YggstackService : Service() {
                 _fullConfigJSON.value = sanitizeConfigJson(configJson)
 
                 logDebug("Calling loadConfigJSON...")
-                yggstack?.loadConfigJSON(configJson)
+                yggstack?.loadConfig(configJson)
                 logInfo("Config loaded successfully")
 
                 // Start with optional SOCKS proxy and DNS server
@@ -521,7 +519,7 @@ class YggstackService : Service() {
                 logInfo("Start() completed successfully")
 
                 if (lifecycle.isDestroyed) return
-                _yggdrasilIp.value = yggstack?.address
+                _yggdrasilIp.value = yggstack?.getAddress()
 
                 logDebug("Setting service running state...")
                 val wasIdle = _isPowerSaveIdle.value
@@ -750,10 +748,11 @@ class YggstackService : Service() {
     }
 
     private fun buildConfigJson(config: YggstackConfig): String {
-        val generated = if (config.privateKey.isBlank()) Mobile.generateConfig() else null
-        val result = NativeConfigJson.build(config, generated)
+        val engine = yggstack ?: throw IllegalStateException("engine not created")
+        val generated = if (config.privateKey.isBlank()) engine.generateConfigText() else null
+        val result = engine.buildNativeConfig(config, generated)
         if (generated != null) {
-            val key = NativeConfigJson.privateKey(result)
+            val key = engine.privateKeyOf(result)
             _generatedPrivateKey.value = key
             lastConfig = (lastConfig ?: config).copy(privateKey = key)
             lastConfig?.let { saveLastConfigToPreferences(it) }
@@ -782,11 +781,11 @@ class YggstackService : Service() {
                         
                         when (mapping.protocol) {
                             link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
-                                yggstack?.addLocalTCPMapping(localAddr, remoteAddr)
+                                yggstack?.addLocalTcpMapping(localAddr, remoteAddr)
                                 logInfo("✓ Added TCP forward: $localAddr -> $remoteAddr")
                             }
                             link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
-                                yggstack?.addLocalUDPMapping(localAddr, remoteAddr)
+                                yggstack?.addLocalUdpMapping(localAddr, remoteAddr)
                                 logInfo("✓ Added UDP forward: $localAddr -> $remoteAddr")
                             }
                         }
@@ -814,11 +813,11 @@ class YggstackService : Service() {
                         
                         when (mapping.protocol) {
                             link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
-                                yggstack?.addRemoteTCPMapping(mapping.yggPort.toLong(), localAddr)
+                                yggstack?.addRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
                                 logInfo("✓ Exposed TCP port ${mapping.yggPort} -> $localAddr")
                             }
                             link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
-                                yggstack?.addRemoteUDPMapping(mapping.yggPort.toLong(), localAddr)
+                                yggstack?.addRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
                                 logInfo("✓ Exposed UDP port ${mapping.yggPort} -> $localAddr")
                             }
                         }
@@ -852,19 +851,19 @@ class YggstackService : Service() {
             when (mapping.protocol) {
                 link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
                     if (enable) {
-                        yggstack?.addRemoteTCPMapping(mapping.yggPort.toLong(), localAddr)
+                        yggstack?.addRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Enabled TCP expose: port ${mapping.yggPort} -> $localAddr")
                     } else {
-                        yggstack?.removeRemoteTCPMapping(mapping.yggPort.toLong(), localAddr)
+                        yggstack?.removeRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Disabled TCP expose: port ${mapping.yggPort} -> $localAddr")
                     }
                 }
                 link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
                     if (enable) {
-                        yggstack?.addRemoteUDPMapping(mapping.yggPort.toLong(), localAddr)
+                        yggstack?.addRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Enabled UDP expose: port ${mapping.yggPort} -> $localAddr")
                     } else {
-                        yggstack?.removeRemoteUDPMapping(mapping.yggPort.toLong(), localAddr)
+                        yggstack?.removeRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Disabled UDP expose: port ${mapping.yggPort} -> $localAddr")
                     }
                 }
@@ -886,19 +885,19 @@ class YggstackService : Service() {
             when (mapping.protocol) {
                 link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
                     if (enable) {
-                        yggstack?.addLocalTCPMapping(localAddr, remoteAddr)
+                        yggstack?.addLocalTcpMapping(localAddr, remoteAddr)
                         logInfo("✓ Enabled TCP forward: $localAddr -> $remoteAddr")
                     } else {
-                        yggstack?.removeLocalTCPMapping(localAddr, remoteAddr)
+                        yggstack?.removeLocalTcpMapping(localAddr, remoteAddr)
                         logInfo("✓ Disabled TCP forward: $localAddr -> $remoteAddr")
                     }
                 }
                 link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
                     if (enable) {
-                        yggstack?.addLocalUDPMapping(localAddr, remoteAddr)
+                        yggstack?.addLocalUdpMapping(localAddr, remoteAddr)
                         logInfo("✓ Enabled UDP forward: $localAddr -> $remoteAddr")
                     } else {
-                        yggstack?.removeLocalUDPMapping(localAddr, remoteAddr)
+                        yggstack?.removeLocalUdpMapping(localAddr, remoteAddr)
                         logInfo("✓ Disabled UDP forward: $localAddr -> $remoteAddr")
                     }
                 }
@@ -1019,20 +1018,20 @@ class YggstackService : Service() {
                     
                     // Update Yggdrasil IP address and public key
                     try {
-                        val address = yggstack?.address
+                        val address = yggstack?.getAddress()
                         _yggdrasilIp.value = address
                     } catch (e: Exception) {
                         logError("Error fetching Yggdrasil IP: ${e.message}")
                     }
                     
                     try {
-                        val publicKey = yggstack?.publicKey
+                        val publicKey = yggstack?.getPublicKey()
                         _yggdrasilPublicKey.value = publicKey
                     } catch (e: Exception) {
                         logError("Error fetching Yggdrasil public key: ${e.message}")
                     }
                     
-                    val peersJson = yggstack?.getPeersJSON()
+                    val peersJson = yggstack?.getPeersJson()
                     if (peersJson != null) {
                         _peerDetailsJSON.emit(peersJson)
                         // Update peer count from actual connected peers
@@ -1132,7 +1131,7 @@ class YggstackService : Service() {
             portStatsJob = serviceScope.launch {
                 while (_isRunning.value) {
                     try {
-                        val listenersJson = yggstack?.getListenersJSON()
+                        val listenersJson = yggstack?.getListenersJson()
                         if (listenersJson != null) {
                             lastRawListenersJSON = listenersJson
                             val accumulated = accumulatePortStats(listenersJson)
@@ -1287,9 +1286,9 @@ class YggstackService : Service() {
                     // idle entry can freeze up-to-date counters into the
                     // stats flow even when the Ports tab was never open.
                     val json = if (_portStatsJSON.subscriptionCount.value > 0) {
-                        lastRawListenersJSON ?: yggstack?.getListenersJSON()?.also { lastRawListenersJSON = it }
+                        lastRawListenersJSON ?: yggstack?.getListenersJson()?.also { lastRawListenersJSON = it }
                     } else {
-                        yggstack?.getListenersJSON()?.also { lastRawListenersJSON = it }
+                        yggstack?.getListenersJson()?.also { lastRawListenersJSON = it }
                     }
                     json?.let { sumActiveTransitConnections(it) } ?: 0L
                 } catch (e: Exception) {
@@ -1661,7 +1660,7 @@ class YggstackService : Service() {
      * Update peer cache with currently connected peers
      */
     private suspend fun updatePeerCache() {
-        val peersJson = yggstack?.getPeersJSON() ?: return
+        val peersJson = yggstack?.getPeersJson() ?: return
         val currentConfig = lastConfig ?: return
         
         try {
@@ -1671,7 +1670,7 @@ class YggstackService : Service() {
             // Find all connected non-static outbound peers (multicast discoveries we connected to)
             for (i in 0 until peers.length()) {
                 val peer = peers.getJSONObject(i)
-                val uri = peer.optString("remote", "")
+                val uri = peer.optString("URI", "")
                 val isUp = peer.optBoolean("Up", false)
                 val isInbound = peer.optBoolean("Inbound", false)
                 
