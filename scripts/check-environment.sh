@@ -98,6 +98,18 @@ else
     fi
 fi
 
+# --- Rust (ng flavor only; soft check — Go-only builders may skip) --------
+
+if command -v cargo >/dev/null 2>&1; then
+    rust_line="$(cargo --version 2>/dev/null)"
+    echo "OK   Rust (ng flavor): ${rust_line:-found}"
+    if ! command -v cargo-ndk >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/cargo-ndk" ]]; then
+        echo "INFO cargo-ndk not found — required only to build the ng (Rust) engine libs (cargo install cargo-ndk)"
+    fi
+else
+    echo "INFO Rust toolchain not found — required only for the ng (Rust) flavor; go flavor unaffected"
+fi
+
 # --- targetSdk constraint (critical app requirement — see AGENTS.md) --------
 
 app_gradle="$ROOT/app/build.gradle.kts"
