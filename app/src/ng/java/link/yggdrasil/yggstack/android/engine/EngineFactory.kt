@@ -1,10 +1,8 @@
 package link.yggdrasil.yggstack.android.engine
 
-import uniffi.yggstack_mobile.checkQuicPeer
-
 /**
- * ng-flavor engine factory over the Rust yggstack-ng UniFFI bindings.
- * The Rust core has no QUIC dial-out, so QUIC peer checks report unknown.
+ * ng-flavor engine factory over the Rust yggstack-ng UniFFI bindings
+ * (yggdrasil-ng core, QUIC RTT probe included).
  */
 object EngineFactory {
     const val ENGINE_ID = "ng"
@@ -12,7 +10,9 @@ object EngineFactory {
     fun create(): NativeEngine = RustEngine()
 
     fun checkQuicPeer(uri: String): Long = try {
-        checkQuicPeer(uri)
+        // Fully qualified: an unqualified call here resolves to this member
+        // (infinite recursion, StackOverflowError).
+        uniffi.yggstack_mobile.checkQuicPeer(uri)
     } catch (e: Exception) {
         -1L
     }
