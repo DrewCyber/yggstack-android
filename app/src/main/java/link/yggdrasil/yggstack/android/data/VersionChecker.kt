@@ -58,15 +58,21 @@ class VersionChecker(private val context: Context) {
                             apkAssets.add(name.lowercase() to asset.getString("browser_download_url"))
                         }
                     }
-                    // CI names assets yggstack-<version>-<abi>.apk. Pick the one
-                    // for this device's best ABI (Build.SUPPORTED_ABIS is ordered
-                    // best-first) instead of whichever asset the API lists first —
-                    // that was always arm64-v8a, which won't install on 32-bit
-                    // devices. Falls back to the universal build, then to the
-                    // release page. The "-<abi>.apk" suffix match keeps x86 and
-                    // x86_64 from matching each other.
+                    // CI names assets yggstack-<version>-<abi>.apk (go flavor)
+                    // and yggstack-ng-<version>-<abi>.apk (ng flavor). Pick the
+                    // asset for THIS app's flavor and this device's best ABI
+                    // (Build.SUPPORTED_ABIS is ordered best-first) instead of
+                    // whichever asset the API lists first. Falls back to the
+                    // universal build, then to the release page. The "-<abi>.apk"
+                    // suffix match keeps x86 and x86_64 from matching each other;
+                    // the flavor prefix keeps a go app from being offered the ng
+                    // build and vice versa.
+                    fun matchesFlavor(name: String): Boolean = when (BuildConfig.ENGINE_ID) {
+                        "ng" -> name.startsWith("yggstack-ng-")
+                        else -> name.startsWith("yggstack-") && !name.startsWith("yggstack-ng-")
+                    }
                     fun urlFor(suffix: String): String? =
-                        apkAssets.firstOrNull { (name, _) -> name.endsWith(suffix) }?.second
+                        apkAssets.firstOrNull { (name, _) -> matchesFlavor(name) && name.endsWith(suffix) }?.second
 
                     Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi ->
                         urlFor("-$abi.apk")

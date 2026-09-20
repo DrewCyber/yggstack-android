@@ -210,12 +210,12 @@ jobs:
           VERSION="${{ steps.get_version.outputs.version }}"
           cd app/build/outputs/apk/ng/release
 
-          # ng flavor APKs carry an ng- prefix to distinguish the Rust engine
-          mv app-ng-arm64-v8a-release.apk ng-yggstack-${VERSION}-arm64-v8a.apk
-          mv app-ng-armeabi-v7a-release.apk ng-yggstack-${VERSION}-armeabi-v7a.apk
-          mv app-ng-x86-release.apk ng-yggstack-${VERSION}-x86.apk
-          mv app-ng-x86_64-release.apk ng-yggstack-${VERSION}-x86_64.apk
-          mv app-ng-universal-release.apk ng-yggstack-${VERSION}-universal.apk
+          # ng flavor APKs carry a -ng name segment to distinguish the Rust engine
+          mv app-ng-arm64-v8a-release.apk yggstack-ng-${VERSION}-arm64-v8a.apk
+          mv app-ng-armeabi-v7a-release.apk yggstack-ng-${VERSION}-armeabi-v7a.apk
+          mv app-ng-x86-release.apk yggstack-ng-${VERSION}-x86.apk
+          mv app-ng-x86_64-release.apk yggstack-ng-${VERSION}-x86_64.apk
+          mv app-ng-universal-release.apk yggstack-ng-${VERSION}-universal.apk
 
           ls -lh
 
@@ -280,9 +280,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v3
         with:
-          files: |
-            dist/yggstack-*
-            dist/ng-yggstack-*
+          files: dist/yggstack-*.apk
           body_path: release_body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
