@@ -1,4 +1,4 @@
-package link.yggdrasil.yggstack.android.data
+package link.yggdrasil.yggstackng.android.data
 
 import kotlinx.serialization.json.*
 import org.junit.Assert.*

@@ -1,4 +1,4 @@
-package link.yggdrasil.yggstack.android.data
+package link.yggdrasil.yggstackng.android.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

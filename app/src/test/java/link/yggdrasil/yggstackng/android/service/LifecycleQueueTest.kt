@@ -1,4 +1,4 @@
-package link.yggdrasil.yggstack.android.service
+package link.yggdrasil.yggstackng.android.service
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
