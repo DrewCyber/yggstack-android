@@ -1784,10 +1784,10 @@ class YggstackService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Yggstack Service",
+                getString(R.string.app_name) + " Service",
                 NotificationManager.IMPORTANCE_LOW  // LOW = no sound, no vibration, no heads-up
             ).apply {
-                description = "Yggstack background service notification"
+                description = getString(R.string.app_name) + " background service notification"
                 setShowBadge(true)
                 enableLights(false)
                 enableVibration(false)
@@ -1825,7 +1825,7 @@ class YggstackService : Service() {
         }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Yggstack")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .setSmallIcon(R.drawable.ic_qs_tile)
@@ -1910,7 +1910,7 @@ class YggstackService : Service() {
         )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Yggstack")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.power_save_notification_text))
             .setSmallIcon(R.drawable.ic_power_save_idle)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
