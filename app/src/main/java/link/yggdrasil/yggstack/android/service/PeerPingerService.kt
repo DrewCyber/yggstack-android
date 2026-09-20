@@ -5,7 +5,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import link.yggdrasil.yggstack.android.data.PublicPeerInfo
-import link.yggdrasil.yggstack.mobile.Mobile
+import link.yggdrasil.yggstack.android.engine.EngineFactory
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -37,7 +37,7 @@ class PeerPingerService {
         // QUIC requires special handling via native code
         if (protocol == "quic") {
             return@withContext try {
-                val rtt = Mobile.checkQUICPeer(peer.uri)
+                val rtt = EngineFactory.checkQuicPeer(peer.uri)
                 if (rtt > 0) {
                     peer.copy(
                         rtt = rtt,

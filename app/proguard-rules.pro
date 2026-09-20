@@ -67,3 +67,8 @@
 -keep class org.xbill.DNS.** { *; }
 -keepclassmembers class org.xbill.DNS.** { *; }
 
+
+# ng flavor: UniFFI bindings talk to Rust via JNA — reflection-heavy
+-keep class uniffi.yggstack_mobile.** { *; }
+-keep class com.sun.jna.** { *; }
+-dontwarn com.sun.jna.**
