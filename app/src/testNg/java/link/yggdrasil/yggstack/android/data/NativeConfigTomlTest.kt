@@ -25,7 +25,9 @@ class NativeConfigTomlTest {
 
     @Test fun disablesMulticastSectionWhenOff() {
         val toml = NativeConfigToml.build(YggstackConfig(privateKey = key))
-        assertTrue(toml.contains("# multicast_interfaces disabled"))
+        // Explicit empty list — an absent field would fall back to the
+        // core's non-empty serde default and keep multicast running.
+        assertTrue(toml.contains("multicast_interfaces = []"))
         assertEquals(emptyList<String>(), peersOf(toml))
     }
 
@@ -50,6 +52,17 @@ class NativeConfigTomlTest {
         assertFalse(redacted.contains("secret"))
         assertTrue(redacted.contains("private_key = \"***\""))
         assertTrue(redacted.contains("group_password = \"***\""))
+    }
+
+    @Test fun sanitizeKeepsEmptyGroupPasswordVisibleWhenDisabled() {
+        val toml = NativeConfigToml.build(
+            // A stale stored password must not leak or look masked when the toggle is off
+            YggstackConfig(privateKey = key, groupPasswordEnabled = false, groupPassword = "stale")
+        )
+        val redacted = NativeConfigToml.sanitize(toml)
+        assertFalse(redacted.contains("stale"))
+        assertTrue(redacted.contains("group_password = \"\""))
+        assertFalse(redacted.contains("group_password = \"***\""))
     }
 
     @Test(expected = IllegalArgumentException::class)

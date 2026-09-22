@@ -56,7 +56,11 @@ internal object NativeConfigJson {
     fun sanitize(value: String): String {
         val fields = json.parseToJsonElement(value).jsonObject.toMutableMap()
         fields["PrivateKey"] = JsonPrimitive("***")
-        fields["GroupPassword"] = JsonPrimitive("***")
+        // An empty GroupPassword means the feature is off — masking it would
+        // fabricate a secret where the console-generated config shows "".
+        if ((fields["GroupPassword"] as? JsonPrimitive)?.contentOrNull?.isNotEmpty() == true) {
+            fields["GroupPassword"] = JsonPrimitive("***")
+        }
         return json.encodeToString(JsonObject.serializer(), JsonObject(fields))
     }
 }

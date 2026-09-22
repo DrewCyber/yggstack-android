@@ -49,7 +49,10 @@ internal object NativeConfigToml {
             listen = ${config.multicastListen}
             """.trimIndent()
         } else {
-            "# multicast_interfaces disabled"
+            // An absent field would fall back to yggdrasil-ng's non-empty
+            // serde default (beacon+listen on); only an explicit empty list
+            // actually disables multicast discovery.
+            "multicast_interfaces = []"
         }
         return buildString {
             appendLine("private_key = \"$key\"")
@@ -72,5 +75,9 @@ internal object NativeConfigToml {
     ) { _ -> "private_key = \"***\"" }
         .replace(
             Regex("""group_password\s*=\s*"([^"]*)"""")
-        ) { _ -> "group_password = \"***\"" }
+        ) { m ->
+            // Empty value = feature off; masking it would fabricate a secret
+            // where the console-generated config shows "".
+            if (m.groupValues[1].isEmpty()) m.value else "group_password = \"***\""
+        }
 }

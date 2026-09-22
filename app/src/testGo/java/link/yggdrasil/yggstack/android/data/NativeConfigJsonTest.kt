@@ -25,6 +25,13 @@ class NativeConfigJsonTest {
         }
     }
 
+    @Test fun sanitizeKeepsEmptyGroupPasswordVisibleWhenDisabled() {
+        // A stale stored password must not leak or look masked when the toggle is off
+        val config = YggstackConfig(privateKey = key, groupPasswordEnabled = false, groupPassword = "stale")
+        val redacted = Json.parseToJsonElement(NativeConfigJson.sanitize(NativeConfigJson.build(config))).jsonObject
+        assertEquals("", redacted.getValue("GroupPassword").jsonPrimitive.content)
+    }
+
     @Test fun filtersDisabledAndStalePeersForEitherIdentityPath() {
         val config = YggstackConfig(privateKey = key, peers = listOf("tcp://disabled:1", "tcp://active:1"),
             disabledPeers = listOf("tcp://disabled:1"), multicastListen = true,
