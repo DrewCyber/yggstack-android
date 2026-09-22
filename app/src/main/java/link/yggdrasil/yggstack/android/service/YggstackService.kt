@@ -1265,7 +1265,7 @@ class YggstackService : Service() {
     private fun startIdlePowerSaveMonitor() {
         idlePowerSaveMonitorJob?.cancel()
         idlePowerSaveMonitorJob = serviceScope.launch {
-            var remainingSeconds = (lastConfig?.powerSaveIdleTimeoutSeconds ?: 15).toLong()
+            var remainingSeconds = (lastConfig?.powerSaveIdleTimeoutSeconds ?: 60).toLong()
             _idleCountdownSeconds.value = remainingSeconds
             while (_isRunning.value) {
                 val cfg = lastConfig

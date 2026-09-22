@@ -150,7 +150,7 @@ class ConfigRepository(private val context: Context) {
                 json.decodeFromString<List<String>>(it)
             } ?: emptyList(),
             powerSaveEnabled = preferences[POWER_SAVE_ENABLED] ?: false,
-            powerSaveIdleTimeoutSeconds = preferences[POWER_SAVE_IDLE_TIMEOUT] ?: 25
+            powerSaveIdleTimeoutSeconds = preferences[POWER_SAVE_IDLE_TIMEOUT] ?: 60
         )
     }
 

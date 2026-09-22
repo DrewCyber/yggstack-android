@@ -686,6 +686,7 @@ fun ImportPreviewDialog(
 @Composable
 fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
+    val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsStateWithLifecycle()
     val peerCount by viewModel.peerCount.collectAsStateWithLifecycle()
     val totalPeerCount by viewModel.totalPeerCount.collectAsStateWithLifecycle()
     val peerDetails by viewModel.peerDetails.collectAsStateWithLifecycle()
@@ -810,17 +811,29 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.Default.Info,
+                            imageVector = if (isPowerSaveIdle) Icons.Default.BatterySaver else Icons.Default.Info,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = stringResource(R.string.start_service_view_peers),
+                            text = stringResource(
+                                if (isPowerSaveIdle) R.string.peers_power_save_idle
+                                else R.string.start_service_view_peers
+                            ),
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
                         )
+                        // While the session lives on in Power Save idle, offer
+                        // the same manual wake as the Ports screen
+                        if (isPowerSaveIdle) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { viewModel.wakeNow() }) {
+                                Text(stringResource(R.string.power_save_wake_now))
+                            }
+                        }
                     }
                 }
                 }
