@@ -478,6 +478,22 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(powerSaveIdleTimeoutSeconds = seconds.coerceIn(10, 120)))
     }
 
+    fun setPowerSaveSleepOnPortsIdle(enabled: Boolean) {
+        updateConfig(_config.value.copy(powerSaveSleepOnPortsIdle = enabled))
+    }
+
+    fun setPowerSaveWakeOnPortsActive(enabled: Boolean) {
+        updateConfig(_config.value.copy(powerSaveWakeOnPortsActive = enabled))
+    }
+
+    fun setPowerSaveSleepDuringScreenOff(enabled: Boolean) {
+        updateConfig(_config.value.copy(powerSaveSleepDuringScreenOff = enabled))
+    }
+
+    fun setPowerSaveWakeOnScreenOn(enabled: Boolean) {
+        updateConfig(_config.value.copy(powerSaveWakeOnScreenOn = enabled))
+    }
+
     fun wakeNow() {
         yggstackService?.wakeNow()
     }

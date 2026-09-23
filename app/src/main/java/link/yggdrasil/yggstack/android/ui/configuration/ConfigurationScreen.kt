@@ -494,24 +494,43 @@ fun ConfigurationScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         var showIdleTimeoutDialog by remember { mutableStateOf(false) }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.power_save_idle_timeout_label),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            TextButton(
-                                onClick = { showIdleTimeoutDialog = true },
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            PowerSaveToggleRow(
+                                label = stringResource(R.string.power_save_sleep_ports_idle),
+                                checked = config.powerSaveSleepOnPortsIdle,
+                                onCheckedChange = { viewModel.setPowerSaveSleepOnPortsIdle(it) },
                                 enabled = !isServiceRunning
                             ) {
-                                Text(
-                                    text = formatMinutesSeconds(config.powerSaveIdleTimeoutSeconds),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
+                                TextButton(
+                                    onClick = { showIdleTimeoutDialog = true },
+                                    enabled = !isServiceRunning,
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Text(
+                                        text = formatMinutesSeconds(config.powerSaveIdleTimeoutSeconds),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
+                            PowerSaveToggleRow(
+                                label = stringResource(R.string.power_save_wake_ports_active),
+                                checked = config.powerSaveWakeOnPortsActive,
+                                onCheckedChange = { viewModel.setPowerSaveWakeOnPortsActive(it) },
+                                enabled = !isServiceRunning
+                            )
+                            PowerSaveToggleRow(
+                                label = stringResource(R.string.power_save_sleep_screen_off),
+                                checked = config.powerSaveSleepDuringScreenOff,
+                                onCheckedChange = { viewModel.setPowerSaveSleepDuringScreenOff(it) },
+                                enabled = !isServiceRunning
+                            )
+                            PowerSaveToggleRow(
+                                label = stringResource(R.string.power_save_wake_screen_on),
+                                checked = config.powerSaveWakeOnScreenOn,
+                                onCheckedChange = { viewModel.setPowerSaveWakeOnScreenOn(it) },
+                                enabled = !isServiceRunning
+                            )
                         }
                         if (showIdleTimeoutDialog) {
                             PowerSaveIdleTimeoutDialog(
@@ -1701,6 +1720,38 @@ fun MaxBackoffDialog(
             }
         }
     )
+}
+
+/**
+ * One of Power Save's small event toggles (multicast-style row): bodySmall
+ * label, optional inline content between the label and the switch (the
+ * idle-timeout value on the "Sleep on ports idle" row), compact 0.6x switch.
+ */
+@Composable
+private fun PowerSaveToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f)
+        )
+        trailing?.invoke()
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.scale(0.6f)
+        )
+    }
 }
 
 @Composable

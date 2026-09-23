@@ -27,7 +27,11 @@ data class YggstackConfigParcelable(
     val maxBackoff: Int,
     val disabledPeers: List<String>,
     val powerSaveEnabled: Boolean,
-    val powerSaveIdleTimeoutSeconds: Int
+    val powerSaveIdleTimeoutSeconds: Int,
+    val powerSaveSleepOnPortsIdle: Boolean,
+    val powerSaveWakeOnPortsActive: Boolean,
+    val powerSaveSleepDuringScreenOff: Boolean,
+    val powerSaveWakeOnScreenOn: Boolean
 ) : Parcelable {
 
     fun toYggstackConfig(): YggstackConfig {
@@ -50,7 +54,11 @@ data class YggstackConfigParcelable(
             maxBackoff = maxBackoff,
             disabledPeers = disabledPeers,
             powerSaveEnabled = powerSaveEnabled,
-            powerSaveIdleTimeoutSeconds = powerSaveIdleTimeoutSeconds
+            powerSaveIdleTimeoutSeconds = powerSaveIdleTimeoutSeconds,
+            powerSaveSleepOnPortsIdle = powerSaveSleepOnPortsIdle,
+            powerSaveWakeOnPortsActive = powerSaveWakeOnPortsActive,
+            powerSaveSleepDuringScreenOff = powerSaveSleepDuringScreenOff,
+            powerSaveWakeOnScreenOn = powerSaveWakeOnScreenOn
         )
     }
 
@@ -75,7 +83,11 @@ data class YggstackConfigParcelable(
                 maxBackoff = config.maxBackoff,
                 disabledPeers = config.disabledPeers,
                 powerSaveEnabled = config.powerSaveEnabled,
-                powerSaveIdleTimeoutSeconds = config.powerSaveIdleTimeoutSeconds
+                powerSaveIdleTimeoutSeconds = config.powerSaveIdleTimeoutSeconds,
+                powerSaveSleepOnPortsIdle = config.powerSaveSleepOnPortsIdle,
+                powerSaveWakeOnPortsActive = config.powerSaveWakeOnPortsActive,
+                powerSaveSleepDuringScreenOff = config.powerSaveSleepDuringScreenOff,
+                powerSaveWakeOnScreenOn = config.powerSaveWakeOnScreenOn
             )
         }
     }

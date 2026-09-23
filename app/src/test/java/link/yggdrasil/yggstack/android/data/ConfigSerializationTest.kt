@@ -18,12 +18,38 @@ class ConfigSerializationTest {
             groupPasswordEnabled = true, groupPassword = "quote\" slash\\ newline\n tab\t\u0000$",
             cachedPeers = listOf(CachedPeer("tcp://cached:1", "multicast", 123L, 4, 2)),
             maxBackoffEnabled = true, maxBackoff = 27, disabledPeers = listOf("tls://disabled:1"),
-            powerSaveEnabled = true, powerSaveIdleTimeoutSeconds = 95
+            powerSaveEnabled = true, powerSaveIdleTimeoutSeconds = 95,
+            powerSaveSleepOnPortsIdle = false, powerSaveWakeOnPortsActive = false,
+            powerSaveSleepDuringScreenOff = true, powerSaveWakeOnScreenOn = true
         )
         val encoded = ConfigSerializer.encode(config)
         assertEquals(1, Json.parseToJsonElement(encoded).jsonObject.getValue("version").jsonPrimitive.int)
         assertEquals(config, ConfigSerializer.decode(encoded))
         assertEquals(YggstackConfig(), ConfigSerializer.decode(ConfigSerializer.encode(YggstackConfig())))
+    }
+
+    @Test fun powerSaveDefaultsMatchLegacyBehavior() {
+        val defaults = YggstackConfig()
+        assertFalse(defaults.powerSaveEnabled)
+        assertEquals(60, defaults.powerSaveIdleTimeoutSeconds)
+        assertTrue(defaults.powerSaveSleepOnPortsIdle)
+        assertTrue(defaults.powerSaveWakeOnPortsActive)
+        assertFalse(defaults.powerSaveSleepDuringScreenOff)
+        assertFalse(defaults.powerSaveWakeOnScreenOn)
+    }
+
+    @Test fun oldSnapshotWithoutPowerSaveTogglesKeepsLegacyEvents() {
+        // Pre-4-toggle snapshot: only powerSaveEnabled + timeout were persisted.
+        // Decoding must fall back to the legacy defaults (events 1+2 on, screen events off).
+        val restored = ConfigSerializer.decode(
+            """{"version":1,"config":{"powerSaveEnabled":true,"powerSaveIdleTimeoutSeconds":30}}"""
+        )
+        assertTrue(restored.powerSaveEnabled)
+        assertEquals(30, restored.powerSaveIdleTimeoutSeconds)
+        assertTrue(restored.powerSaveSleepOnPortsIdle)
+        assertTrue(restored.powerSaveWakeOnPortsActive)
+        assertFalse(restored.powerSaveSleepDuringScreenOff)
+        assertFalse(restored.powerSaveWakeOnScreenOn)
     }
 
     @Test fun readsUnversionedRecoverySnapshot() {

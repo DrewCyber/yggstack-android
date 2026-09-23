@@ -28,7 +28,11 @@ data class YggstackConfig(
     val maxBackoff: Int = 5,  // Maximum backoff time in seconds for peer reconnection (5-30s)
     val disabledPeers: List<String> = emptyList(),  // Peers that have been manually disabled
     val powerSaveEnabled: Boolean = false,
-    val powerSaveIdleTimeoutSeconds: Int = 60  // 10-120s, idle time before powering down the node
+    val powerSaveIdleTimeoutSeconds: Int = 60,  // 10-120s, idle time before powering down the node
+    val powerSaveSleepOnPortsIdle: Boolean = true,
+    val powerSaveWakeOnPortsActive: Boolean = true,
+    val powerSaveSleepDuringScreenOff: Boolean = false,
+    val powerSaveWakeOnScreenOn: Boolean = false
 )
 
 /** True if at least one expose mapping would actually accept connections from the Yggdrasil network. */

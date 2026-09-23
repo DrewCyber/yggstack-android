@@ -16,7 +16,9 @@ import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import link.yggdrasil.yggstack.android.BuildConfig
@@ -119,8 +121,12 @@ class YggstackService : Service() {
         failure = { error -> logError("Lifecycle operation failed: ${error.message}") }
     )
     
-    // Screen state monitoring
+    // Screen state monitoring - the receiver is registered only while Power
+    // Save's screen events ("Sleep during screen off" / "Wake on screen on")
+    // need it, never for the whole service lifetime.
     private var screenStateReceiver: BroadcastReceiver? = null
+    @Volatile private var screenOn: Boolean = true
+    private val mainHandler = Handler(Looper.getMainLooper())
     
     // Network connectivity monitoring
     private enum class NetworkType {
@@ -294,7 +300,6 @@ class YggstackService : Service() {
         persistentLogger = PersistentLogger(this)
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
-        registerScreenStateReceiver()
         verifyPermissions()
         
         // Load logs enabled setting
@@ -567,6 +572,8 @@ class YggstackService : Service() {
 
                 // (Re)start the Power Save idle monitor if eligible; harmless no-op otherwise
                 syncPowerSaveMonitor(config)
+                // Keep the screen-event receiver in sync with the live config
+                syncScreenStateReceiver()
 
         } catch (e: Exception) {
             logError("ERROR starting Yggstack: ${e.message}")
@@ -630,6 +637,8 @@ class YggstackService : Service() {
                 _isPowerSaveIdle.value = false
                 _powerSaveIdleSince.value = null
                 _isSessionActive.value = false
+                // Session over - no screen events to react to anymore
+                syncScreenStateReceiver()
                 _powerSaveUpMillis.value = 0
                 _powerSaveIdleMillis.value = 0
                 _powerSaveStateSince.value = 0
@@ -1236,11 +1245,12 @@ class YggstackService : Service() {
 
     /**
      * Starts or stops the Power Save idle monitor to match current eligibility
-     * (running + enabled + no active exposed ports). Safe to call any time the
-     * live config changes.
+     * (running + enabled + "Sleep on ports idle" + no active exposed ports).
+     * Safe to call any time the live config changes.
      */
     private fun syncPowerSaveMonitor(config: YggstackConfig) {
-        val eligible = _isRunning.value && config.powerSaveEnabled && !config.hasActiveExposedPorts()
+        val eligible = _isRunning.value && config.powerSaveEnabled &&
+            config.powerSaveSleepOnPortsIdle && !config.hasActiveExposedPorts()
         if (eligible) {
             if (idlePowerSaveMonitorJob?.isActive != true) {
                 startIdlePowerSaveMonitor()
@@ -1269,7 +1279,7 @@ class YggstackService : Service() {
             _idleCountdownSeconds.value = remainingSeconds
             while (_isRunning.value) {
                 val cfg = lastConfig
-                if (cfg == null || !cfg.powerSaveEnabled || cfg.hasActiveExposedPorts()) {
+                if (cfg == null || !cfg.powerSaveEnabled || !cfg.powerSaveSleepOnPortsIdle || cfg.hasActiveExposedPorts()) {
                     _idleCountdownSeconds.value = null
                     break
                 }
@@ -1303,7 +1313,7 @@ class YggstackService : Service() {
                     remainingSeconds -= pollSeconds
                     if (remainingSeconds <= 0) {
                         _idleCountdownSeconds.value = 0
-                        triggerIdlePowerDown()
+                        triggerIdlePowerDown("no traffic for ${cfg.powerSaveIdleTimeoutSeconds}s")
                         break
                     }
                     _idleCountdownSeconds.value = remainingSeconds
@@ -1312,9 +1322,9 @@ class YggstackService : Service() {
         }
     }
 
-    private fun triggerIdlePowerDown() {
-        val cfg = lastConfig ?: return
-        logInfo("Power Save: no active connections for ${cfg.powerSaveIdleTimeoutSeconds}s - powering down node")
+    private fun triggerIdlePowerDown(reason: String) {
+        if (lastConfig == null) return
+        logInfo("Power Save: powering down node ($reason)")
         // Placeholder listeners are started inside stopYggstack(), after the real
         // Yggstack listeners have actually released their ports - starting them here
         // would race the async stop and lose the bind (port left unreachable).
@@ -1359,6 +1369,12 @@ class YggstackService : Service() {
     private fun startPlaceholderListeners(config: YggstackConfig) {
         stopPlaceholderListeners()
         wakeInProgress = false
+        // "Wake on ports active" off: ports stay closed while idle - the node
+        // only wakes via screen on or manually.
+        if (!config.powerSaveWakeOnPortsActive) return
+        // "Sleep during screen off" suspends port-knock wake for as long as
+        // the screen stays off, so placeholders must not hold the ports then.
+        if (config.powerSaveSleepDuringScreenOff && !screenOn) return
         if (config.forwardEnabled) {
             config.forwardMappings.filter { it.enabled }.forEach { mapping ->
                 val listener = PlaceholderListener(mapping.protocol, mapping.localIp, mapping.localPort)
@@ -2404,30 +2420,87 @@ class YggstackService : Service() {
         }
     }
 
+    /**
+     * Keeps the screen-state receiver registered only while an active Power
+     * Save session actually needs screen events ("Sleep during screen off" or
+     * "Wake on screen on"). Safe to call whenever the session state or live
+     * config changes; register/unregister hop to the main thread, where
+     * onReceive is dispatched.
+     */
+    private fun syncScreenStateReceiver() {
+        mainHandler.post {
+            val cfg = lastConfig
+            val needed = _isSessionActive.value && cfg != null && cfg.powerSaveEnabled &&
+                (cfg.powerSaveSleepDuringScreenOff || cfg.powerSaveWakeOnScreenOn)
+            if (needed) registerScreenStateReceiver() else unregisterScreenStateReceiver()
+        }
+    }
+
     private fun registerScreenStateReceiver() {
+        if (screenStateReceiver != null) return
         try {
             screenStateReceiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     when (intent?.action) {
-                        Intent.ACTION_SCREEN_OFF -> {
-                            logDebug("Screen off - device screen locked")
-                        }
-                        Intent.ACTION_SCREEN_ON -> {
-                            logDebug("Screen on - device screen unlocked")
-                        }
+                        Intent.ACTION_SCREEN_OFF -> handleScreenOff()
+                        Intent.ACTION_SCREEN_ON -> handleScreenOn()
                     }
                 }
             }
-            
+
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
             }
-            
+
             registerReceiver(screenStateReceiver, filter)
-            logInfo("Screen state receiver registered")
+            // Seed the state from the display, not from the event stream: the
+            // service can (re)start while the screen is already off (system
+            // restart), and "Sleep during screen off" must apply right away.
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            screenOn = powerManager.isInteractive
+            logInfo("Screen state receiver registered (screenOn=$screenOn)")
+            if (!screenOn) handleScreenOff()
         } catch (e: Exception) {
             logError("Failed to register screen state receiver: ${e.message}")
+        }
+    }
+
+    /**
+     * ACTION_SCREEN_OFF: with "Sleep during screen off" enabled, power the
+     * node down immediately; if it is already idle (ports-idle timeout fired
+     * while the screen was on), suspend port-knock wake by dropping the
+     * placeholder listeners until the screen comes back on.
+     */
+    private fun handleScreenOff() {
+        logDebug("Screen off - device screen locked")
+        screenOn = false
+        val cfg = lastConfig ?: return
+        if (!cfg.powerSaveEnabled || !cfg.powerSaveSleepDuringScreenOff || cfg.hasActiveExposedPorts()) return
+        if (_isRunning.value) {
+            logInfo("Power Save: screen off - powering down node immediately")
+            triggerIdlePowerDown("screen off")
+        } else if (_isPowerSaveIdle.value) {
+            logInfo("Power Save: screen off - suspending wake on ports until screen on")
+            lifecycle.submit { if (_isPowerSaveIdle.value) stopPlaceholderListeners() }
+        }
+    }
+
+    /**
+     * ACTION_SCREEN_ON: with "Wake on screen on" enabled, wake an idle node;
+     * otherwise, if "Sleep during screen off" had suspended the placeholder
+     * listeners, bring them back so "Wake on ports active" works again.
+     */
+    private fun handleScreenOn() {
+        logDebug("Screen on - device screen unlocked")
+        screenOn = true
+        val cfg = lastConfig ?: return
+        if (!cfg.powerSaveEnabled) return
+        if (cfg.powerSaveWakeOnScreenOn && _isPowerSaveIdle.value) {
+            wakeNow("screen on")
+        } else if (_isPowerSaveIdle.value && cfg.powerSaveSleepDuringScreenOff && cfg.powerSaveWakeOnPortsActive) {
+            logInfo("Power Save: screen on - restoring wake-on-ports listeners")
+            lifecycle.submit { if (_isPowerSaveIdle.value) startPlaceholderListeners(cfg) }
         }
     }
 

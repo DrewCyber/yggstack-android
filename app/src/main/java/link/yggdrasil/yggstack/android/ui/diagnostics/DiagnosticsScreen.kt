@@ -1087,6 +1087,9 @@ fun PortsViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     upMillis = powerSaveUpMillis,
                     idleMillis = powerSaveIdleMillis,
                     stateSinceMs = powerSaveStateSince,
+                    sleepOnPortsIdle = yggstackConfig?.powerSaveSleepOnPortsIdle ?: true,
+                    wakeOnPortsActive = yggstackConfig?.powerSaveWakeOnPortsActive ?: true,
+                    sleepDuringScreenOff = yggstackConfig?.powerSaveSleepDuringScreenOff ?: false,
                     onWakeNow = { viewModel.wakeNow() }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1268,6 +1271,9 @@ fun PowerSaveStatusCard(
     upMillis: Long,
     idleMillis: Long,
     stateSinceMs: Long,
+    sleepOnPortsIdle: Boolean,
+    wakeOnPortsActive: Boolean,
+    sleepDuringScreenOff: Boolean,
     onWakeNow: () -> Unit
 ) {
     // Live-ticking clock so the idle status and the up/idle session counters
@@ -1310,14 +1316,27 @@ fun PowerSaveStatusCard(
             val statusText = when {
                 isIdle -> {
                     val idleSeconds = idleSinceMs?.let { ((nowMs - it) / 1000).coerceAtLeast(0) } ?: 0L
-                    stringResource(R.string.power_save_idle_status, formatUptime(idleSeconds.toDouble()))
+                    // With "Wake on ports active" off (or suspended by screen-off
+                    // sleep - and the screen is off then, so nobody sees the card)
+                    // the idle ports are closed rather than listening for knocks.
+                    if (wakeOnPortsActive) {
+                        stringResource(R.string.power_save_idle_status, formatUptime(idleSeconds.toDouble()))
+                    } else {
+                        stringResource(R.string.power_save_idle_status_closed, formatUptime(idleSeconds.toDouble()))
+                    }
                 }
                 activeConnections > 0 -> stringResource(R.string.power_save_active_ports_status, activeConnections)
                 countdownSeconds != null -> stringResource(
                     R.string.power_save_countdown_status,
                     formatCountdown(countdownSeconds)
                 )
-                isRunning -> stringResource(R.string.power_save_armed_status)
+                isRunning -> when {
+                    // Countdown only exists with "Sleep on ports idle"; the armed
+                    // text must match whichever sleep trigger is actually active.
+                    sleepOnPortsIdle -> stringResource(R.string.power_save_armed_status)
+                    sleepDuringScreenOff -> stringResource(R.string.power_save_armed_screen_status)
+                    else -> stringResource(R.string.power_save_enabled_status)
+                }
                 else -> stringResource(R.string.power_save_countdown_status, formatCountdown(0))
             }
             Text(
