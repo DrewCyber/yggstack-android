@@ -83,6 +83,11 @@ Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universa
 
 ## Conventions
 
+- Commit subjects must state which part of the app changed. Prefix with the affected area(s):
+  - `kotlin:` — app Kotlin (`app/src/**`, including the `go`/`ng` flavor source sets, plus resources/gradle)
+  - `go:` — Go engine (`lib/yggstack` submodule, rebuilt `app/libs/yggstack.aar`)
+  - `rust:` — Rust engine (`lib/yggstack-ng` submodule, rebuilt `app/src/ng/jniLibs`, UniFFI bindings)
+  - Combine areas for multi-part changes (`kotlin+rust:`); use `all:` only when everything changed.
 - `lib/yggstack` and `lib/yggstack-ng` are separate git submodules with their own histories/remotes — don't assume root-repo git commands apply there.
 - Prefer editing existing Kotlin files under `app/src/main/java/...` over creating new top-level packages.
 - Shared behavior belongs in `src/main`; anything touching the native engine goes through `NativeEngine` and lives in the matching flavor source set.
