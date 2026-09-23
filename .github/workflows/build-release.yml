@@ -111,7 +111,7 @@ jobs:
           ls -lh
 
       - name: Upload APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: go-apks
           path: app/build/outputs/apk/go/release/*.apk
@@ -220,7 +220,7 @@ jobs:
           ls -lh
 
       - name: Upload APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ng-apks
           path: app/build/outputs/apk/ng/release/*.apk
