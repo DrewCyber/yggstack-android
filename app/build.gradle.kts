@@ -333,7 +333,7 @@ dependencies {
     // ng: Rust .so files live in src/ng/jniLibs (built from lib/yggstack-ng
     // with cargo-ndk; gitignored), UniFFI Kotlin bindings in src/ng/java;
     // JNA is required by the UniFFI 0.29 generated bindings
-    add("ngImplementation", "net.java.dev.jna:jna:5.14.0@aar")
+    add("ngImplementation", "net.java.dev.jna:jna:5.19.1@aar")
 
     // Core Android
     implementation(libs.core.ktx)
