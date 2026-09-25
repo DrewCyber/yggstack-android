@@ -144,7 +144,7 @@ class ConfigRepository(private val context: Context) {
             cachedPeers = preferences[CACHED_PEERS]?.let {
                 json.decodeFromString<List<CachedPeer>>(it)
             } ?: emptyList(),
-            maxBackoffEnabled = preferences[MAX_BACKOFF_ENABLED] ?: false,
+            maxBackoffEnabled = preferences[MAX_BACKOFF_ENABLED] ?: true,
             maxBackoff = preferences[MAX_BACKOFF] ?: 5,
             disabledPeers = preferences[DISABLED_PEERS]?.let {
                 json.decodeFromString<List<String>>(it)

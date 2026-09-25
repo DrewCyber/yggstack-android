@@ -24,7 +24,7 @@ data class YggstackConfig(
     val groupPasswordEnabled: Boolean = false,
     val groupPassword: String = "",
     val cachedPeers: List<CachedPeer> = emptyList(),  // Dynamically discovered peers cache
-    val maxBackoffEnabled: Boolean = false,
+    val maxBackoffEnabled: Boolean = true,
     val maxBackoff: Int = 5,  // Maximum backoff time in seconds for peer reconnection (5-30s)
     val disabledPeers: List<String> = emptyList(),  // Peers that have been manually disabled
     val powerSaveEnabled: Boolean = false,

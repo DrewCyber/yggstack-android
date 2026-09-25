@@ -16,7 +16,7 @@ data class YggdrasilSettings(
     val groupPasswordEnabled: Boolean = false,
     val groupPassword: String = "",
     val maxBackoffEnabled: Boolean = true,
-    val maxBackoff: Int
+    val maxBackoff: Int = 5
 )
 
 /**
@@ -87,7 +87,7 @@ data class BackupConfig(
             var ygGroupPasswordEnabled = false
             var ygGroupPassword = ""
             var ygMaxBackoffEnabled = true
-            var ygMaxBackoff = 0
+            var ygMaxBackoff = 5
             var hasYggdrasil = false
 
             // proxy
@@ -353,7 +353,9 @@ data class BackupConfig(
                 groupPasswordEnabled = it.groupPasswordEnabled,
                 groupPassword = it.groupPassword,
                 maxBackoffEnabled = it.maxBackoffEnabled,
-                maxBackoff = it.maxBackoff
+                // 5-30s is the range the backoff slider enforces; backups may
+                // carry values outside it (e.g. legacy 0), so clamp on apply.
+                maxBackoff = it.maxBackoff.coerceIn(5, 30)
             )
         } ?: base
     }

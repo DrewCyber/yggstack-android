@@ -52,12 +52,19 @@ class ConfigSerializationTest {
         assertFalse(restored.powerSaveWakeOnScreenOn)
     }
 
+    @Test fun maxBackoffDefaultsEnabledAtMinimum() {
+        val defaults = YggstackConfig()
+        assertTrue(defaults.maxBackoffEnabled)
+        assertEquals(5, defaults.maxBackoff)
+    }
+
     @Test fun readsUnversionedRecoverySnapshot() {
         val restored = ConfigSerializer.decode("""{"privateKey":"abc","peers":[],"exposeMappings":[{"protocol":"TCP","localPort":80,"yggPort":80}],"maxBackoff":17}""")
         assertEquals("abc", restored.privateKey)
         assertEquals(17, restored.maxBackoff)
         assertTrue(restored.exposeMappings.single().enabled)
-        assertFalse(restored.maxBackoffEnabled)
+        // Snapshot omits the toggle, so the enabled-by-default kicks in.
+        assertTrue(restored.maxBackoffEnabled)
     }
 
     @Test(expected = IllegalArgumentException::class)

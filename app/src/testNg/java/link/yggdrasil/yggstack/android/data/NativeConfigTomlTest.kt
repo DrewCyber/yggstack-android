@@ -33,7 +33,7 @@ class NativeConfigTomlTest {
 
     @Test fun filtersDisabledAndStalePeers() {
         val config = YggstackConfig(privateKey = key, peers = listOf("tcp://disabled:1", "tcp://active:1"),
-            disabledPeers = listOf("tcp://disabled:1"), multicastListen = true,
+            disabledPeers = listOf("tcp://disabled:1"), multicastListen = true, maxBackoffEnabled = false,
             cachedPeers = listOf(CachedPeer("tcp://fresh:1", "multicast", 4000000, 2, 0), CachedPeer("tcp://stale:1", "multicast", 0, 2, 0)))
         assertEquals(listOf("tcp://active:1", "tcp://fresh:1"), peersOf(NativeConfigToml.build(config, now = 4000001)))
     }
