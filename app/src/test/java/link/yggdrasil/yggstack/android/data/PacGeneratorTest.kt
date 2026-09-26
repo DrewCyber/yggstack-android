@@ -28,13 +28,25 @@ class PacGeneratorTest {
 
     @Test fun yggOnlyRoutesYggThroughProxyAndEverythingElseDirect() {
         val script = pac
-        assertTrue(script.contains("""dnsDomainIs(host, ".ygg")"""))
+        assertTrue(script.contains("""dnsDomainIs(host, ".ygg") || isYggLiteralHost(host)"""))
         assertTrue(script.contains("PROXY 127.0.0.1:8080"))
         assertTrue(script.contains("return \"DIRECT\""))
         // No DIRECT fallback on the proxy rule: .ygg names cannot resolve
         // via system DNS, a fallback would only add a resolver timeout.
         val proxyLine = script.lines().first { it.contains("PROXY") }
         assertFalse(proxyLine.contains("DIRECT"))
+    }
+
+    @Test fun scriptsDefineBracketTolerantLiteralHostHelpers() {
+        // Yggdrasil's 200::/7 addresses and 300::/8 subnets as literal hosts
+        // (bracketed or not) route through the proxy; loopback literals stay
+        // DIRECT in all-traffic mode. shExpMatch can't express bracketed IPv6
+        // hosts, so the script ships plain-JS classifiers instead.
+        assertTrue(pac.contains("function isYggLiteralHost(host)"))
+        val allTraffic = PacGenerator.generate(config(allTraffic = true))
+        assertTrue(allTraffic.contains("function isLoopbackLiteral(host)"))
+        assertTrue(allTraffic.contains("isLoopbackLiteral(host) ||"))
+        assertFalse(allTraffic.contains("""shExpMatch(host, "::1")"""))
     }
 
     @Test fun httpProxyOnlyWhenSocksDisabled() {

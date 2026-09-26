@@ -3,9 +3,9 @@ package link.yggdrasil.yggstack.android.data
 /**
  * Generates the Proxy Auto-Configuration script served by [link.yggdrasil.yggstack.android.service.PacServer].
  *
- * The script uses string-matching functions only (shExpMatch/dnsDomainIs):
- * Android's PAC engine implements dnsResolve unreliably, and these rules
- * must never depend on DNS.
+ * The script uses string matching only (shExpMatch/dnsDomainIs plus plain JS
+ * helpers): Android's PAC engine implements dnsResolve unreliably, and these
+ * rules must never depend on DNS.
  */
 object PacGenerator {
 
@@ -19,9 +19,10 @@ object PacGenerator {
      * Build the PAC script for the given config.
      *
      * - Ygg-only mode (default): hosts under `.ygg` (which covers `.pk.ygg`)
-     *   go through the proxy chain, everything else is DIRECT — so Android's
-     *   connectivity validation reaches the internet directly and the Wi-Fi
-     *   network stays validated.
+     *   and literal Yggdrasil IPv6 addresses (`http://[200:...]/`,
+     *   `http://[308:...]/`) go through the proxy chain, everything else is
+     *   DIRECT — so Android's connectivity validation reaches the internet
+     *   directly and the Wi-Fi network stays validated.
      * - All-traffic mode: everything except localhost / IP literals / private
      *   ranges goes through the proxy (for DNS64+NAT64 global-internet setups).
      *
@@ -42,7 +43,7 @@ object PacGenerator {
                 appendLine("function FindProxyForURL(url, host) {")
                 appendLine("    if (isPlainHostName(host) ||")
                 appendLine("        shExpMatch(host, \"localhost\") ||")
-                appendLine("        shExpMatch(host, \"127.*\") || shExpMatch(host, \"::1\") ||")
+                appendLine("        shExpMatch(host, \"127.*\") || isLoopbackLiteral(host) ||")
                 appendLine("        shExpMatch(host, \"10.*\") || shExpMatch(host, \"192.168.*\") ||")
                 appendLine("        shExpMatch(host, \"172.16.*\") || shExpMatch(host, \"172.17.*\") ||")
                 appendLine("        shExpMatch(host, \"172.18.*\") || shExpMatch(host, \"172.19.*\") ||")
@@ -56,15 +57,48 @@ object PacGenerator {
         } else {
             buildString {
                 appendLine("function FindProxyForURL(url, host) {")
-                appendLine("    if (dnsDomainIs(host, \".ygg\")) {")
+                appendLine("    if (dnsDomainIs(host, \".ygg\") || isYggLiteralHost(host)) {")
                 appendLine("        return \"$chain\";")
                 appendLine("    }")
                 appendLine("    return \"DIRECT\";")
                 appendLine("}")
             }
         }
-        return header() + proxyRules
+        return header() + helpers() + proxyRules
     }
+
+    /**
+     * Plain-JS host classifiers shared by the script's rules. shExpMatch can't
+     * be used for IPv6 literals: `[` / `]` are character-class syntax in shell
+     * patterns, so bracketed hosts are unexpressible, and PAC engines differ
+     * in whether they pass IPv6 hosts bracketed — these helpers tolerate both
+     * forms. Matches Yggdrasil's address space: 200::/7 node addresses
+     * (hextet `200:`/`201:`) and 300::/8 routed subnets (hextet `300:`–`3ff:`,
+     * where the public DNS servers like `308:62:45:62::` live).
+     */
+    private fun helpers(): String = """
+        function isHexDigit(c) {
+            return (c >= "0" && c <= "9") || (c >= "a" && c <= "f") || (c >= "A" && c <= "F");
+        }
+        function isYggLiteralHost(host) {
+            var h = String(host);
+            if (h.indexOf(":") < 0) return false;
+            if (h.charAt(0) == "[" && h.charAt(h.length - 1) == "]") {
+                h = h.substring(1, h.length - 1);
+            }
+            if (h.indexOf("200:", 0) == 0 || h.indexOf("201:", 0) == 0) return true;
+            // 300::/8: first hextet 0x0300-0x03ff, i.e. "3" + two hex digits + ":"
+            return h.length > 3 && h.charAt(0) == "3" &&
+                isHexDigit(h.charAt(1)) && isHexDigit(h.charAt(2)) && h.charAt(3) == ":";
+        }
+        function isLoopbackLiteral(host) {
+            var h = String(host);
+            if (h.charAt(0) == "[" && h.charAt(h.length - 1) == "]") {
+                h = h.substring(1, h.length - 1);
+            }
+            return h == "::1";
+        }
+    """.trimIndent() + "\n\n"
 
     /**
      * The PAC proxy chain from the enabled proxies, e.g.
