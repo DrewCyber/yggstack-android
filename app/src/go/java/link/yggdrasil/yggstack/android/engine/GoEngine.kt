@@ -35,8 +35,8 @@ internal class GoEngine : NativeEngine {
 
     override fun loadConfig(nativeConfig: String) = yggstack.loadConfigJSON(nativeConfig)
 
-    override fun start(socksAddress: String, dnsServer: String) =
-        yggstack.start(socksAddress, dnsServer)
+    override fun start(socksAddress: String, httpAddress: String, dnsServer: String) =
+        yggstack.start(socksAddress, httpAddress, dnsServer)
 
     override fun stop() = yggstack.stop()
 

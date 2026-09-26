@@ -313,6 +313,22 @@ fun ConfigurationScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                LocalIpTextField(
+                    value = config.httpProxy,
+                    onValueChange = { viewModel.updateHttpProxy(it) },
+                    label = { Text(stringResource(R.string.http_proxy)) },
+                    placeholder = { Text(stringResource(R.string.http_proxy_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isServiceRunning && config.proxyEnabled,
+                    onPick = { ip, current ->
+                        val port = current.substringAfterLast(':', "")
+                            .toIntOrNull()?.takeIf { it in 1..65535 } ?: 8080
+                        "$ip:$port"
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 val context = LocalContext.current
                 OutlinedTextField(
                     value = dnsServerInput,

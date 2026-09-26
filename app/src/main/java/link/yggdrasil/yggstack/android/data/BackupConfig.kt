@@ -57,6 +57,7 @@ data class BackupConfig(
                 proxy = ProxySettings(
                     enabled = config.proxyEnabled,
                     socksAddress = config.socksProxy,
+                    httpAddress = config.httpProxy,
                     dnsServer = config.dnsServer
                 ),
                 expose = ExposeSettings(
@@ -93,6 +94,7 @@ data class BackupConfig(
             // proxy
             var proxyEnabled = false
             var proxySocks = ""
+            var proxyHttp = ""
             var proxyDns = ""
 
             // expose
@@ -190,6 +192,7 @@ data class BackupConfig(
                     "proxy" -> when (key) {
                         "enabled"     -> proxyEnabled = boolVal()
                         "socksAddress" -> proxySocks   = strVal()
+                        "httpAddress" -> proxyHttp    = strVal()
                         "dnsServer"   -> proxyDns      = strVal()
                     }
                     "expose" -> when (key) {
@@ -228,7 +231,7 @@ data class BackupConfig(
                     maxBackoffEnabled = ygMaxBackoffEnabled,
                     maxBackoff      = ygMaxBackoff
                 ) else null,
-                proxy   = ProxySettings(proxyEnabled, proxySocks, proxyDns),
+                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, dnsServer = proxyDns),
                 expose  = ExposeSettings(exposeEnabled, exposeMappings),
                 forward = ForwardSettings(forwardEnabled, forwardMappings)
             )
@@ -300,6 +303,7 @@ data class BackupConfig(
         appendLine("[proxy]")
         appendLine("enabled = ${proxy.enabled}")
         appendLine("socksAddress = \"${proxy.socksAddress.tomlEscape()}\"")
+        appendLine("httpAddress = \"${proxy.httpAddress.tomlEscape()}\"")
         appendLine("dnsServer = \"${proxy.dnsServer.tomlEscape()}\"")
         appendLine()
 
@@ -338,6 +342,7 @@ data class BackupConfig(
         val base = config.copy(
             proxyEnabled = proxy.enabled,
             socksProxy = proxy.socksAddress,
+            httpProxy = proxy.httpAddress,
             dnsServer = proxy.dnsServer,
             exposeEnabled = expose.enabled,
             exposeMappings = expose.mappings,
@@ -395,6 +400,8 @@ data class BackupConfig(
 data class ProxySettings(
     val enabled: Boolean,
     val socksAddress: String,
+    // Defaulted so legacy backups (JSON or TOML) without an HTTP proxy import cleanly.
+    val httpAddress: String = "",
     val dnsServer: String
 )
 

@@ -472,9 +472,15 @@ class YggstackService : Service() {
                 yggstack?.loadConfig(configJson)
                 logInfo("Config loaded successfully")
 
-                // Start with optional SOCKS proxy and DNS server
+                // Start with optional SOCKS/HTTP proxies and DNS server
                 val socksAddress = if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
                     config.socksProxy
+                } else {
+                    ""
+                }
+
+                val httpAddress = if (config.proxyEnabled && config.httpProxy.isNotBlank()) {
+                    config.httpProxy
                 } else {
                     ""
                 }
@@ -519,8 +525,8 @@ class YggstackService : Service() {
                 // (released on stop/idle so Power Save can fully sleep the CPU)
                 acquireWakeLock()
 
-                logDebug("Calling start() with SOCKS='$socksAddress', DNS='$dnsServer'...")
-                yggstack?.start(socksAddress, dnsServer)
+                logDebug("Calling start() with SOCKS='$socksAddress', HTTP='$httpAddress', DNS='$dnsServer'...")
+                yggstack?.start(socksAddress, httpAddress, dnsServer)
                 logInfo("Start() completed successfully")
 
                 if (lifecycle.isDestroyed) return
@@ -1223,7 +1229,7 @@ class YggstackService : Service() {
     }
 
     /**
-     * Sums active connections across the SOCKS proxy and forward-mapping
+     * Sums active connections across the SOCKS/HTTP proxy and forward-mapping
      * listeners only (ignores exposed/"remote-*" listeners), from a raw
      * GetListenersJSON payload.
      */
@@ -1387,6 +1393,13 @@ class YggstackService : Service() {
                 val listener = PlaceholderListener(Protocol.TCP, host, port)
                 placeholderListeners.add(listener)
                 listener.start { wakeNow("socks $host:$port") }
+            }
+        }
+        if (config.proxyEnabled && config.httpProxy.isNotBlank()) {
+            parseHostPort(config.httpProxy)?.let { (host, port) ->
+                val listener = PlaceholderListener(Protocol.TCP, host, port)
+                placeholderListeners.add(listener)
+                listener.start { wakeNow("http $host:$port") }
             }
         }
     }

@@ -12,6 +12,7 @@ data class YggstackConfig(
     val peers: List<String> = emptyList(),
     val privateKey: String = "",
     val socksProxy: String = "",
+    val httpProxy: String = "",
     val dnsServer: String = "",
     val proxyEnabled: Boolean = false,
     val exposeMappings: List<ExposeMapping> = emptyList(),
@@ -39,9 +40,9 @@ data class YggstackConfig(
 fun YggstackConfig.hasActiveExposedPorts(): Boolean =
     exposeEnabled && exposeMappings.any { it.enabled }
 
-/** True if there is at least one local SOCKS proxy or forward mapping Power Save could wake on. */
+/** True if there is at least one local SOCKS/HTTP proxy or forward mapping Power Save could wake on. */
 fun YggstackConfig.hasWakeableTargets(): Boolean =
-    (proxyEnabled && socksProxy.isNotBlank()) ||
+    (proxyEnabled && (socksProxy.isNotBlank() || httpProxy.isNotBlank())) ||
         (forwardEnabled && forwardMappings.any { it.enabled })
 
 /**
@@ -113,7 +114,7 @@ data class PeerDetail(
  */
 data class PortStatsDetail(
     val key: String,        // listener identity, e.g. "ltcp:127.0.0.1:8080->[300:...]:80"
-    val kind: String,       // "socks", "local-tcp", "local-udp", "remote-tcp", "remote-udp"
+    val kind: String,       // "socks", "http", "local-tcp", "local-udp", "remote-tcp", "remote-udp"
     val listenAddr: String,
     val targetAddr: String,
     val activeConnections: Long,
@@ -121,7 +122,7 @@ data class PortStatsDetail(
     val rxBytes: Long,
     val txBytes: Long
 ) {
-    val isTcp: Boolean get() = kind == "socks" || kind == "local-tcp" || kind == "remote-tcp"
+    val isTcp: Boolean get() = kind == "socks" || kind == "http" || kind == "local-tcp" || kind == "remote-tcp"
 
     /** Section this listener belongs to on the Ports stats page: "proxy", "expose" or "forward". */
     val section: String

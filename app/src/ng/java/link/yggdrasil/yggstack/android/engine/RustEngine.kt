@@ -38,8 +38,9 @@ internal class RustEngine : NativeEngine {
 
     override fun loadConfig(nativeConfig: String) = yggstack.loadConfig(nativeConfig)
 
-    override fun start(socksAddress: String, dnsServer: String) {
+    override fun start(socksAddress: String, httpAddress: String, dnsServer: String) {
         yggstack.setSocks(socksAddress)
+        yggstack.setHttp(httpAddress)
         yggstack.setNameserver(dnsServer)
         try {
             yggstack.start()

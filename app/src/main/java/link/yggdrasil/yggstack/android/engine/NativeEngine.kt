@@ -32,7 +32,7 @@ interface NativeEngine {
     fun sanitizeNativeConfig(nativeConfig: String): String
 
     fun loadConfig(nativeConfig: String)
-    fun start(socksAddress: String, dnsServer: String)
+    fun start(socksAddress: String, httpAddress: String, dnsServer: String)
     fun stop()
     fun isRunning(): Boolean
 

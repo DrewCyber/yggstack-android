@@ -797,6 +797,8 @@ internal open class UniffiVTableCallbackInterfaceLogCallback(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -859,6 +861,8 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_remote_tcp(
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_remove_remote_udp(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_retry_peers_now(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_http(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_log_callback(
 ): Short
@@ -973,6 +977,8 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_remote_tcp(`ptr`: Poi
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_remove_remote_udp(`ptr`: Pointer,`spec`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_retry_peers_now(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_http(`ptr`: Pointer,`addr`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_log_callback(`ptr`: Pointer,`callback`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1190,6 +1196,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_retry_peers_now() != 8089.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_http() != 8248.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_log_callback() != 40447.toShort()) {
@@ -1705,6 +1714,11 @@ public interface YggstackMobileInterface {
     fun `retryPeersNow`()
     
     /**
+     * Configure the HTTP proxy address (call before start()).
+     */
+    fun `setHttp`(`addr`: kotlin.String)
+    
+    /**
      * Set a log callback for Android logcat integration.
      */
     fun `setLogCallback`(`callback`: LogCallback)
@@ -2149,6 +2163,20 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
 
     
     /**
+     * Configure the HTTP proxy address (call before start()).
+     */override fun `setHttp`(`addr`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_set_http(
+        it, FfiConverterString.lower(`addr`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Set a log callback for Android logcat integration.
      */override fun `setLogCallback`(`callback`: LogCallback)
         = 
@@ -2391,10 +2419,8 @@ internal object uniffiCallbackInterfaceLogCallback {
  */
 public object FfiConverterTypeLogCallback: FfiConverterCallbackInterface<LogCallback>()
         /**
-         * Measure RTT to a QUIC peer via handshake.
-         * Returns RTT in milliseconds, or -1 if unsupported / unreachable.
-         * NOTE: The Rust yggdrasil-ng core does not support QUIC peers;
-         * this function always returns -1 and exists for API compatibility.
+         * Measure RTT to a QUIC peer via handshake (TLS 1.3, no ALPN).
+         * Returns RTT in milliseconds, or -1 if unreachable within 5 seconds.
          */ fun `checkQuicPeer`(`uri`: kotlin.String): kotlin.Long {
             return FfiConverterLong.lift(
     uniffiRustCall() { _status ->

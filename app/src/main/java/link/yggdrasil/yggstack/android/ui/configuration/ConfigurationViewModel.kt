@@ -303,6 +303,10 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(socksProxy = proxy), debouncePersist = true)
     }
 
+    fun updateHttpProxy(proxy: String) {
+        updateConfig(_config.value.copy(httpProxy = proxy), debouncePersist = true)
+    }
+
     fun updateDnsServer(dns: String) {
         updateConfig(_config.value.copy(dnsServer = dns), debouncePersist = true)
     }

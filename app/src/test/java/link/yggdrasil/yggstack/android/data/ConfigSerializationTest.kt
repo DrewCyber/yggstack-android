@@ -10,7 +10,8 @@ class ConfigSerializationTest {
     @Test fun snapshotPreservesEveryNondefaultOption() {
         val config = YggstackConfig(
             peers = listOf("tls://example.org:1234"), privateKey = key,
-            socksProxy = "127.0.0.1:1088", dnsServer = "[300::1]:53", proxyEnabled = true,
+            socksProxy = "127.0.0.1:1088", httpProxy = "127.0.0.1:8080",
+            dnsServer = "[300::1]:53", proxyEnabled = true,
             exposeMappings = listOf(ExposeMapping(Protocol.TCP, 80, "127.0.0.2", 8080, "web", false)),
             exposeEnabled = true,
             forwardMappings = listOf(ForwardMapping(Protocol.UDP, "127.0.0.1", 1234, "300::1", 53, "dns", false)),
@@ -56,6 +57,14 @@ class ConfigSerializationTest {
         val defaults = YggstackConfig()
         assertTrue(defaults.maxBackoffEnabled)
         assertEquals(5, defaults.maxBackoff)
+    }
+
+    @Test fun oldSnapshotWithoutHttpProxyFieldKeepsEmptyDefault() {
+        val restored = ConfigSerializer.decode(
+            """{"version":1,"config":{"socksProxy":"127.0.0.1:1080","proxyEnabled":true}}"""
+        )
+        assertEquals("127.0.0.1:1080", restored.socksProxy)
+        assertEquals("", restored.httpProxy)
     }
 
     @Test fun readsUnversionedRecoverySnapshot() {
