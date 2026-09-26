@@ -297,13 +297,18 @@ fun ConfigurationScreen(
                 helpContentDescription = stringResource(R.string.proxy_how_it_works),
                 onHelpClick = { showProxyHelp = true }
             ) {
-                OutlinedTextField(
+                LocalIpTextField(
                     value = config.socksProxy,
                     onValueChange = { viewModel.updateSocksProxy(it) },
                     label = { Text(stringResource(R.string.socks_proxy)) },
                     placeholder = { Text(stringResource(R.string.socks_proxy_hint)) },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isServiceRunning && config.proxyEnabled
+                    enabled = !isServiceRunning && config.proxyEnabled,
+                    onPick = { ip, current ->
+                        val port = current.substringAfterLast(':', "")
+                            .toIntOrNull()?.takeIf { it in 1..65535 } ?: 1080
+                        "$ip:$port"
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1281,9 +1286,9 @@ fun ExposeMappingDialog(
                     }
                 )
 
-                OutlinedTextField(
+                LocalIpTextField(
                     value = localIp,
-                    onValueChange = { 
+                    onValueChange = {
                         localIp = it
                         localIpError = it.isNotEmpty() && !validateIPv4(it)
                     },
@@ -1461,9 +1466,9 @@ fun ForwardMappingDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                OutlinedTextField(
+                LocalIpTextField(
                     value = localIp,
-                    onValueChange = { 
+                    onValueChange = {
                         localIp = it
                         localIpError = it.isNotEmpty() && !validateIPv4(it) && it != "::1"
                     },
