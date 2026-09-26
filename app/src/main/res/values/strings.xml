@@ -40,7 +40,7 @@
     <string name="pac_server">PAC Server</string>
     <string name="pac_port">PAC Port</string>
     <string name="pac_port_hint">8081</string>
-    <string name="pac_traffic_mode_ygg">Route only *.ygg domains through proxy.</string>
+    <string name="pac_traffic_mode_ygg">Route only *.ygg domains and Yggdrasil IPv6 addresses through proxy.</string>
     <string name="pac_traffic_mode_all">Route all traffic through proxy.</string>
     <string name="copy_pac_url">Copy PAC URL</string>
     <string name="pac_url_copied">PAC URL copied to clipboard</string>

@@ -40,7 +40,7 @@
     <string name="pac_server">PAC-сервер</string>
     <string name="pac_port">PAC-порт</string>
     <string name="pac_port_hint">8081</string>
-    <string name="pac_traffic_mode_ygg">Направлять через прокси только домены *.ygg.</string>
+    <string name="pac_traffic_mode_ygg">Направлять через прокси только домены *.ygg и IPv6-адреса Yggdrasil.</string>
     <string name="pac_traffic_mode_all">Направлять через прокси весь трафик.</string>
     <string name="copy_pac_url">Скопировать PAC-URL</string>
     <string name="pac_url_copied">PAC-URL скопирован в буфер обмена</string>
