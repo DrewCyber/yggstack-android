@@ -22,7 +22,8 @@ app/                      # Android app module (Kotlin, Gradle)
   src/go/                 # go flavor: GoEngine + NativeConfigJson (JSON config)
   src/ng/                 # ng flavor: RustEngine + NativeConfigToml + uniffi bindings
     jniLibs/              # .so per ABI — gitignored, built from lib/yggstack-ng
-  libs/yggstack.aar        # go flavor PREBUILT — do not hand-edit; rebuilt from lib/yggstack
+  libs/yggstack.aar        # go flavor engine AAR — gitignored; built from lib/yggstack
+                            # (locally via mobile/build-android.sh; CI builds it fresh)
   build/                   # Generated Gradle output — never read or search here
 lib/yggstack/              # Git submodule: upstream Go source, own AGENTS.md/toolchain
 lib/yggstack-ng/           # Git submodule: Rust yggstack-ng (branch main)
@@ -75,9 +76,12 @@ cd lib/yggstack-ng
 for t in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
   cargo ndk -t $t -o ../../app/src/ng/jniLibs build -p yggstack-mobile --release
 done
+
+# One-shot ng build: all 4 ABIs + regenerated Kotlin bindings (needs ANDROID_NDK_HOME)
+ANDROID_NDK_HOME=<ndk-path> ./crates/yggstack-mobile/scripts/build_android.sh
 ```
 
-Editing engine sources has no effect until the AAR / `.so` are rebuilt as above. After changing the UniFFI UDL, also regenerate the Kotlin bindings (`crates/yggstack-mobile` README in the submodule) and update `app/src/ng/java/uniffi/`.
+Editing engine sources has no effect until the AAR / `.so` are rebuilt as above. After changing the UniFFI UDL, regenerate the Kotlin bindings and update the checked-in copy in `app/src/ng/java/uniffi/` (CI does NOT regenerate them — the checked-in bindings are what ships). `crates/yggstack-mobile/scripts/build_android.sh` does the regeneration: `uniffi-bindgen --library` needs a library the host can load, so the script builds the cdylib for the host and generates from that (the Android `.so` cannot be dlopened on macOS/Linux); output lands in `lib/yggstack-ng/android-build/kotlin/uniffi/yggstack_mobile/`.
 
 Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal) for both flavors and published on tag push (`[0-9]+.[0-9]+.[0-9]+`) via `build-release.yml`. go APKs keep the legacy names `yggstack-<version>-<abi>.apk`; ng APKs are `yggstack-ng-<version>-<abi>.apk`.
 
