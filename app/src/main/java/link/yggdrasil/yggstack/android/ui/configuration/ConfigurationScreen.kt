@@ -1,13 +1,18 @@
 package link.yggdrasil.yggstack.android.ui.configuration
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -25,6 +30,8 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
@@ -371,6 +378,74 @@ fun ConfigurationScreen(
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // PAC server (Wi-Fi Proxy Auto-Config)
+                PowerSaveToggleRow(
+                    label = stringResource(R.string.pac_server),
+                    checked = config.pacEnabled,
+                    onCheckedChange = { viewModel.togglePacEnabled() },
+                    enabled = !isServiceRunning && config.proxyEnabled
+                )
+
+                if (config.pacEnabled) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = config.pacPort.toString(),
+                        onValueChange = { text ->
+                            text.toIntOrNull()?.takeIf { it in 1..65535 }
+                                ?.let { viewModel.updatePacPort(it) }
+                        },
+                        label = { Text(stringResource(R.string.pac_port)) },
+                        placeholder = { Text(stringResource(R.string.pac_port_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isServiceRunning && config.proxyEnabled,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    PowerSaveToggleRow(
+                        label = stringResource(R.string.pac_all_traffic),
+                        checked = config.pacAllTraffic,
+                        onCheckedChange = { viewModel.togglePacAllTraffic() },
+                        enabled = !isServiceRunning && config.proxyEnabled
+                    )
+
+                    // The URL is static while configured — copyable even with
+                    // the service running, since it never changes on the fly.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = PacGenerator.pacUrl(config.pacPort),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = {
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText("PAC URL", PacGenerator.pacUrl(config.pacPort))
+                            )
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.pac_url_copied),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(R.string.copy_pac_url),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
 
             }
 

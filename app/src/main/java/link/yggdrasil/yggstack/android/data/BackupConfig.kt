@@ -58,7 +58,10 @@ data class BackupConfig(
                     enabled = config.proxyEnabled,
                     socksAddress = config.socksProxy,
                     httpAddress = config.httpProxy,
-                    dnsServer = config.dnsServer
+                    dnsServer = config.dnsServer,
+                    pacEnabled = config.pacEnabled,
+                    pacPort = config.pacPort,
+                    pacAllTraffic = config.pacAllTraffic
                 ),
                 expose = ExposeSettings(
                     enabled = config.exposeEnabled,
@@ -96,6 +99,9 @@ data class BackupConfig(
             var proxySocks = ""
             var proxyHttp = ""
             var proxyDns = ""
+            var proxyPacEnabled = false
+            var proxyPacPort = 8081
+            var proxyPacAllTraffic = false
 
             // expose
             var exposeEnabled = false
@@ -194,6 +200,9 @@ data class BackupConfig(
                         "socksAddress" -> proxySocks   = strVal()
                         "httpAddress" -> proxyHttp    = strVal()
                         "dnsServer"   -> proxyDns      = strVal()
+                        "pacEnabled"      -> proxyPacEnabled = boolVal()
+                        "pacPort"         -> proxyPacPort = intVal()
+                        "pacAllTraffic"   -> proxyPacAllTraffic = boolVal()
                     }
                     "expose" -> when (key) {
                         "enabled" -> exposeEnabled = boolVal()
@@ -231,7 +240,8 @@ data class BackupConfig(
                     maxBackoffEnabled = ygMaxBackoffEnabled,
                     maxBackoff      = ygMaxBackoff
                 ) else null,
-                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, dnsServer = proxyDns),
+                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, dnsServer = proxyDns,
+                    pacEnabled = proxyPacEnabled, pacPort = proxyPacPort, pacAllTraffic = proxyPacAllTraffic),
                 expose  = ExposeSettings(exposeEnabled, exposeMappings),
                 forward = ForwardSettings(forwardEnabled, forwardMappings)
             )
@@ -305,6 +315,9 @@ data class BackupConfig(
         appendLine("socksAddress = \"${proxy.socksAddress.tomlEscape()}\"")
         appendLine("httpAddress = \"${proxy.httpAddress.tomlEscape()}\"")
         appendLine("dnsServer = \"${proxy.dnsServer.tomlEscape()}\"")
+        appendLine("pacEnabled = ${proxy.pacEnabled}")
+        appendLine("pacPort = ${proxy.pacPort}")
+        appendLine("pacAllTraffic = ${proxy.pacAllTraffic}")
         appendLine()
 
         appendLine("[expose]")
@@ -344,6 +357,9 @@ data class BackupConfig(
             socksProxy = proxy.socksAddress,
             httpProxy = proxy.httpAddress,
             dnsServer = proxy.dnsServer,
+            pacEnabled = proxy.pacEnabled,
+            pacPort = proxy.pacPort.coerceIn(1, 65535),
+            pacAllTraffic = proxy.pacAllTraffic,
             exposeEnabled = expose.enabled,
             exposeMappings = expose.mappings,
             forwardEnabled = forward.enabled,
@@ -402,7 +418,10 @@ data class ProxySettings(
     val socksAddress: String,
     // Defaulted so legacy backups (JSON or TOML) without an HTTP proxy import cleanly.
     val httpAddress: String = "",
-    val dnsServer: String
+    val dnsServer: String,
+    val pacEnabled: Boolean = false,
+    val pacPort: Int = 8081,
+    val pacAllTraffic: Boolean = false
 )
 
 /**

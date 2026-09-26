@@ -28,11 +28,17 @@
     <string name="proxy_config_section">Yggdrasil прокси</string>
     <string name="proxy_how_it_works">Как это работает?</string>
     <string name="proxy_how_it_works_title">Как работает прокси Yggdrasil</string>
-    <string name="proxy_how_it_works_body">В сети Yggdrasil работает ряд внутренних сайтов и собственный DNS с зоной *.ygg. Вместе с указанным DNS-сервером этот прокси позволяет браузеру открывать внутренние сайты Yggdrasil, например:\n\nhttp://howto.ygg\nhttp://nmap.ygg\nhttp://myip.ygg\nhttp://portal.ygg\nhttp://librespeed.itrus.ygg/\n\nКроме того, прокси сам разрешает специальную зону pk.ygg без участия DNS-сервера: имя вида &lt;ed25519-public-key&gt;.pk.ygg указывает на Yggdrasil-адрес узла с этим публичным ключом.\n\nP.S.: Если развернуть собственный шлюз DNS64+NAT64 (https://github.com/DrewCyber/ydn64), этот прокси может предоставить доступ и к глобальному интернету. Подробнее о NAT64: https://yggwiki.cc/yggdrasil:tunnels:nat64\n\nСовет для Android: в настройках Wi-Fi принимается только HTTP-прокси, но не SOCKS. Включите HTTP-прокси выше, затем укажите его в настройках Wi-Fi (изменение сети → Дополнительно → Прокси: Вручную, узел 127.0.0.1, порт 8080). Прокси действует только для этой сети Wi-Fi; некоторые приложения со своей сетевой библиотекой его игнорируют.</string>
+    <string name="proxy_how_it_works_body">В сети Yggdrasil работает ряд внутренних сайтов и собственный DNS с зоной *.ygg. Вместе с указанным DNS-сервером этот прокси позволяет браузеру открывать внутренние сайты Yggdrasil, например:\n\nhttp://howto.ygg\nhttp://nmap.ygg\nhttp://myip.ygg\nhttp://portal.ygg\nhttp://librespeed.itrus.ygg/\n\nКроме того, прокси сам разрешает специальную зону pk.ygg без участия DNS-сервера: имя вида &lt;ed25519-public-key&gt;.pk.ygg указывает на Yggdrasil-адрес узла с этим публичным ключом.\n\nP.S.: Если развернуть собственный шлюз DNS64+NAT64 (https://github.com/DrewCyber/ydn64), этот прокси может предоставить доступ и к глобальному интернету. Подробнее о NAT64: https://yggwiki.cc/yggdrasil:tunnels:nat64\n\nСовет для Android: в настройках Wi-Fi принимается только HTTP-прокси, но не SOCKS. Включите HTTP-прокси выше, затем укажите его в настройках Wi-Fi (изменение сети → Дополнительно → Прокси: Вручную, узел 127.0.0.1, порт 8080). Прокси действует только для этой сети Wi-Fi; некоторые приложения со своей сетевой библиотекой его игнорируют.\n\nЛучше используйте PAC-сервер вместо ручного прокси. С ручным прокси Android пропускает собственную проверку интернета через сеть Yggdrasil, не проходит её и может пометить Wi-Fi как «без интернета» — с переключением на мобильную сеть. PAC-скрипт возвращает DIRECT для всего, кроме *.ygg: проверка проходит, и только сайты Yggdrasil идут через прокси. Включите PAC-сервер, скопируйте показанный выше PAC-URL и укажите его в настройках Wi-Fi (изменение сети → Дополнительно → Прокси: Автоконфигурация). «Направлять весь трафик через прокси» отправляет через прокси всё, кроме локальных адресов — для работы с собственным шлюзом DNS64+NAT64. Учтите: некоторые фирменные реализации PAC (например, MIUI) работают нестабильно; ручной режим остаётся доступным.</string>
     <string name="socks_proxy">SOCKS прокси</string>
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="http_proxy">HTTP прокси</string>
     <string name="http_proxy_hint">127.0.0.1:8080</string>
+    <string name="pac_server">PAC-сервер</string>
+    <string name="pac_port">PAC-порт</string>
+    <string name="pac_port_hint">8081</string>
+    <string name="pac_all_traffic">Направлять весь трафик через прокси</string>
+    <string name="copy_pac_url">Скопировать PAC-URL</string>
+    <string name="pac_url_copied">PAC-URL скопирован в буфер обмена</string>
     <string name="dns_server">DNS сервер</string>
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
     <string name="expose_local_port_section">Открыть локальный порт</string>
@@ -179,6 +185,7 @@
     <string name="enabled_label">• Включено: %s</string>
     <string name="socks_label">• SOCKS: %s</string>
     <string name="http_label">• HTTP: %s</string>
+    <string name="pac_label">• PAC: %1$s (%2$s)</string>
     <string name="dns_label">• DNS: %s</string>
     <string name="mappings_count">• Маппингов: %d</string>
     <string name="more_mappings">  - ... и еще %d</string>

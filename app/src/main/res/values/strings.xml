@@ -28,11 +28,17 @@
     <string name="proxy_config_section">Yggdrasil Proxy</string>
     <string name="proxy_how_it_works">How it works?</string>
     <string name="proxy_how_it_works_title">How Yggdrasil Proxy works</string>
-    <string name="proxy_how_it_works_body">The Yggdrasil network hosts a number of internal websites and its own DNS zone, *.ygg. Together with the configured DNS server, this proxy lets your browser open those internal Yggdrasil sites, for example:\n\nhttp://howto.ygg\nhttp://nmap.ygg\nhttp://myip.ygg\nhttp://portal.ygg\nhttp://librespeed.itrus.ygg/\n\nThe proxy also resolves the special pk.ygg zone by itself, without any DNS server: a name like &lt;ed25519-public-key&gt;.pk.ygg points to the Yggdrasil address of the node with that public key.\n\nTip: if you run your own DNS64+NAT64 gateway (https://github.com/DrewCyber/ydn64), this proxy can also provide access to the global Internet. Learn more about NAT64: https://yggwiki.cc/yggdrasil:tunnels:nat64\n\nAndroid tip: Wi-Fi proxy settings accept only an HTTP proxy, not SOCKS. Enable the HTTP proxy above, then set it in Wi-Fi settings (edit network → Advanced options → Proxy: Manual, host 127.0.0.1, port 8080). It applies only to that Wi-Fi network, and some apps with their own networking ignore it.</string>
+    <string name="proxy_how_it_works_body">The Yggdrasil network hosts a number of internal websites and its own DNS zone, *.ygg. Together with the configured DNS server, this proxy lets your browser open those internal Yggdrasil sites, for example:\n\nhttp://howto.ygg\nhttp://nmap.ygg\nhttp://myip.ygg\nhttp://portal.ygg\nhttp://librespeed.itrus.ygg/\n\nThe proxy also resolves the special pk.ygg zone by itself, without any DNS server: a name like &lt;ed25519-public-key&gt;.pk.ygg points to the Yggdrasil address of the node with that public key.\n\nTip: if you run your own DNS64+NAT64 gateway (https://github.com/DrewCyber/ydn64), this proxy can also provide access to the global Internet. Learn more about NAT64: https://yggwiki.cc/yggdrasil:tunnels:nat64\n\nAndroid tip: Wi-Fi proxy settings accept only an HTTP proxy, not SOCKS. Enable the HTTP proxy above, then set it in Wi-Fi settings (edit network → Advanced options → Proxy: Manual, host 127.0.0.1, port 8080). It applies only to that Wi-Fi network, and some apps with their own networking ignore it.\n\nBetter: use the PAC Server instead of the Manual proxy. With a Manual proxy, Android routes its own connectivity check through the Yggdrasil network, fails it, and may mark the Wi-Fi network \"no internet\" — switching you to cellular. The PAC script returns DIRECT for everything except *.ygg, so the check passes and only Yggdrasil sites use the proxy. Enable PAC Server, copy the PAC URL shown above, and set it in Wi-Fi settings (edit network → Advanced options → Proxy: Proxy Auto-Config). \"Route all traffic through proxy\" sends everything except local addresses through the proxy — for use with your own DNS64+NAT64 gateway. Note: some vendor PAC implementations (e.g. MIUI) are unreliable; Manual mode remains available.</string>
     <string name="socks_proxy">SOCKS Proxy</string>
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="http_proxy">HTTP Proxy</string>
     <string name="http_proxy_hint">127.0.0.1:8080</string>
+    <string name="pac_server">PAC Server</string>
+    <string name="pac_port">PAC Port</string>
+    <string name="pac_port_hint">8081</string>
+    <string name="pac_all_traffic">Route all traffic through proxy</string>
+    <string name="copy_pac_url">Copy PAC URL</string>
+    <string name="pac_url_copied">PAC URL copied to clipboard</string>
     <string name="dns_server">DNS Server</string>
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
     <string name="expose_local_port_section">Expose Local Port</string>
@@ -180,6 +186,7 @@
     <string name="enabled_label">• Enabled: %s</string>
     <string name="socks_label">• SOCKS: %s</string>
     <string name="http_label">• HTTP: %s</string>
+    <string name="pac_label">• PAC: %1$s (%2$s)</string>
     <string name="dns_label">• DNS: %s</string>
     <string name="mappings_count">• Mappings: %d</string>
     <string name="more_mappings">  - ... and %d more</string>

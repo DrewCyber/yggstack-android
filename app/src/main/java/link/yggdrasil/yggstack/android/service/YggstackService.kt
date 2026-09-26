@@ -24,6 +24,7 @@ import androidx.core.app.NotificationCompat
 import link.yggdrasil.yggstack.android.BuildConfig
 import link.yggdrasil.yggstack.android.MainActivity
 import link.yggdrasil.yggstack.android.R
+import link.yggdrasil.yggstack.android.data.PacGenerator
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.PersistentLogger
@@ -92,6 +93,11 @@ class YggstackService : Service() {
     private val placeholderListeners = mutableListOf<PlaceholderListener>()
     private val wakeTriggerLock = Any()
     @Volatile private var wakeInProgress = false
+
+    // PAC server: tied to the SERVICE lifetime (not the node's) so Android's
+    // periodic PAC re-fetches work while the node is stopped or in Power Save
+    // idle, without waking it. Stopped only on full service teardown.
+    @Volatile private var pacServer: PacServer? = null
 
     // Placeholder bind retry: the real listeners of a powering-down node can
     // still hold the port briefly after stop() returns, and a single failed
@@ -379,6 +385,7 @@ class YggstackService : Service() {
     override fun onDestroy() {
         serviceAlive = false
         unregisterScreenStateReceiver()
+        stopPacServer()
         lifecycle.destroy()
         super.onDestroy()
     }
@@ -490,6 +497,9 @@ class YggstackService : Service() {
                 } else {
                     ""
                 }
+
+                // PAC server follows the service lifetime, not the node's.
+                ensurePacServer(config)
 
                 // Clear any existing mappings from previous runs to avoid duplicates
                 yggstack?.clearLocalMappings()
@@ -709,8 +719,50 @@ class YggstackService : Service() {
     fun updateLiveConfig(config: YggstackConfig) {
         lastConfig = config
         saveLastConfigToPreferences(config)
+        // PAC script derives from config; regenerate even though PAC fields
+        // are UI-gated while the service runs (defensive, costs nothing).
+        pacServer?.let { srv ->
+            if (config.proxyEnabled && config.pacEnabled) {
+                srv.update(PacGenerator.generate(config))
+            }
+        }
         val updatedJson = buildConfigJson(config)
         _fullConfigJSON.value = sanitizeConfigJson(updatedJson)
+    }
+
+    /**
+     * Start (or leave stopped) the PAC server to match the config. Kept
+     * running across node stop / Power Save idle; only [stopPacServer] on
+     * service teardown ends it.
+     */
+    private fun ensurePacServer(config: YggstackConfig) {
+        val wanted = config.proxyEnabled && config.pacEnabled &&
+            (config.httpProxy.isNotBlank() || config.socksProxy.isNotBlank())
+        if (!wanted) {
+            stopPacServer()
+            return
+        }
+        val existing = pacServer
+        if (existing != null) {
+            existing.update(PacGenerator.generate(config))
+            return
+        }
+        val server = PacServer(config.pacPort, PacGenerator.PAC_PATH)
+        if (server.start(PacGenerator.generate(config))) {
+            pacServer = server
+            logInfo("PAC server listening on ${PacGenerator.pacUrl(config.pacPort)} (${if (config.pacAllTraffic) "all traffic" else "ygg only"})")
+        } else {
+            logError("PAC server: port ${config.pacPort} unavailable — set a different PAC port")
+            pacServer = null
+        }
+    }
+
+    private fun stopPacServer() {
+        pacServer?.let { srv ->
+            srv.stop()
+            logInfo("PAC server stopped")
+        }
+        pacServer = null
     }
 
     /**

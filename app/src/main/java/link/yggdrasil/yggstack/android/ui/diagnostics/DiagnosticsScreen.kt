@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.PacGenerator
 import link.yggdrasil.yggstack.android.data.PeerDetail
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
 import link.yggdrasil.yggstack.android.data.YggstackConfig
@@ -602,6 +603,17 @@ fun ImportPreviewDialog(
                 if (backup.proxy.dnsServer.isNotEmpty()) {
                     Text(
                         text = stringResource(R.string.dns_label, backup.proxy.dnsServer),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                if (backup.proxy.pacEnabled) {
+                    Text(
+                        text = stringResource(
+                            R.string.pac_label,
+                            PacGenerator.pacUrl(backup.proxy.pacPort),
+                            if (backup.proxy.pacAllTraffic) "all traffic" else "ygg only"
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace
                     )

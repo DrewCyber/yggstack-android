@@ -315,6 +315,20 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(proxyEnabled = !_config.value.proxyEnabled))
     }
 
+    fun togglePacEnabled() {
+        updateConfig(_config.value.copy(pacEnabled = !_config.value.pacEnabled))
+    }
+
+    fun updatePacPort(port: Int) {
+        if (port in 1..65535 && port != _config.value.pacPort) {
+            updateConfig(_config.value.copy(pacPort = port), debouncePersist = true)
+        }
+    }
+
+    fun togglePacAllTraffic() {
+        updateConfig(_config.value.copy(pacAllTraffic = !_config.value.pacAllTraffic))
+    }
+
     fun addExposeMapping(mapping: ExposeMapping) {
         val currentMappings = _config.value.exposeMappings.toMutableList()
         currentMappings.add(mapping)

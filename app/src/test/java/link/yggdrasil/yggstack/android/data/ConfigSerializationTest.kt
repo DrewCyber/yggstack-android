@@ -67,6 +67,23 @@ class ConfigSerializationTest {
         assertEquals("", restored.httpProxy)
     }
 
+    @Test fun oldSnapshotWithoutPacFieldsKeepsPacDefaults() {
+        val restored = ConfigSerializer.decode(
+            """{"version":1,"config":{"proxyEnabled":true,"httpProxy":"127.0.0.1:8080"}}"""
+        )
+        assertFalse(restored.pacEnabled)
+        assertEquals(8081, restored.pacPort)
+        assertFalse(restored.pacAllTraffic)
+    }
+
+    @Test fun pacFieldsRoundTripThroughSnapshot() {
+        val config = YggstackConfig(
+            proxyEnabled = true, httpProxy = "127.0.0.1:8080",
+            pacEnabled = true, pacPort = 9911, pacAllTraffic = true
+        )
+        assertEquals(config, ConfigSerializer.decode(ConfigSerializer.encode(config)))
+    }
+
     @Test fun readsUnversionedRecoverySnapshot() {
         val restored = ConfigSerializer.decode("""{"privateKey":"abc","peers":[],"exposeMappings":[{"protocol":"TCP","localPort":80,"yggPort":80}],"maxBackoff":17}""")
         assertEquals("abc", restored.privateKey)

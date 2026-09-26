@@ -70,4 +70,27 @@ class BackupConfigTest {
         val fromJson = BackupConfig.fromJson(json).getOrThrow()
         assertEquals("", fromJson.proxy.httpAddress)
     }
+
+    @Test fun pacSettingsRoundTripThroughTomlAndLegacyImportsDefault() {
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(
+                proxyEnabled = true, httpProxy = "127.0.0.1:8080",
+                pacEnabled = true, pacPort = 9911, pacAllTraffic = true
+            )
+        )
+        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        assertTrue(restored.proxy.pacEnabled)
+        assertEquals(9911, restored.proxy.pacPort)
+        assertTrue(restored.proxy.pacAllTraffic)
+        val applied = restored.applyTo(YggstackConfig())
+        assertTrue(applied.pacEnabled)
+        assertEquals(9911, applied.pacPort)
+        assertTrue(applied.pacAllTraffic)
+
+        // Legacy TOML without PAC keys → defaults.
+        val legacy = BackupConfig.fromToml(toml("")).getOrThrow()
+        assertFalse(legacy.proxy.pacEnabled)
+        assertEquals(8081, legacy.proxy.pacPort)
+        assertFalse(legacy.proxy.pacAllTraffic)
+    }
 }
