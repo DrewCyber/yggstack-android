@@ -11,11 +11,15 @@ class PacGeneratorTest {
         proxyEnabled: Boolean = true,
         http: String = "127.0.0.1:8080",
         socks: String = "",
-        allTraffic: Boolean = false
+        allTraffic: Boolean = false,
+        httpEnabled: Boolean = true,
+        socksEnabled: Boolean = true
     ) = YggstackConfig(
         proxyEnabled = proxyEnabled,
         socksProxy = socks,
         httpProxy = http,
+        socksEnabled = socksEnabled,
+        httpEnabled = httpEnabled,
         pacEnabled = true,
         pacAllTraffic = allTraffic
     )
@@ -79,13 +83,35 @@ class PacGeneratorTest {
         assertFalse(script.contains("SOCKS"))
     }
 
+    @Test fun untickedHttpExcludedEvenWithAddress() {
+        val script = PacGenerator.generate(
+            config(socks = "127.0.0.1:1080", httpEnabled = false)
+        )
+        assertFalse(script.contains("PROXY "))
+        assertTrue(script.contains("SOCKS 127.0.0.1:1080"))
+    }
+
+    @Test fun untickedSocksExcludedEvenWithAddress() {
+        val script = PacGenerator.generate(config(socks = "127.0.0.1:1080", socksEnabled = false))
+        assertTrue(script.contains("PROXY 127.0.0.1:8080"))
+        assertFalse(script.contains("SOCKS"))
+    }
+
+    @Test fun bothProxiesUntickedServesAllDirect() {
+        val script = PacGenerator.generate(config(socks = "127.0.0.1:1080", httpEnabled = false, socksEnabled = false))
+        assertTrue(script.contains("return \"DIRECT\""))
+        assertFalse(script.contains("PROXY"))
+        assertFalse(script.contains("SOCKS"))
+    }
+
     @Test fun proxyDisabledYieldsNoProxyRules() {
         val script = PacGenerator.generate(config(proxyEnabled = false))
         assertFalse(script.contains("PROXY"))
     }
 
     @Test fun pacUrlShape() {
-        assertEquals("http://127.0.0.1:8081/proxy.pac", PacGenerator.pacUrl(8081))
+        assertEquals("http://127.0.0.1:8081/proxy.pac", PacGenerator.pacUrl("127.0.0.1", 8081))
+        assertEquals("http://192.168.1.5:9911/proxy.pac", PacGenerator.pacUrl("192.168.1.5", 9911))
         assertEquals("/proxy.pac", PacGenerator.PAC_PATH)
     }
 }

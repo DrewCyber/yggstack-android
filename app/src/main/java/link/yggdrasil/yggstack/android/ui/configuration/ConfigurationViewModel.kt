@@ -315,8 +315,22 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(proxyEnabled = !_config.value.proxyEnabled))
     }
 
+    fun toggleSocksEnabled() {
+        updateConfig(_config.value.copy(socksEnabled = !_config.value.socksEnabled))
+    }
+
+    fun toggleHttpEnabled() {
+        updateConfig(_config.value.copy(httpEnabled = !_config.value.httpEnabled))
+    }
+
     fun togglePacEnabled() {
         updateConfig(_config.value.copy(pacEnabled = !_config.value.pacEnabled))
+    }
+
+    fun updatePacIp(ip: String) {
+        if (ip != _config.value.pacIp) {
+            updateConfig(_config.value.copy(pacIp = ip), debouncePersist = true)
+        }
     }
 
     fun updatePacPort(port: Int) {
@@ -325,8 +339,10 @@ class ConfigurationViewModel(
         }
     }
 
-    fun togglePacAllTraffic() {
-        updateConfig(_config.value.copy(pacAllTraffic = !_config.value.pacAllTraffic))
+    fun setPacAllTraffic(value: Boolean) {
+        if (value != _config.value.pacAllTraffic) {
+            updateConfig(_config.value.copy(pacAllTraffic = value))
+        }
     }
 
     fun addExposeMapping(mapping: ExposeMapping) {

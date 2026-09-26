@@ -75,22 +75,56 @@ class BackupConfigTest {
         val backup = BackupConfig.fromYggstackConfig(
             YggstackConfig(
                 proxyEnabled = true, httpProxy = "127.0.0.1:8080",
-                pacEnabled = true, pacPort = 9911, pacAllTraffic = true
+                pacEnabled = true, pacIp = "192.168.1.5", pacPort = 9911, pacAllTraffic = true
             )
         )
         val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
         assertTrue(restored.proxy.pacEnabled)
+        assertEquals("192.168.1.5", restored.proxy.pacIp)
         assertEquals(9911, restored.proxy.pacPort)
         assertTrue(restored.proxy.pacAllTraffic)
         val applied = restored.applyTo(YggstackConfig())
         assertTrue(applied.pacEnabled)
+        assertEquals("192.168.1.5", applied.pacIp)
         assertEquals(9911, applied.pacPort)
         assertTrue(applied.pacAllTraffic)
 
         // Legacy TOML without PAC keys → defaults.
         val legacy = BackupConfig.fromToml(toml("")).getOrThrow()
         assertFalse(legacy.proxy.pacEnabled)
+        assertEquals("127.0.0.1", legacy.proxy.pacIp)
         assertEquals(8081, legacy.proxy.pacPort)
         assertFalse(legacy.proxy.pacAllTraffic)
+    }
+
+    @Test fun perProxyEnableTicksRoundTripThroughToml() {
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(
+                socksProxy = "127.0.0.1:1080", httpProxy = "127.0.0.1:8080",
+                proxyEnabled = true, socksEnabled = false, httpEnabled = true
+            )
+        )
+        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        assertFalse(restored.proxy.socksEnabled)
+        assertTrue(restored.proxy.httpEnabled)
+        val applied = restored.applyTo(YggstackConfig())
+        assertFalse(applied.socksEnabled)
+        assertTrue(applied.httpEnabled)
+        // The unticked proxy's address survives the round trip.
+        assertEquals("127.0.0.1:1080", applied.socksProxy)
+    }
+
+    @Test fun legacyBackupWithoutEnableTicksEnablesOnlySocks() {
+        // Legacy TOML without socksEnabled/httpEnabled lines…
+        val fromToml = BackupConfig.fromToml(toml("")).getOrThrow()
+        assertTrue(fromToml.proxy.socksEnabled)
+        assertFalse(fromToml.proxy.httpEnabled)
+        assertTrue(fromToml.applyTo(YggstackConfig()).socksEnabled)
+        // …and legacy JSON without the keys.
+        val json = """{"proxy":{"enabled":true,"socksAddress":"127.0.0.1:1080","dnsServer":""},
+            "expose":{"enabled":false},"forward":{"enabled":false}}"""
+        val fromJson = BackupConfig.fromJson(json).getOrThrow()
+        assertTrue(fromJson.proxy.socksEnabled)
+        assertFalse(fromJson.proxy.httpEnabled)
     }
 }

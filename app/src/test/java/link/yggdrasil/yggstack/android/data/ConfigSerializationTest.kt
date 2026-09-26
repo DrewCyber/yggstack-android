@@ -67,11 +67,38 @@ class ConfigSerializationTest {
         assertEquals("", restored.httpProxy)
     }
 
+    @Test fun oldSnapshotWithoutEnableTicksEnablesOnlySocks() {
+        // Snapshots from before the per-proxy ticks decode with the app's
+        // defaults: SOCKS on, HTTP off.
+        val restored = ConfigSerializer.decode(
+            """{"version":1,"config":{"socksProxy":"127.0.0.1:1080","proxyEnabled":true}}"""
+        )
+        assertTrue(restored.socksEnabled)
+        assertFalse(restored.httpEnabled)
+    }
+
+    @Test fun defaultsEnableOnlySocksProxy() {
+        val defaults = YggstackConfig()
+        assertFalse(defaults.proxyEnabled)
+        assertTrue(defaults.socksEnabled)
+        assertFalse(defaults.httpEnabled)
+        assertFalse(defaults.pacEnabled)
+    }
+
+    @Test fun perProxyEnableTicksRoundTripThroughSnapshot() {
+        val config = YggstackConfig(
+            proxyEnabled = true, socksProxy = "127.0.0.1:1080", httpProxy = "127.0.0.1:8080",
+            socksEnabled = false
+        )
+        assertEquals(config, ConfigSerializer.decode(ConfigSerializer.encode(config)))
+    }
+
     @Test fun oldSnapshotWithoutPacFieldsKeepsPacDefaults() {
         val restored = ConfigSerializer.decode(
             """{"version":1,"config":{"proxyEnabled":true,"httpProxy":"127.0.0.1:8080"}}"""
         )
         assertFalse(restored.pacEnabled)
+        assertEquals("127.0.0.1", restored.pacIp)
         assertEquals(8081, restored.pacPort)
         assertFalse(restored.pacAllTraffic)
     }

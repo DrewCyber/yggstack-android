@@ -480,13 +480,13 @@ class YggstackService : Service() {
                 logInfo("Config loaded successfully")
 
                 // Start with optional SOCKS/HTTP proxies and DNS server
-                val socksAddress = if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
+                val socksAddress = if (config.proxyEnabled && config.socksEnabled && config.socksProxy.isNotBlank()) {
                     config.socksProxy
                 } else {
                     ""
                 }
 
-                val httpAddress = if (config.proxyEnabled && config.httpProxy.isNotBlank()) {
+                val httpAddress = if (config.proxyEnabled && config.httpEnabled && config.httpProxy.isNotBlank()) {
                     config.httpProxy
                 } else {
                     ""
@@ -737,7 +737,8 @@ class YggstackService : Service() {
      */
     private fun ensurePacServer(config: YggstackConfig) {
         val wanted = config.proxyEnabled && config.pacEnabled &&
-            (config.httpProxy.isNotBlank() || config.socksProxy.isNotBlank())
+            ((config.httpEnabled && config.httpProxy.isNotBlank()) ||
+                (config.socksEnabled && config.socksProxy.isNotBlank()))
         if (!wanted) {
             stopPacServer()
             return
@@ -747,10 +748,10 @@ class YggstackService : Service() {
             existing.update(PacGenerator.generate(config))
             return
         }
-        val server = PacServer(config.pacPort, PacGenerator.PAC_PATH)
+        val server = PacServer(config.pacPort, PacGenerator.PAC_PATH, config.pacIp)
         if (server.start(PacGenerator.generate(config))) {
             pacServer = server
-            logInfo("PAC server listening on ${PacGenerator.pacUrl(config.pacPort)} (${if (config.pacAllTraffic) "all traffic" else "ygg only"})")
+            logInfo("PAC server listening on ${PacGenerator.pacUrl(config.pacIp, config.pacPort)} (${if (config.pacAllTraffic) "all traffic" else "ygg only"})")
         } else {
             logError("PAC server: port ${config.pacPort} unavailable — set a different PAC port")
             pacServer = null
@@ -1440,14 +1441,14 @@ class YggstackService : Service() {
                 listener.start { wakeNow("${mapping.protocol.name.lowercase()} forward ${mapping.localIp}:${mapping.localPort}") }
             }
         }
-        if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
+        if (config.proxyEnabled && config.socksEnabled && config.socksProxy.isNotBlank()) {
             parseHostPort(config.socksProxy)?.let { (host, port) ->
                 val listener = PlaceholderListener(Protocol.TCP, host, port)
                 placeholderListeners.add(listener)
                 listener.start { wakeNow("socks $host:$port") }
             }
         }
-        if (config.proxyEnabled && config.httpProxy.isNotBlank()) {
+        if (config.proxyEnabled && config.httpEnabled && config.httpProxy.isNotBlank()) {
             parseHostPort(config.httpProxy)?.let { (host, port) ->
                 val listener = PlaceholderListener(Protocol.TCP, host, port)
                 placeholderListeners.add(listener)

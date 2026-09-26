@@ -33,12 +33,19 @@
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="http_proxy">HTTP Proxy</string>
     <string name="http_proxy_hint">127.0.0.1:8080</string>
+    <string name="socks5_proxy_title">SOCKS5 proxy</string>
+    <string name="http_proxy_title">HTTP proxy</string>
+    <string name="ip_label">IP</string>
+    <string name="port_label">Port</string>
     <string name="pac_server">PAC Server</string>
     <string name="pac_port">PAC Port</string>
     <string name="pac_port_hint">8081</string>
-    <string name="pac_all_traffic">Route all traffic through proxy</string>
+    <string name="pac_traffic_mode_ygg">Route only *.ygg domains through proxy.</string>
+    <string name="pac_traffic_mode_all">Route all traffic through proxy.</string>
     <string name="copy_pac_url">Copy PAC URL</string>
     <string name="pac_url_copied">PAC URL copied to clipboard</string>
+    <string name="copy_address">Copy address</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="dns_server">DNS Server</string>
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
     <string name="expose_local_port_section">Expose Local Port</string>
@@ -65,7 +72,7 @@
     <!-- Ports Stats Page -->
     <string name="ports_service_stopped">Start the service to view port statistics</string>
     <string name="ports_no_listeners">No active listeners</string>
-    <string name="ports_section_proxy">SOCKS / HTTP Proxy</string>
+    <string name="ports_section_proxy">Proxy</string>
     <string name="ports_section_expose">Exposed Ports</string>
     <string name="ports_section_forward">Forwarded Ports</string>
     <string name="ports_active_label">Active:</string>

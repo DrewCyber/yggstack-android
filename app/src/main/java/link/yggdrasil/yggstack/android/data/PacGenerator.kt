@@ -12,8 +12,8 @@ object PacGenerator {
     /** Path the PAC server serves the script at. */
     const val PAC_PATH = "/proxy.pac"
 
-    /** The PAC URL for the given listen port, as configured into Wi-Fi settings. */
-    fun pacUrl(port: Int): String = "http://127.0.0.1:$port$PAC_PATH"
+    /** The PAC URL for the given listen address, as configured into Wi-Fi settings. */
+    fun pacUrl(ip: String, port: Int): String = "http://$ip:$port$PAC_PATH"
 
     /**
      * Build the PAC script for the given config.
@@ -74,10 +74,10 @@ object PacGenerator {
      */
     private fun proxyChain(config: YggstackConfig): String {
         val parts = mutableListOf<String>()
-        if (config.proxyEnabled && config.httpProxy.isNotBlank()) {
+        if (config.proxyEnabled && config.httpEnabled && config.httpProxy.isNotBlank()) {
             pacHostPort(config.httpProxy, 8080)?.let { parts += "PROXY $it" }
         }
-        if (config.proxyEnabled && config.socksProxy.isNotBlank()) {
+        if (config.proxyEnabled && config.socksEnabled && config.socksProxy.isNotBlank()) {
             pacHostPort(config.socksProxy, 1080)?.let { parts += "SOCKS $it" }
         }
         return parts.joinToString("; ")

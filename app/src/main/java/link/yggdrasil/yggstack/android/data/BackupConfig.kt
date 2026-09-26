@@ -58,8 +58,11 @@ data class BackupConfig(
                     enabled = config.proxyEnabled,
                     socksAddress = config.socksProxy,
                     httpAddress = config.httpProxy,
+                    socksEnabled = config.socksEnabled,
+                    httpEnabled = config.httpEnabled,
                     dnsServer = config.dnsServer,
                     pacEnabled = config.pacEnabled,
+                    pacIp = config.pacIp,
                     pacPort = config.pacPort,
                     pacAllTraffic = config.pacAllTraffic
                 ),
@@ -98,8 +101,11 @@ data class BackupConfig(
             var proxyEnabled = false
             var proxySocks = ""
             var proxyHttp = ""
+            var proxySocksEnabled = true
+            var proxyHttpEnabled = false
             var proxyDns = ""
             var proxyPacEnabled = false
+            var proxyPacIp = "127.0.0.1"
             var proxyPacPort = 8081
             var proxyPacAllTraffic = false
 
@@ -199,8 +205,11 @@ data class BackupConfig(
                         "enabled"     -> proxyEnabled = boolVal()
                         "socksAddress" -> proxySocks   = strVal()
                         "httpAddress" -> proxyHttp    = strVal()
+                        "socksEnabled" -> proxySocksEnabled = boolVal()
+                        "httpEnabled"  -> proxyHttpEnabled  = boolVal()
                         "dnsServer"   -> proxyDns      = strVal()
                         "pacEnabled"      -> proxyPacEnabled = boolVal()
+                        "pacIp"           -> proxyPacIp = strVal()
                         "pacPort"         -> proxyPacPort = intVal()
                         "pacAllTraffic"   -> proxyPacAllTraffic = boolVal()
                     }
@@ -240,8 +249,8 @@ data class BackupConfig(
                     maxBackoffEnabled = ygMaxBackoffEnabled,
                     maxBackoff      = ygMaxBackoff
                 ) else null,
-                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, dnsServer = proxyDns,
-                    pacEnabled = proxyPacEnabled, pacPort = proxyPacPort, pacAllTraffic = proxyPacAllTraffic),
+                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, socksEnabled = proxySocksEnabled, httpEnabled = proxyHttpEnabled, dnsServer = proxyDns,
+                    pacEnabled = proxyPacEnabled, pacIp = proxyPacIp, pacPort = proxyPacPort, pacAllTraffic = proxyPacAllTraffic),
                 expose  = ExposeSettings(exposeEnabled, exposeMappings),
                 forward = ForwardSettings(forwardEnabled, forwardMappings)
             )
@@ -314,8 +323,11 @@ data class BackupConfig(
         appendLine("enabled = ${proxy.enabled}")
         appendLine("socksAddress = \"${proxy.socksAddress.tomlEscape()}\"")
         appendLine("httpAddress = \"${proxy.httpAddress.tomlEscape()}\"")
+        appendLine("socksEnabled = ${proxy.socksEnabled}")
+        appendLine("httpEnabled = ${proxy.httpEnabled}")
         appendLine("dnsServer = \"${proxy.dnsServer.tomlEscape()}\"")
         appendLine("pacEnabled = ${proxy.pacEnabled}")
+        appendLine("pacIp = \"${proxy.pacIp.tomlEscape()}\"")
         appendLine("pacPort = ${proxy.pacPort}")
         appendLine("pacAllTraffic = ${proxy.pacAllTraffic}")
         appendLine()
@@ -356,8 +368,11 @@ data class BackupConfig(
             proxyEnabled = proxy.enabled,
             socksProxy = proxy.socksAddress,
             httpProxy = proxy.httpAddress,
+            socksEnabled = proxy.socksEnabled,
+            httpEnabled = proxy.httpEnabled,
             dnsServer = proxy.dnsServer,
             pacEnabled = proxy.pacEnabled,
+            pacIp = proxy.pacIp,
             pacPort = proxy.pacPort.coerceIn(1, 65535),
             pacAllTraffic = proxy.pacAllTraffic,
             exposeEnabled = expose.enabled,
@@ -418,8 +433,14 @@ data class ProxySettings(
     val socksAddress: String,
     // Defaulted so legacy backups (JSON or TOML) without an HTTP proxy import cleanly.
     val httpAddress: String = "",
+    // Defaulted so legacy backups made before the per-proxy enable ticks import
+    // cleanly — with only SOCKS on, matching the app's defaults.
+    val socksEnabled: Boolean = true,
+    val httpEnabled: Boolean = false,
     val dnsServer: String,
     val pacEnabled: Boolean = false,
+    // Defaulted so legacy backups made before the PAC IP field import cleanly.
+    val pacIp: String = "127.0.0.1",
     val pacPort: Int = 8081,
     val pacAllTraffic: Boolean = false
 )

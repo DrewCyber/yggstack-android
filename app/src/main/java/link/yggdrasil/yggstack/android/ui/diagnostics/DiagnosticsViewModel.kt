@@ -547,7 +547,10 @@ class DiagnosticsViewModel(
             // Keep the same order as on the Configuration screen by sorting on
             // the mapped config entry's position; anything not matching a
             // config mapping falls back to the end
-            val orderedEntries = if (section == "proxy") entries else entries.sortedBy { stat ->
+            val orderedEntries = if (section == "proxy") {
+                // SOCKS5 proxy above HTTP, matching the Configuration screen
+                entries.sortedBy { it.kind != "socks" }
+            } else entries.sortedBy { stat ->
                 listenerConfigIndex(stat, config).let { if (it >= 0) it else Int.MAX_VALUE }
             }
             PortSection(
@@ -590,8 +593,16 @@ class DiagnosticsViewModel(
     /**
      * Best-effort match of a live listener against configured mappings to show
      * its short name; falls back to null (the card shows addresses instead).
+     * Proxy listeners have no user-defined name — they are titled by protocol.
      */
     private fun resolveListenerName(stat: PortStatsDetail, config: YggstackConfig): String? {
+        if (stat.section == "proxy") {
+            return when (stat.kind) {
+                "socks" -> context.getString(R.string.socks5_proxy_title)
+                "http" -> context.getString(R.string.http_proxy_title)
+                else -> null
+            }
+        }
         return when (val index = listenerConfigIndex(stat, config)) {
             -1 -> null
             else -> when (stat.section) {

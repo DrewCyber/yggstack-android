@@ -7,16 +7,18 @@ import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Minimal loopback HTTP server for the PAC script — no dependencies.
+ * Minimal HTTP server for the PAC script — no dependencies.
  *
  * Serves [path] with `application/x-ns-proxy-autoconfig` and answers anything
  * else with 404. Runs on its own thread and stays up for the whole service
  * lifetime (including Power Save idle) so Android's periodic PAC re-fetches
- * never fail and never need to wake the node.
+ * never fail and never need to wake the node. Binds [host] (loopback by
+ * default; a LAN address makes the PAC reachable from other devices).
  */
 class PacServer(
     private val port: Int,
     private val path: String = "/proxy.pac",
+    private val host: String = "127.0.0.1",
 ) {
     @Volatile
     private var content: String = ""
@@ -41,7 +43,7 @@ class PacServer(
         content = initialContent
         if (!running.compareAndSet(false, true)) return true
         val ss = try {
-            ServerSocket(port, 8, InetAddress.getByName("127.0.0.1"))
+            ServerSocket(port, 8, InetAddress.getByName(host))
         } catch (e: Exception) {
             running.set(false)
             return false

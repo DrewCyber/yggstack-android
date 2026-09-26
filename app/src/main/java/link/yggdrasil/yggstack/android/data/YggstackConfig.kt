@@ -13,9 +13,15 @@ data class YggstackConfig(
     val privateKey: String = "",
     val socksProxy: String = "",
     val httpProxy: String = "",
+    // Per-listener enable ticks on the Configuration screen; the address stays
+    // saved when unticked so re-ticking restores it (same model as pacEnabled).
+    // Default: only the SOCKS5 proxy on (the master proxy toggle itself is off).
+    val socksEnabled: Boolean = true,
+    val httpEnabled: Boolean = false,
     val dnsServer: String = "",
     val proxyEnabled: Boolean = false,
     val pacEnabled: Boolean = false,
+    val pacIp: String = "127.0.0.1",
     val pacPort: Int = 8081,
     val pacAllTraffic: Boolean = false,
     val exposeMappings: List<ExposeMapping> = emptyList(),
@@ -45,7 +51,8 @@ fun YggstackConfig.hasActiveExposedPorts(): Boolean =
 
 /** True if there is at least one local SOCKS/HTTP proxy or forward mapping Power Save could wake on. */
 fun YggstackConfig.hasWakeableTargets(): Boolean =
-    (proxyEnabled && (socksProxy.isNotBlank() || httpProxy.isNotBlank())) ||
+    (proxyEnabled && ((socksEnabled && socksProxy.isNotBlank()) ||
+        (httpEnabled && httpProxy.isNotBlank()))) ||
         (forwardEnabled && forwardMappings.any { it.enabled })
 
 /**

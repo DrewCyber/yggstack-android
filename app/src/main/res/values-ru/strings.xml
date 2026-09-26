@@ -33,12 +33,19 @@
     <string name="socks_proxy_hint">127.0.0.1:1080</string>
     <string name="http_proxy">HTTP прокси</string>
     <string name="http_proxy_hint">127.0.0.1:8080</string>
+    <string name="socks5_proxy_title">SOCKS5 прокси</string>
+    <string name="http_proxy_title">HTTP прокси</string>
+    <string name="ip_label">IP</string>
+    <string name="port_label">Порт</string>
     <string name="pac_server">PAC-сервер</string>
     <string name="pac_port">PAC-порт</string>
     <string name="pac_port_hint">8081</string>
-    <string name="pac_all_traffic">Направлять весь трафик через прокси</string>
+    <string name="pac_traffic_mode_ygg">Направлять через прокси только домены *.ygg.</string>
+    <string name="pac_traffic_mode_all">Направлять через прокси весь трафик.</string>
     <string name="copy_pac_url">Скопировать PAC-URL</string>
     <string name="pac_url_copied">PAC-URL скопирован в буфер обмена</string>
+    <string name="copy_address">Скопировать адрес</string>
+    <string name="copied_to_clipboard">Скопировано в буфер обмена</string>
     <string name="dns_server">DNS сервер</string>
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
     <string name="expose_local_port_section">Открыть локальный порт</string>
@@ -65,7 +72,7 @@
     <!-- Ports Stats Page -->
     <string name="ports_service_stopped">Запустите сервис для просмотра статистики портов</string>
     <string name="ports_no_listeners">Нет активных слушателей</string>
-    <string name="ports_section_proxy">SOCKS / HTTP прокси</string>
+    <string name="ports_section_proxy">Прокси</string>
     <string name="ports_section_expose">Опубликованные порты</string>
     <string name="ports_section_forward">Проброшенные порты</string>
     <string name="ports_active_label">Активных:</string>

@@ -40,9 +40,23 @@ internal fun localIpSuggestions(): List<String> {
 }
 
 /**
- * [OutlinedTextField] with a local-IP suggestion dropdown that opens only on the
- * first focus of each focus session. Typing, moving the cursor, or dismissing the
- * dropdown closes it; it does not reopen until focus leaves the field and returns.
+ * Well-known public DNS servers inside the Yggdrasil network, offered as
+ * suggestions for the DNS server field (the default :53 port is appended on
+ * save by ConfigRepository.normalizeDnsServer).
+ */
+internal fun dnsServerSuggestions(): List<String> = listOf(
+    "308:62:45:62::",
+    "308:25:40:bd::",
+    "308:84:68:55::",
+    "308:c8:48:45::"
+)
+
+/**
+ * [OutlinedTextField] with a suggestion dropdown that opens only on the
+ * first focus of each focus session. Typing, moving the cursor, or dismissing
+ * the dropdown closes it; it does not reopen until focus leaves the field and
+ * returns. Suggested values come from [suggestionsProvider] — local IPv4
+ * addresses by default.
  *
  * [onPick] transforms a picked suggestion into the new field value (e.g. to keep
  * the port of an ip:port field); default is the bare address.
@@ -57,6 +71,8 @@ fun LocalIpTextField(
     enabled: Boolean = true,
     isError: Boolean = false,
     supportingText: (@Composable () -> Unit)? = null,
+    suggestionsProvider: () -> List<String> = ::localIpSuggestions,
+    trailingIcon: (@Composable () -> Unit)? = null,
     onPick: (suggestedIp: String, currentText: String) -> String = { ip, _ -> ip }
 ) {
     var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
@@ -99,7 +115,7 @@ fun LocalIpTextField(
                     isFocused = focusState.isFocused
                     if (focusState.isFocused) {
                         if (!shownThisFocus) {
-                            suggestions = localIpSuggestions()
+                            suggestions = suggestionsProvider()
                             suggestionsExpanded = true
                             shownThisFocus = true
                             swallowSelectionEvent = true
@@ -112,7 +128,8 @@ fun LocalIpTextField(
                 },
             enabled = enabled,
             isError = isError,
-            supportingText = supportingText
+            supportingText = supportingText,
+            trailingIcon = trailingIcon
         )
         // focusable = false keeps focus (and the keyboard) on the text field —
         // a focusable popup would blur it and re-arm the first-tap logic.

@@ -611,7 +611,7 @@ fun ImportPreviewDialog(
                     Text(
                         text = stringResource(
                             R.string.pac_label,
-                            PacGenerator.pacUrl(backup.proxy.pacPort),
+                            PacGenerator.pacUrl(backup.proxy.pacIp, backup.proxy.pacPort),
                             if (backup.proxy.pacAllTraffic) "all traffic" else "ygg only"
                         ),
                         style = MaterialTheme.typography.bodySmall,

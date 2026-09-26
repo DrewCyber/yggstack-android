@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -66,8 +65,6 @@ fun ConfigurationScreen(
     var deepLinkForwardPrefill by remember { mutableStateOf<ForwardMapping?>(null) }
     var showPeerDiscovery by remember { mutableStateOf(false) }
     var showGroupPassword by remember { mutableStateOf(false) }
-    var dnsServerInput by remember { mutableStateOf(config.dnsServer) }
-    var isDnsServerFocused by remember { mutableStateOf(false) }
 
     // Open the relevant dialog when a deep link arrives
     LaunchedEffect(pendingDeepLink) {
@@ -116,12 +113,6 @@ fun ConfigurationScreen(
                 listState.firstVisibleItemIndex,
                 listState.firstVisibleItemScrollOffset
             )
-        }
-    }
-
-    LaunchedEffect(config.dnsServer, isDnsServerFocused) {
-        if (!isDnsServerFocused && dnsServerInput != config.dnsServer) {
-            dnsServerInput = config.dnsServer
         }
     }
 
@@ -291,9 +282,66 @@ fun ConfigurationScreen(
             item(key = "proxy") {
             // Proxy Configuration Section
             var showProxyHelp by remember { mutableStateOf(false) }
+            var showSocksDialog by remember { mutableStateOf(false) }
+            var showHttpDialog by remember { mutableStateOf(false) }
+            var showDnsDialog by remember { mutableStateOf(false) }
+            var showPacDialog by remember { mutableStateOf(false) }
+            val context = LocalContext.current
 
             if (showProxyHelp) {
                 ProxyHowItWorksDialog(onDismiss = { showProxyHelp = false })
+            }
+
+            if (showSocksDialog) {
+                ProxyAddressDialog(
+                    title = stringResource(R.string.socks5_proxy_title),
+                    initialAddress = config.socksProxy,
+                    defaultPort = 1080,
+                    onDismiss = { showSocksDialog = false },
+                    onConfirm = { address ->
+                        viewModel.updateSocksProxy(address)
+                        showSocksDialog = false
+                    }
+                )
+            }
+
+            if (showHttpDialog) {
+                ProxyAddressDialog(
+                    title = stringResource(R.string.http_proxy_title),
+                    initialAddress = config.httpProxy,
+                    defaultPort = 8080,
+                    onDismiss = { showHttpDialog = false },
+                    onConfirm = { address ->
+                        viewModel.updateHttpProxy(address)
+                        showHttpDialog = false
+                    }
+                )
+            }
+
+            if (showDnsDialog) {
+                DnsServerDialog(
+                    initialValue = config.dnsServer,
+                    onDismiss = { showDnsDialog = false },
+                    onConfirm = { dns ->
+                        viewModel.updateDnsServer(dns)
+                        showDnsDialog = false
+                    }
+                )
+            }
+
+            if (showPacDialog) {
+                PacServerDialog(
+                    initialIp = config.pacIp,
+                    initialPort = config.pacPort,
+                    initialAllTraffic = config.pacAllTraffic,
+                    onDismiss = { showPacDialog = false },
+                    onConfirm = { ip, port, allTraffic ->
+                        viewModel.updatePacIp(ip)
+                        viewModel.updatePacPort(port)
+                        viewModel.setPacAllTraffic(allTraffic)
+                        showPacDialog = false
+                    }
+                )
             }
 
             ConfigSectionWithToggle(
@@ -304,133 +352,58 @@ fun ConfigurationScreen(
                 helpContentDescription = stringResource(R.string.proxy_how_it_works),
                 onHelpClick = { showProxyHelp = true }
             ) {
-                LocalIpTextField(
-                    value = config.socksProxy,
-                    onValueChange = { viewModel.updateSocksProxy(it) },
-                    label = { Text(stringResource(R.string.socks_proxy)) },
-                    placeholder = { Text(stringResource(R.string.socks_proxy_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isServiceRunning && config.proxyEnabled,
-                    onPick = { ip, current ->
-                        val port = current.substringAfterLast(':', "")
-                            .toIntOrNull()?.takeIf { it in 1..65535 } ?: 1080
-                        "$ip:$port"
-                    }
-                )
+                val rowEnabled = !isServiceRunning && config.proxyEnabled
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                LocalIpTextField(
-                    value = config.httpProxy,
-                    onValueChange = { viewModel.updateHttpProxy(it) },
-                    label = { Text(stringResource(R.string.http_proxy)) },
-                    placeholder = { Text(stringResource(R.string.http_proxy_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isServiceRunning && config.proxyEnabled,
-                    onPick = { ip, current ->
-                        val port = current.substringAfterLast(':', "")
-                            .toIntOrNull()?.takeIf { it in 1..65535 } ?: 8080
-                        "$ip:$port"
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val context = LocalContext.current
-                OutlinedTextField(
-                    value = dnsServerInput,
-                    onValueChange = {
-                        dnsServerInput = it
-                        viewModel.updateDnsServer(it)
-                    },
-                    label = { Text(stringResource(R.string.dns_server)) },
-                    placeholder = { Text(stringResource(R.string.dns_server_hint)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { focusState ->
-                            val wasFocused = isDnsServerFocused
-                            isDnsServerFocused = focusState.isFocused
-                            if (wasFocused && !focusState.isFocused) {
-                                val normalizedDnsServer = ConfigRepository.normalizeDnsServer(dnsServerInput)
-                                if (normalizedDnsServer != dnsServerInput) {
-                                    dnsServerInput = normalizedDnsServer
-                                }
-                                if (normalizedDnsServer != config.dnsServer) {
-                                    viewModel.updateDnsServer(normalizedDnsServer)
-                                }
-                            }
-                        },
-                    enabled = !isServiceRunning && config.proxyEnabled,
-                    trailingIcon = {
-                        IconButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dns.r3v.dev/"))
-                                context.startActivity(intent)
-                            }
-                        ) {
-                            Icon(
-                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_alfis),
-                                contentDescription = "Open DNS service",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                ProxySettingRow(
+                    label = stringResource(R.string.socks5_proxy_title),
+                    value = config.socksProxy.ifBlank { stringResource(R.string.socks_proxy_hint) },
+                    checked = config.socksEnabled,
+                    onCheckedChange = { viewModel.toggleSocksEnabled() },
+                    enabled = rowEnabled,
+                    onClick = { showSocksDialog = true },
+                    trailing = {
+                        if (config.socksProxy.isNotBlank()) {
+                            CopyAddressButton(context, config.socksProxy)
                         }
                     }
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // PAC server (Wi-Fi Proxy Auto-Config)
-                PowerSaveToggleRow(
-                    label = stringResource(R.string.pac_server),
-                    checked = config.pacEnabled,
-                    onCheckedChange = { viewModel.togglePacEnabled() },
-                    enabled = !isServiceRunning && config.proxyEnabled
+                ProxySettingRow(
+                    label = stringResource(R.string.dns_server),
+                    value = config.dnsServer.ifBlank { stringResource(R.string.dns_server_hint) },
+                    enabled = rowEnabled,
+                    onClick = { showDnsDialog = true }
                 )
 
-                if (config.pacEnabled) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                ProxySettingRow(
+                    label = stringResource(R.string.http_proxy_title),
+                    value = config.httpProxy.ifBlank { stringResource(R.string.http_proxy_hint) },
+                    checked = config.httpEnabled,
+                    onCheckedChange = { viewModel.toggleHttpEnabled() },
+                    enabled = rowEnabled,
+                    onClick = { showHttpDialog = true },
+                    trailing = {
+                        if (config.httpProxy.isNotBlank()) {
+                            CopyAddressButton(context, config.httpProxy)
+                        }
+                    }
+                )
 
-                    OutlinedTextField(
-                        value = config.pacPort.toString(),
-                        onValueChange = { text ->
-                            text.toIntOrNull()?.takeIf { it in 1..65535 }
-                                ?.let { viewModel.updatePacPort(it) }
-                        },
-                        label = { Text(stringResource(R.string.pac_port)) },
-                        placeholder = { Text(stringResource(R.string.pac_port_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isServiceRunning && config.proxyEnabled,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    PowerSaveToggleRow(
-                        label = stringResource(R.string.pac_all_traffic),
-                        checked = config.pacAllTraffic,
-                        onCheckedChange = { viewModel.togglePacAllTraffic() },
-                        enabled = !isServiceRunning && config.proxyEnabled
-                    )
-
-                    // The URL is static while configured — copyable even with
-                    // the service running, since it never changes on the fly.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = PacGenerator.pacUrl(config.pacPort),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f)
-                        )
+                ProxySettingRow(
+                    label = stringResource(R.string.pac_server),
+                    value = PacGenerator.pacUrl(config.pacIp, config.pacPort),
+                    checked = config.pacEnabled,
+                    onCheckedChange = { viewModel.togglePacEnabled() },
+                    enabled = rowEnabled,
+                    onClick = { showPacDialog = true },
+                    trailing = {
+                        // The URL is static while configured — copyable even with
+                        // the service running, since it never changes on the fly.
                         IconButton(onClick = {
                             val clipboard =
                                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(
-                                ClipData.newPlainText("PAC URL", PacGenerator.pacUrl(config.pacPort))
+                                ClipData.newPlainText("PAC URL", PacGenerator.pacUrl(config.pacIp, config.pacPort))
                             )
                             Toast.makeText(
                                 context,
@@ -445,7 +418,7 @@ fun ConfigurationScreen(
                             )
                         }
                     }
-                }
+                )
 
             }
 
@@ -1129,6 +1102,342 @@ fun ConfigSectionWithToggle(
             }
         }
     }
+}
+
+/**
+ * One of the Yggdrasil Proxy card's clickable setting rows: label with the
+ * current value beneath it, optional trailing content, and an optional
+ * enable tick at the far right (absent for rows without an on/off state,
+ * e.g. DNS). Tapping the row opens the setting's edit dialog.
+ */
+@Composable
+fun ProxySettingRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    checked: Boolean? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    val contentColor = if (checked == false) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor
+            )
+            if (value.isNotBlank()) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        trailing?.invoke()
+        if (checked != null && onCheckedChange != null) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled
+            )
+        }
+    }
+}
+
+/**
+ * Copy button for a proxy row's address — same style as the PAC URL copy:
+ * works even while the service runs, since the address never changes on the
+ * fly.
+ */
+@Composable
+private fun CopyAddressButton(context: Context, address: String) {
+    IconButton(onClick = {
+        val clipboard =
+            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Proxy address", address))
+        Toast.makeText(
+            context,
+            context.getString(R.string.copied_to_clipboard),
+            Toast.LENGTH_SHORT
+        ).show()
+    }) {
+        Icon(
+            imageVector = Icons.Default.ContentCopy,
+            contentDescription = stringResource(R.string.copy_address),
+            tint = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+/**
+ * Edits a proxy listen address as separate IP and Port fields. Accepts local
+ * IPv4 addresses (with first-tap suggestions via [LocalIpTextField]) plus
+ * `::1`; IPv6 hosts are re-bracketed when combined into `host:port`.
+ */
+@Composable
+fun ProxyAddressDialog(
+    title: String,
+    initialAddress: String,
+    defaultPort: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var ip by remember {
+        mutableStateOf(initialAddress.substringBeforeLast(':').removeSurrounding("[", "]"))
+    }
+    var port by remember {
+        mutableStateOf(initialAddress.substringAfterLast(':', defaultPort.toString()))
+    }
+    var ipError by remember { mutableStateOf(false) }
+
+    fun validateIPv4(ip: String): Boolean {
+        val parts = ip.split(".")
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            val num = part.toIntOrNull() ?: return false
+            num in 0..255
+        }
+    }
+
+    fun validatePort(port: String): Boolean {
+        val portNum = port.toIntOrNull() ?: return false
+        return portNum in 1..65535
+    }
+
+    val portValid = validatePort(port)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                LocalIpTextField(
+                    value = ip,
+                    onValueChange = {
+                        ip = it
+                        ipError = it.isNotEmpty() && !validateIPv4(it) && it != "::1"
+                    },
+                    label = { Text(stringResource(R.string.ip_label)) },
+                    placeholder = { Text("127.0.0.1") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = ipError,
+                    supportingText = if (ipError) {
+                        { Text("Invalid IP address") }
+                    } else null
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it },
+                    label = { Text(stringResource(R.string.port_label)) },
+                    placeholder = { Text("1-65535") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = port.isNotEmpty() && !portValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    supportingText = if (port.isNotEmpty() && !portValid) {
+                        { Text("Port must be between 1-65535") }
+                    } else null
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val host = if (ip.contains(':')) "[$ip]" else ip
+                    onConfirm("$host:$port")
+                },
+                enabled = ip.isNotEmpty() && !ipError && portValid
+            ) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+/**
+ * Edits the DNS server address. Single field with a first-tap suggestion
+ * dropdown of well-known Yggdrasil DNS servers; accepts `[IPv6]:53`,
+ * `host:port` or a bare host (normalized with the default DNS port on
+ * confirm).
+ */
+@Composable
+fun DnsServerDialog(
+    initialValue: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var value by remember { mutableStateOf(initialValue) }
+    val context = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.dns_server)) },
+        text = {
+            LocalIpTextField(
+                value = value,
+                onValueChange = { value = it },
+                label = { Text(stringResource(R.string.dns_server)) },
+                placeholder = { Text(stringResource(R.string.dns_server_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                suggestionsProvider = ::dnsServerSuggestions,
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dns.r3v.dev/"))
+                            context.startActivity(intent)
+                        }
+                    ) {
+                        Icon(
+                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_alfis),
+                            contentDescription = "Open DNS service",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(ConfigRepository.normalizeDnsServer(value)) }
+            ) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+/**
+ * Edits the PAC server settings: the address advertised in the PAC URL (the
+ * server binds it), the listen port, and the all-traffic mode tick.
+ */
+@Composable
+fun PacServerDialog(
+    initialIp: String,
+    initialPort: Int,
+    initialAllTraffic: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (ip: String, port: Int, allTraffic: Boolean) -> Unit
+) {
+    var ip by remember { mutableStateOf(initialIp) }
+    var port by remember { mutableStateOf(initialPort.toString()) }
+    var allTraffic by remember { mutableStateOf(initialAllTraffic) }
+    var ipError by remember { mutableStateOf(false) }
+
+    fun validateIPv4(ip: String): Boolean {
+        val parts = ip.split(".")
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            val num = part.toIntOrNull() ?: return false
+            num in 0..255
+        }
+    }
+
+    val portValid = port.toIntOrNull()?.let { it in 1..65535 } == true
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.pac_server)) },
+        text = {
+            Column {
+                LocalIpTextField(
+                    value = ip,
+                    onValueChange = {
+                        ip = it
+                        ipError = it.isNotEmpty() && !validateIPv4(it)
+                    },
+                    label = { Text(stringResource(R.string.ip_label)) },
+                    placeholder = { Text("127.0.0.1") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = ipError,
+                    supportingText = if (ipError) {
+                        { Text("Invalid IP address") }
+                    } else null
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it },
+                    label = { Text(stringResource(R.string.pac_port)) },
+                    placeholder = { Text(stringResource(R.string.pac_port_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = port.isNotEmpty() && !portValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    supportingText = if (port.isNotEmpty() && !portValid) {
+                        { Text("Port must be between 1-65535") }
+                    } else null
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Traffic mode toggle: the description states the active mode
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { allTraffic = !allTraffic },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (allTraffic) R.string.pac_traffic_mode_all
+                            else R.string.pac_traffic_mode_ygg
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = allTraffic,
+                        onCheckedChange = { allTraffic = it },
+                        modifier = Modifier.scale(0.8f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(ip, port.toInt(), allTraffic) },
+                enabled = ip.isNotEmpty() && !ipError && portValid
+            ) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable
@@ -1819,9 +2128,10 @@ fun MaxBackoffDialog(
 }
 
 /**
- * One of Power Save's small event toggles (multicast-style row): bodySmall
- * label, optional inline content between the label and the switch (the
- * idle-timeout value on the "Sleep on ports idle" row), compact 0.6x switch.
+ * One of Power Save's small event options (checkbox row, same tick style as
+ * the items in the Peers / Expose / Forward cards): bodyMedium label, optional
+ * inline content between the label and the tick (the idle-timeout value on
+ * the "Sleep on ports idle" row).
  */
 @Composable
 private fun PowerSaveToggleRow(
@@ -1837,15 +2147,14 @@ private fun PowerSaveToggleRow(
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )
         trailing?.invoke()
-        Switch(
+        Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            modifier = Modifier.scale(0.6f)
+            enabled = enabled
         )
     }
 }
