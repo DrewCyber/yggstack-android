@@ -689,6 +689,14 @@ class YggstackService : Service() {
             } catch (e: Exception) {
                 logWarn("Native stop returned: ${e.message}")
             }
+            // Free the native engine now, on this thread. Left to GC, the
+            // old engine's teardown races the next engine created in the same
+            // process (crash on start-after-stop on the ng flavor).
+            try {
+                instance.release()
+            } catch (e: Exception) {
+                logWarn("Native release returned: ${e.message}")
+            }
         }
         yggstack = null
     }

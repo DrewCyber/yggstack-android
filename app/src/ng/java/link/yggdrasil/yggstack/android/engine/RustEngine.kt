@@ -51,6 +51,8 @@ internal class RustEngine : NativeEngine {
 
     override fun stop() = yggstack.stop()
 
+    override fun release() = yggstack.destroy()
+
     override fun isRunning(): Boolean = yggstack.isRunning()
 
     override fun getAddress(): String? = yggstack.getAddress()

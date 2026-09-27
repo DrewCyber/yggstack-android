@@ -36,6 +36,11 @@ interface NativeEngine {
     fun stop()
     fun isRunning(): Boolean
 
+    /** Deterministically free native resources; the engine is unusable after.
+     *  Critical for the ng flavor: without it the Rust runtime is only freed
+     *  at GC time, racing the next engine started in the same process. */
+    fun release() {}
+
     fun getAddress(): String?
     fun getPublicKey(): String?
     fun getSubnet(): String?
