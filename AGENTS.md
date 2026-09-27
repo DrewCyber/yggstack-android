@@ -41,7 +41,7 @@ gradle/libs.versions.toml   # Version catalog — all app dependency/plugin vers
 - JDK 17 (temurin)
 - Go 1.27.1 (go flavor)
 - gomobile + gobind `golang.org/x/mobile/cmd/{gomobile,gobind}@v0.0.0-20260821190718-4776eadac327`
-- Rust stable + `cargo-ndk` (ng flavor), Android targets: aarch64, armv7, i686, x86_64 `-linux-android`
+- Rust 1.98.1 (pinned to match CI's dtolnay/rust-toolchain@1.98.1) + `cargo-ndk` (ng flavor), Android targets: aarch64, armv7, i686, x86_64 `-linux-android`
 - Android NDK `28.2.13676358`
 - compileSdk 37, targetSdk 34, minSdk 23
 

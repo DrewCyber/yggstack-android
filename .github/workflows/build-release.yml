@@ -145,7 +145,8 @@ jobs:
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/28.2.13676358" >> $GITHUB_ENV
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        # Pinned so CI matches local builds (see AGENTS.md toolchain pins)
+        uses: dtolnay/rust-toolchain@1.98.1
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
