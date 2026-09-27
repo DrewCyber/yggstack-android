@@ -78,6 +78,9 @@ data class ExposeMapping(
     val localIp: String = "127.0.0.1",
     val yggPort: Int,
     val shortName: String = "",
+    // Free-form multiline note for the mapped service (keys, passwords, description).
+    // Plain text only — never sent to the engine; carried in share links and backups.
+    val note: String = "",
     val enabled: Boolean = true
 ) : Parcelable
 
@@ -93,6 +96,9 @@ data class ForwardMapping(
     val remoteIp: String,
     val remotePort: Int,
     val shortName: String = "",
+    // Free-form multiline note for the mapped service (keys, passwords, description).
+    // Plain text only — never sent to the engine; carried in share links and backups.
+    val note: String = "",
     val enabled: Boolean = true
 ) : Parcelable
 

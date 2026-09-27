@@ -62,6 +62,7 @@
     <string name="remote_ip">Remote IP</string>
     <string name="remote_port">Remote Port</string>
     <string name="short_name">Short Name (optional)</string>
+    <string name="mapping_note">Note (optional)</string>
 
     <!-- Diagnostics Screen -->
     <string name="tab_config">Config</string>

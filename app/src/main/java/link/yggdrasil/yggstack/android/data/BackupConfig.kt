@@ -125,6 +125,7 @@ data class BackupConfig(
             var curRemoteIp = ""
             var curProtocol = Protocol.TCP
             var curShortName = ""
+            var curNote = ""
             var inExposeMappingEntry = false
             var inForwardMappingEntry = false
 
@@ -135,7 +136,8 @@ data class BackupConfig(
                         localPort = curLocalPort,
                         localIp = curLocalIp,
                         yggPort = curYggPort,
-                        shortName = curShortName
+                        shortName = curShortName,
+                        note = curNote
                     )
                     inExposeMappingEntry = false
                 }
@@ -146,12 +148,13 @@ data class BackupConfig(
                         localPort = curLocalPort,
                         remoteIp = curRemoteIp,
                         remotePort = curRemotePort,
-                        shortName = curShortName
+                        shortName = curShortName,
+                        note = curNote
                     )
                     inForwardMappingEntry = false
                 }
                 curLocalPort = 0; curLocalIp = "127.0.0.1"; curYggPort = 0; curRemotePort = 0
-                curRemoteIp = ""; curProtocol = Protocol.TCP; curShortName = ""
+                curRemoteIp = ""; curProtocol = Protocol.TCP; curShortName = ""; curNote = ""
             }
 
             for (rawLine in tomlString.lines()) {
@@ -225,6 +228,7 @@ data class BackupConfig(
                         "yggPort"   -> curYggPort   = intVal()
                         "protocol"  -> curProtocol  = Protocol.valueOf(strVal().uppercase())
                         "shortName" -> curShortName = strVal()
+                        "note"   -> curNote   = strVal()
                     }
                     "forward.mappings" -> when (key) {
                         "localPort"  -> curLocalPort  = intVal()
@@ -233,6 +237,7 @@ data class BackupConfig(
                         "remotePort" -> curRemotePort = intVal()
                         "protocol"   -> curProtocol   = Protocol.valueOf(strVal().uppercase())
                         "shortName"  -> curShortName  = strVal()
+                        "note"    -> curNote    = strVal()
                     }
                 }
             }
@@ -342,6 +347,7 @@ data class BackupConfig(
             appendLine("yggPort = ${m.yggPort}")
             appendLine("protocol = \"${m.protocol.name}\"")
             if (m.shortName.isNotBlank()) appendLine("shortName = \"${m.shortName.tomlEscape()}\"")
+            if (m.note.isNotBlank()) appendLine("note = \"${m.note.tomlEscape()}\"")
         }
         appendLine()
 
@@ -356,6 +362,7 @@ data class BackupConfig(
             appendLine("remotePort = ${m.remotePort}")
             appendLine("protocol = \"${m.protocol.name}\"")
             if (m.shortName.isNotBlank()) appendLine("shortName = \"${m.shortName.tomlEscape()}\"")
+            if (m.note.isNotBlank()) appendLine("note = \"${m.note.tomlEscape()}\"")
         }
     }
 
@@ -463,6 +470,41 @@ data class ForwardSettings(
     val mappings: List<ForwardMapping> = emptyList()
 )
 
-// TOML string escape helpers
-private fun String.tomlEscape(): String = replace("\\", "\\\\").replace("\"", "\\\"")
-private fun String.tomlUnescape(): String = replace("\\\"", "\"").replace("\\\\", "\\")
+// TOML string escape helpers. Notes may be multiline, and TOML basic strings
+// cannot contain raw newlines, so control characters are escaped too — keeping
+// every value on one physical line also keeps the line-by-line parser working.
+// Both directions are single-pass so "\\\n" (escaped backslash + \n) round-trips
+// unambiguously, which sequential replaces cannot guarantee.
+private fun String.tomlEscape(): String = buildString {
+    for (c in this@tomlEscape) when (c) {
+        '\\' -> append("\\\\")
+        '"'  -> append("\\\"")
+        '\n' -> append("\\n")
+        '\r' -> append("\\r")
+        '\t' -> append("\\t")
+        else -> append(c)
+    }
+}
+
+private fun String.tomlUnescape(): String {
+    val sb = StringBuilder(length)
+    var i = 0
+    while (i < length) {
+        val c = this[i]
+        if (c == '\\' && i + 1 < length) {
+            when (this[i + 1]) {
+                '\\' -> sb.append('\\')
+                '"'  -> sb.append('"')
+                'n'  -> sb.append('\n')
+                'r'  -> sb.append('\r')
+                't'  -> sb.append('\t')
+                else -> { sb.append(c); sb.append(this[i + 1]) }
+            }
+            i += 2
+        } else {
+            sb.append(c)
+            i++
+        }
+    }
+    return sb.toString()
+}

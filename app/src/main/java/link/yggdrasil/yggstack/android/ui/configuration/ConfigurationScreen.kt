@@ -1604,7 +1604,8 @@ fun ExposeMappingDialog(
     var localIp by remember { mutableStateOf(fill?.localIp ?: "127.0.0.1") }
     var yggPort by remember { mutableStateOf(fill?.yggPort?.toString() ?: "") }
     var shortName by remember { mutableStateOf(fill?.shortName ?: "") }
-    
+    var note by remember { mutableStateOf(fill?.note ?: "") }
+
     var localPortError by remember { mutableStateOf(false) }
     var localIpError by remember { mutableStateOf(false) }
     var yggPortError by remember { mutableStateOf(false) }
@@ -1637,7 +1638,7 @@ fun ExposeMappingDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialMapping != null) "Edit Expose Mapping" else "Add Expose Mapping") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 // Protocol selector
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1723,6 +1724,14 @@ fun ExposeMappingDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text(stringResource(R.string.mapping_note)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
             }
         },
         confirmButton = {
@@ -1731,7 +1740,7 @@ fun ExposeMappingDialog(
             TextButton(
                 onClick = {
                     if (validatePort(localPort) && validateIPv4(localIp) && validatePort(yggPort)) {
-                        onConfirm(ExposeMapping(protocol, localPort.toInt(), localIp, yggPort.toInt(), shortName.trim(), enabled = !localConflict))
+                        onConfirm(ExposeMapping(protocol, localPort.toInt(), localIp, yggPort.toInt(), shortName.trim(), note.trim(), enabled = !localConflict))
                     }
                 },
                 enabled = allValid
@@ -1753,6 +1762,7 @@ fun ExposeMappingDialog(
                             append("&localIp=").append(localIp)
                             append("&yggPort=").append(yggPort)
                             if (shortName.isNotBlank()) append("&name=").append(Uri.encode(shortName.trim()))
+                            if (note.isNotBlank()) append("&note=").append(Uri.encode(note.trim()))
                         }
                         val sendIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
@@ -1790,7 +1800,8 @@ fun ForwardMappingDialog(
     var remoteIp by remember { mutableStateOf(fill?.remoteIp ?: "") }
     var remotePort by remember { mutableStateOf(fill?.remotePort?.toString() ?: "") }
     var shortName by remember { mutableStateOf(fill?.shortName ?: "") }
-    
+    var note by remember { mutableStateOf(fill?.note ?: "") }
+
     var localIpError by remember { mutableStateOf(false) }
     var localPortError by remember { mutableStateOf(false) }
     var remoteIpError by remember { mutableStateOf(false) }
@@ -1834,7 +1845,7 @@ fun ForwardMappingDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialMapping != null) "Edit Forward Mapping" else "Add Forward Mapping") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 // Protocol selector
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1935,6 +1946,14 @@ fun ForwardMappingDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text(stringResource(R.string.mapping_note)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
             }
         },
         confirmButton = {
@@ -1945,7 +1964,7 @@ fun ForwardMappingDialog(
                 onClick = {
                     if (validatePort(localPort) && validatePort(remotePort) &&
                         (validateIPv4(localIp) || localIp == "::1") && validateIPv6(remoteIp)) {
-                        onConfirm(ForwardMapping(protocol, localIp, localPort.toInt(), remoteIp, remotePort.toInt(), shortName.trim(), enabled = !localConflict))
+                        onConfirm(ForwardMapping(protocol, localIp, localPort.toInt(), remoteIp, remotePort.toInt(), shortName.trim(), note.trim(), enabled = !localConflict))
                     }
                 },
                 enabled = allValid
@@ -1969,6 +1988,7 @@ fun ForwardMappingDialog(
                             append("&remoteIp=").append(remoteIp)
                             append("&remotePort=").append(remotePort)
                             if (shortName.isNotBlank()) append("&name=").append(Uri.encode(shortName.trim()))
+                            if (note.isNotBlank()) append("&note=").append(Uri.encode(note.trim()))
                         }
                         val sendIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"

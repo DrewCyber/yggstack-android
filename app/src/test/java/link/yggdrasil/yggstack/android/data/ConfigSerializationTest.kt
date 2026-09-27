@@ -12,9 +12,13 @@ class ConfigSerializationTest {
             peers = listOf("tls://example.org:1234"), privateKey = key,
             socksProxy = "127.0.0.1:1088", httpProxy = "127.0.0.1:8080",
             dnsServer = "[300::1]:53", proxyEnabled = true,
-            exposeMappings = listOf(ExposeMapping(Protocol.TCP, 80, "127.0.0.2", 8080, "web", false)),
+            exposeMappings = listOf(
+                ExposeMapping(Protocol.TCP, 80, "127.0.0.2", 8080, "web",
+                    "api key: abc\nnotes", enabled = false)),
             exposeEnabled = true,
-            forwardMappings = listOf(ForwardMapping(Protocol.UDP, "127.0.0.1", 1234, "300::1", 53, "dns", false)),
+            forwardMappings = listOf(
+                ForwardMapping(Protocol.UDP, "127.0.0.1", 1234, "300::1", 53, "dns",
+                    "wake-on-lan\nsecret \"quoted\" and back\\slash", enabled = false)),
             forwardEnabled = true, multicastBeacon = true, multicastListen = true, logLevel = "debug",
             groupPasswordEnabled = true, groupPassword = "quote\" slash\\ newline\n tab\t\u0000$",
             cachedPeers = listOf(CachedPeer("tcp://cached:1", "multicast", 123L, 4, 2)),

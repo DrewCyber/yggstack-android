@@ -127,4 +127,45 @@ class BackupConfigTest {
         assertTrue(fromJson.proxy.socksEnabled)
         assertFalse(fromJson.proxy.httpEnabled)
     }
+
+    @Test fun mappingNotesRoundTripThroughToml() {
+        // Multiline note with quotes, backslash, tab and CRLF — the nastiest
+        // case for the line-by-line TOML parser; everything must stay escaped
+        // onto one physical line and come back byte-identical.
+        val tricky = "api key: \"abc\"\\42\nline two with back\\slash and\ttab\r\nend"
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(
+                exposeEnabled = true,
+                exposeMappings = listOf(ExposeMapping(Protocol.TCP, 80, "127.0.0.1", 8080, "web", tricky)),
+                forwardEnabled = true,
+                forwardMappings = listOf(
+                    ForwardMapping(Protocol.UDP, "127.0.0.1", 1234, "300::1", 53, "dns", "secret: qwerty123")
+                )
+            )
+        )
+        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        assertEquals(tricky, restored.expose.mappings.single().note)
+        assertEquals("secret: qwerty123", restored.forward.mappings.single().note)
+        val applied = restored.applyTo(YggstackConfig())
+        assertEquals(tricky, applied.exposeMappings.single().note)
+        assertEquals("secret: qwerty123", applied.forwardMappings.single().note)
+    }
+
+    @Test fun legacyBackupWithoutNoteImportsAsEmpty() {
+        val backup = BackupConfig.fromToml("""
+            [proxy]
+            enabled = false
+            socksAddress = "127.0.0.1:1080"
+            dnsServer = ""
+            [expose]
+            enabled = true
+            [[expose.mappings]]
+            localPort = 80
+            localIp = "127.0.0.1"
+            yggPort = 8080
+            protocol = "TCP"
+            shortName = "web"
+        """.trimIndent()).getOrThrow()
+        assertEquals("", backup.expose.mappings.single().note)
+    }
 }
