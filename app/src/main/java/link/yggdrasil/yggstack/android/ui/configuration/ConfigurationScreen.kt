@@ -1364,7 +1364,16 @@ fun PacServerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.pac_server)) },
+        title = {
+            Column {
+                Text(stringResource(R.string.pac_server))
+                Text(
+                    text = stringResource(R.string.pac_server_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
         text = {
             Column {
                 LocalIpTextField(
