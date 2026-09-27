@@ -347,13 +347,17 @@ class YggstackService : Service() {
                     addLogBatch(deviceInfo)
                 }
                 logInfo("onStartCommand: ACTION_START received")
-                val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableExtra(EXTRA_CONFIG, YggstackConfigParcelable::class.java)
+                // Read the config extra defensively and fall back to the
+                // persisted config: some OEM Android 13 builds throw an NPE
+                // from Parcel.readParcelableCreatorInternal unparcelling this
+                // extra on a second start delivered in the same process
+                // (observed on ColorOS 13: crash on every start-after-stop).
+                val config = readConfigExtra(intent) ?: lastConfig
+                if (config == null) {
+                    logError("ACTION_START without a usable config (no extra, nothing persisted) - not starting")
                 } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra<YggstackConfigParcelable>(EXTRA_CONFIG)
+                    startYggstack(config)
                 }
-                config?.let { startYggstack(it.toYggstackConfig()) }
             }
             ACTION_STOP -> {
                 logInfo("onStartCommand: ACTION_STOP received")
@@ -380,6 +384,21 @@ class YggstackService : Service() {
         }
         // Restart service if killed by system, preserving lastConfig
         return START_STICKY
+    }
+
+    /** Read EXTRA_CONFIG, returning null instead of crashing when the
+     *  parcelable cannot be unparcelled (OEM bug) or is absent. */
+    private fun readConfigExtra(intent: Intent): YggstackConfig? = try {
+        val parcelable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_CONFIG, YggstackConfigParcelable::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra<YggstackConfigParcelable>(EXTRA_CONFIG)
+        }
+        parcelable?.toYggstackConfig()
+    } catch (e: Exception) {
+        logWarn("Config extra unreadable (${e.javaClass.simpleName}: ${e.message}) - falling back to persisted config")
+        null
     }
 
     override fun onDestroy() {
