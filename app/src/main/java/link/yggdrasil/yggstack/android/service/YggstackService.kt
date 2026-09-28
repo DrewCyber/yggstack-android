@@ -347,16 +347,19 @@ class YggstackService : Service() {
                     addLogBatch(deviceInfo)
                 }
                 logInfo("onStartCommand: ACTION_START received")
-                // Read the config extra defensively and fall back to the
-                // persisted config: some OEM Android 13 builds throw an NPE
-                // from Parcel.readParcelableCreatorInternal unparcelling this
-                // extra on a second start delivered in the same process
-                // (observed on ColorOS 13: crash on every start-after-stop).
-                val config = readConfigExtra(intent) ?: lastConfig
-                if (config == null) {
-                    logError("ACTION_START without a usable config (no extra, nothing persisted) - not starting")
-                } else {
+                // Read the config extra defensively: some OEM Android 13
+                // builds throw an NPE from Parcel.readParcelableCreatorInternal
+                // unparcelling this extra on a second start delivered in the
+                // same process (observed on ColorOS 13: crash on every
+                // start-after-stop). On failure start from the repository —
+                // the same source of truth the UI edits — NOT from lastConfig,
+                // whose snapshot lags behind UI edits and, once re-saved by
+                // the peer-cache updater, reverted them.
+                val config = readConfigExtra(intent)
+                if (config != null) {
                     startYggstack(config)
+                } else {
+                    startYggstackFromRepository()
                 }
             }
             ACTION_STOP -> {
@@ -397,7 +400,7 @@ class YggstackService : Service() {
         }
         parcelable?.toYggstackConfig()
     } catch (e: Exception) {
-        logWarn("Config extra unreadable (${e.javaClass.simpleName}: ${e.message}) - falling back to persisted config")
+        logWarn("Config extra unreadable (${e.javaClass.simpleName}: ${e.message}) - starting from repository config")
         null
     }
 
@@ -447,13 +450,38 @@ class YggstackService : Service() {
     }
 
     fun startYggstack(config: YggstackConfig) {
+        announceStarting()
+        lifecycle.submit(acquire = true) { startNode(config) }
+    }
+
+    /** Start with the freshest persisted config. Used when the intent's
+     *  config extra is missing or cannot be unparcelled (OEM bug): the
+     *  repository is the source of truth the UI edits, while lastConfig is
+     *  this service's snapshot and can lag behind those edits. */
+    private fun startYggstackFromRepository() {
+        announceStarting()
+        lifecycle.submit(acquire = true) {
+            val config = try {
+                ConfigRepository(applicationContext).configFlow.first()
+            } catch (e: Exception) {
+                logError("Failed to load config from repository: ${e.message}")
+                null
+            }
+            if (config == null) {
+                logError("ACTION_START without a usable config (no extra, repository unreadable) - not starting")
+            } else {
+                startNode(config)
+            }
+        }
+    }
+
+    private fun announceStarting() {
         lifecycle.publish {
             if (!_isSessionActive.value) {
                 startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
                 invalidateNotificationDedupe()
             }
         }
-        lifecycle.submit(acquire = true) { startNode(config) }
     }
 
     private suspend fun startNode(config: YggstackConfig, recovering: Boolean = false) {
@@ -1779,8 +1807,18 @@ class YggstackService : Service() {
      */
     private suspend fun updatePeerCache() {
         val peersJson = yggstack?.getPeersJson() ?: return
-        val currentConfig = lastConfig ?: return
-        
+
+        // Read-modify-write the repository's current config: saving this
+        // service's lastConfig snapshot would revert any UI edits made
+        // since the run started.
+        val repository = ConfigRepository(applicationContext)
+        val currentConfig = try {
+            repository.configFlow.first()
+        } catch (e: Exception) {
+            logWarn("Peer cache update: repository unreadable (${e.message})")
+            lastConfig ?: return
+        }
+
         try {
             val peers = JSONArray(peersJson)
             val discoveredPeers = mutableListOf<CachedPeer>()
@@ -1814,15 +1852,14 @@ class YggstackService : Service() {
             if (discoveredPeers.isNotEmpty()) {
                 // Merge with existing cache
                 val updatedCache = mergePeerCache(currentConfig.cachedPeers, discoveredPeers)
-                
-                // Save updated config with new cache
+
+                // Save the repository's fields with only the cache replaced;
+                // the service's own view keeps its fields, cache refreshed.
                 val updatedConfig = currentConfig.copy(cachedPeers = updatedCache)
-                lastConfig = updatedConfig
-                
-                // Persist to preferences
-                val repository = ConfigRepository(applicationContext)
+                lastConfig = (lastConfig ?: currentConfig).copy(cachedPeers = updatedCache)
+
                 repository.saveConfig(updatedConfig)
-                
+
                 logInfo("Peer cache updated: ${updatedCache.size} cached peer(s)")
             }
         } catch (e: Exception) {
@@ -1877,23 +1914,30 @@ class YggstackService : Service() {
      * Clean up peer cache - remove stale and failed peers
      */
     private suspend fun cleanupPeerCache() {
-        val currentConfig = lastConfig ?: return
+        // Read-modify-write the repository's current config: saving this
+        // service's lastConfig snapshot would revert any UI edits made
+        // since the run started.
+        val repository = ConfigRepository(applicationContext)
+        val currentConfig = try {
+            repository.configFlow.first()
+        } catch (e: Exception) {
+            logWarn("Peer cache cleanup: repository unreadable (${e.message})")
+            lastConfig ?: return
+        }
         val now = System.currentTimeMillis()
         val staleCutoff = now - PEER_CACHE_STALE_TIME_MS
-        
+
         // Remove stale peers and those with more failures than successes
         val cleanedCache = currentConfig.cachedPeers.filter { peer ->
             peer.lastSeen > staleCutoff && peer.successCount >= peer.failureCount
         }.take(PEER_CACHE_MAX_SIZE)
-        
+
         if (cleanedCache.size != currentConfig.cachedPeers.size) {
             val removed = currentConfig.cachedPeers.size - cleanedCache.size
             logInfo("Cleaned peer cache: removed $removed stale/failed peer(s), ${cleanedCache.size} remaining")
-            
+
             val updatedConfig = currentConfig.copy(cachedPeers = cleanedCache)
-            lastConfig = updatedConfig
-            
-            val repository = ConfigRepository(applicationContext)
+            lastConfig = (lastConfig ?: currentConfig).copy(cachedPeers = cleanedCache)
             repository.saveConfig(updatedConfig)
         }
     }
