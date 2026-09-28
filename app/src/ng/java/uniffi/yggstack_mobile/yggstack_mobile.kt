@@ -1729,7 +1729,8 @@ public interface YggstackMobileInterface {
     fun `setLogLevel`(`level`: kotlin.String)
     
     /**
-     * Set the DNS nameserver address (call before start()).
+     * Set the DNS nameserver address (call before start()). A single
+     * address or a comma-separated list tried in order with failover.
      */
     fun `setNameserver`(`addr`: kotlin.String)
     
@@ -2205,7 +2206,8 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
 
     
     /**
-     * Set the DNS nameserver address (call before start()).
+     * Set the DNS nameserver address (call before start()). A single
+     * address or a comma-separated list tried in order with failover.
      */override fun `setNameserver`(`addr`: kotlin.String)
         = 
     callWithPointer {

@@ -307,8 +307,8 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(httpProxy = proxy), debouncePersist = true)
     }
 
-    fun updateDnsServer(dns: String) {
-        updateConfig(_config.value.copy(dnsServer = dns), debouncePersist = true)
+    fun updateDnsServers(primary: String, secondary: String) {
+        updateConfig(_config.value.copy(dnsServer = primary, dnsServer2 = secondary), debouncePersist = true)
     }
 
     fun toggleProxyEnabled() {

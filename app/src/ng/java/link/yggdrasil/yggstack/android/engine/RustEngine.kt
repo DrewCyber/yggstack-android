@@ -41,6 +41,7 @@ internal class RustEngine : NativeEngine {
     override fun start(socksAddress: String, httpAddress: String, dnsServer: String) {
         yggstack.setSocks(socksAddress)
         yggstack.setHttp(httpAddress)
+        // Single server or comma-separated failover list, like the Go engine.
         yggstack.setNameserver(dnsServer)
         try {
             yggstack.start()

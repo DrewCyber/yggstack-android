@@ -607,6 +607,13 @@ fun ImportPreviewDialog(
                         fontFamily = FontFamily.Monospace
                     )
                 }
+                if (backup.proxy.dnsServer2.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.dns_label, backup.proxy.dnsServer2),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
                 if (backup.proxy.pacEnabled) {
                     Text(
                         text = stringResource(

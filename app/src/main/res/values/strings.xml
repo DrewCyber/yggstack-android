@@ -48,6 +48,7 @@
     <string name="copy_address">Copy address</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="dns_server">DNS Server</string>
+    <string name="dns_server_2">DNS Server 2 (failover, optional)</string>
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
     <string name="expose_local_port_section">Expose Local Port</string>
     <string name="add_mapping">Add Mapping</string>

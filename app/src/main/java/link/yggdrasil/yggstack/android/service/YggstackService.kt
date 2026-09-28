@@ -511,8 +511,17 @@ class YggstackService : Service() {
                     ""
                 }
 
-                val dnsServer = if (config.proxyEnabled && config.dnsServer.isNotBlank()) {
-                    ConfigRepository.normalizeDnsServer(config.dnsServer)
+                // Single configured server → one normalized address (legacy
+                // behavior); with the optional failover server both are
+                // passed comma-separated and the engine tries them in order.
+                val dnsServer = if (config.proxyEnabled &&
+                    (config.dnsServer.isNotBlank() || config.dnsServer2.isNotBlank())
+                ) {
+                    listOf(config.dnsServer, config.dnsServer2)
+                        .filter { it.isNotBlank() }
+                        .map { ConfigRepository.normalizeDnsServer(it) }
+                        .distinct()
+                        .joinToString(",")
                 } else {
                     ""
                 }

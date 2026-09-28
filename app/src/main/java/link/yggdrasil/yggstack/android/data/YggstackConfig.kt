@@ -19,6 +19,10 @@ data class YggstackConfig(
     val socksEnabled: Boolean = true,
     val httpEnabled: Boolean = false,
     val dnsServer: String = "",
+    // Optional failover DNS server: tried when dnsServer is unreachable or
+    // silent (both engines). Blank (the default) keeps the single-server
+    // behavior.
+    val dnsServer2: String = "",
     val proxyEnabled: Boolean = false,
     val pacEnabled: Boolean = false,
     val pacIp: String = "127.0.0.1",

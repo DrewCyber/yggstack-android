@@ -320,10 +320,11 @@ fun ConfigurationScreen(
 
             if (showDnsDialog) {
                 DnsServerDialog(
-                    initialValue = config.dnsServer,
+                    initialPrimary = config.dnsServer,
+                    initialSecondary = config.dnsServer2,
                     onDismiss = { showDnsDialog = false },
-                    onConfirm = { dns ->
-                        viewModel.updateDnsServer(dns)
+                    onConfirm = { primary, secondary ->
+                        viewModel.updateDnsServers(primary, secondary)
                         showDnsDialog = false
                     }
                 )
@@ -368,9 +369,11 @@ fun ConfigurationScreen(
                     }
                 )
 
+                val dnsValue = config.dnsServer.ifBlank { stringResource(R.string.dns_server_hint) } +
+                    if (config.dnsServer2.isNotBlank()) ", ${config.dnsServer2}" else ""
                 ProxySettingRow(
                     label = stringResource(R.string.dns_server),
-                    value = config.dnsServer.ifBlank { stringResource(R.string.dns_server_hint) },
+                    value = dnsValue,
                     enabled = rowEnabled,
                     onClick = { showDnsDialog = true }
                 )
@@ -1278,50 +1281,69 @@ fun ProxyAddressDialog(
 }
 
 /**
- * Edits the DNS server address. Single field with a first-tap suggestion
- * dropdown of well-known Yggdrasil DNS servers; accepts `[IPv6]:53`,
- * `host:port` or a bare host (normalized with the default DNS port on
- * confirm).
+ * Edits the DNS server address(es). The primary field has a first-tap
+ * suggestion dropdown of well-known Yggdrasil DNS servers; both fields
+ * accept `[IPv6]:53`, `host:port` or a bare host (normalized with the
+ * default DNS port on confirm). The optional secondary server is only
+ * queried when the primary is unreachable or silent.
  */
 @Composable
 fun DnsServerDialog(
-    initialValue: String,
+    initialPrimary: String,
+    initialSecondary: String,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (primary: String, secondary: String) -> Unit
 ) {
-    var value by remember { mutableStateOf(initialValue) }
+    var primary by remember { mutableStateOf(initialPrimary) }
+    var secondary by remember { mutableStateOf(initialSecondary) }
     val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.dns_server)) },
         text = {
-            LocalIpTextField(
-                value = value,
-                onValueChange = { value = it },
-                label = { Text(stringResource(R.string.dns_server)) },
-                placeholder = { Text(stringResource(R.string.dns_server_hint)) },
-                modifier = Modifier.fillMaxWidth(),
-                suggestionsProvider = ::dnsServerSuggestions,
-                trailingIcon = {
-                    IconButton(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dns.r3v.dev/"))
-                            context.startActivity(intent)
+            Column {
+                LocalIpTextField(
+                    value = primary,
+                    onValueChange = { primary = it },
+                    label = { Text(stringResource(R.string.dns_server)) },
+                    placeholder = { Text(stringResource(R.string.dns_server_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    suggestionsProvider = ::dnsServerSuggestions,
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dns.r3v.dev/"))
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Icon(
+                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_alfis),
+                                contentDescription = "Open DNS service",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
-                    ) {
-                        Icon(
-                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_alfis),
-                            contentDescription = "Open DNS service",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
                     }
-                }
-            )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LocalIpTextField(
+                    value = secondary,
+                    onValueChange = { secondary = it },
+                    label = { Text(stringResource(R.string.dns_server_2)) },
+                    placeholder = { Text(stringResource(R.string.dns_server_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    suggestionsProvider = ::dnsServerSuggestions
+                )
+            }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(ConfigRepository.normalizeDnsServer(value)) }
+                onClick = {
+                    onConfirm(
+                        ConfigRepository.normalizeDnsServer(primary),
+                        if (secondary.isBlank()) "" else ConfigRepository.normalizeDnsServer(secondary)
+                    )
+                }
             ) {
                 Text(stringResource(R.string.ok))
             }

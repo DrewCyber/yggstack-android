@@ -59,6 +59,28 @@ class BackupConfigTest {
         assertEquals("127.0.0.1:1080", applied.socksProxy)
     }
 
+    @Test fun failoverDnsServerRoundTripsThroughToml() {
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(dnsServer = "[308:1::]:53", dnsServer2 = "[308:2::]:53", proxyEnabled = true)
+        )
+        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        assertEquals("[308:2::]:53", restored.proxy.dnsServer2)
+        val applied = restored.applyTo(YggstackConfig())
+        assertEquals("[308:1::]:53", applied.dnsServer)
+        assertEquals("[308:2::]:53", applied.dnsServer2)
+    }
+
+    @Test fun legacyBackupWithoutDnsServer2ImportsAsEmpty() {
+        // Legacy TOML without a dnsServer2 line…
+        val fromToml = BackupConfig.fromToml(toml("")).getOrThrow()
+        assertEquals("", fromToml.proxy.dnsServer2)
+        assertEquals("", fromToml.applyTo(YggstackConfig()).dnsServer2)
+        // …and legacy JSON without the key.
+        val json = """{"proxy":{"enabled":true,"socksAddress":"127.0.0.1:1080","dnsServer":""},
+            "expose":{"enabled":false},"forward":{"enabled":false}}"""
+        assertEquals("", BackupConfig.fromJson(json).getOrThrow().proxy.dnsServer2)
+    }
+
     @Test fun legacyBackupWithoutHttpAddressImportsAsEmpty() {
         // TOML without an httpAddress line…
         val fromToml = BackupConfig.fromToml(toml("")).getOrThrow()

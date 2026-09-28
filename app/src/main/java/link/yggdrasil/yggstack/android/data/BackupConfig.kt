@@ -61,6 +61,7 @@ data class BackupConfig(
                     socksEnabled = config.socksEnabled,
                     httpEnabled = config.httpEnabled,
                     dnsServer = config.dnsServer,
+                    dnsServer2 = config.dnsServer2,
                     pacEnabled = config.pacEnabled,
                     pacIp = config.pacIp,
                     pacPort = config.pacPort,
@@ -104,6 +105,7 @@ data class BackupConfig(
             var proxySocksEnabled = true
             var proxyHttpEnabled = false
             var proxyDns = ""
+            var proxyDns2 = ""
             var proxyPacEnabled = false
             var proxyPacIp = "127.0.0.1"
             var proxyPacPort = 8081
@@ -211,6 +213,7 @@ data class BackupConfig(
                         "socksEnabled" -> proxySocksEnabled = boolVal()
                         "httpEnabled"  -> proxyHttpEnabled  = boolVal()
                         "dnsServer"   -> proxyDns      = strVal()
+                        "dnsServer2"  -> proxyDns2     = strVal()
                         "pacEnabled"      -> proxyPacEnabled = boolVal()
                         "pacIp"           -> proxyPacIp = strVal()
                         "pacPort"         -> proxyPacPort = intVal()
@@ -254,7 +257,7 @@ data class BackupConfig(
                     maxBackoffEnabled = ygMaxBackoffEnabled,
                     maxBackoff      = ygMaxBackoff
                 ) else null,
-                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, socksEnabled = proxySocksEnabled, httpEnabled = proxyHttpEnabled, dnsServer = proxyDns,
+                proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, socksEnabled = proxySocksEnabled, httpEnabled = proxyHttpEnabled, dnsServer = proxyDns, dnsServer2 = proxyDns2,
                     pacEnabled = proxyPacEnabled, pacIp = proxyPacIp, pacPort = proxyPacPort, pacAllTraffic = proxyPacAllTraffic),
                 expose  = ExposeSettings(exposeEnabled, exposeMappings),
                 forward = ForwardSettings(forwardEnabled, forwardMappings)
@@ -331,6 +334,9 @@ data class BackupConfig(
         appendLine("socksEnabled = ${proxy.socksEnabled}")
         appendLine("httpEnabled = ${proxy.httpEnabled}")
         appendLine("dnsServer = \"${proxy.dnsServer.tomlEscape()}\"")
+        if (proxy.dnsServer2.isNotBlank()) {
+            appendLine("dnsServer2 = \"${proxy.dnsServer2.tomlEscape()}\"")
+        }
         appendLine("pacEnabled = ${proxy.pacEnabled}")
         appendLine("pacIp = \"${proxy.pacIp.tomlEscape()}\"")
         appendLine("pacPort = ${proxy.pacPort}")
@@ -378,6 +384,7 @@ data class BackupConfig(
             socksEnabled = proxy.socksEnabled,
             httpEnabled = proxy.httpEnabled,
             dnsServer = proxy.dnsServer,
+            dnsServer2 = proxy.dnsServer2,
             pacEnabled = proxy.pacEnabled,
             pacIp = proxy.pacIp,
             pacPort = proxy.pacPort.coerceIn(1, 65535),
@@ -445,6 +452,9 @@ data class ProxySettings(
     val socksEnabled: Boolean = true,
     val httpEnabled: Boolean = false,
     val dnsServer: String,
+    // Optional failover DNS server; defaulted so legacy backups (which never
+    // carry it) import cleanly as single-server configs.
+    val dnsServer2: String = "",
     val pacEnabled: Boolean = false,
     // Defaulted so legacy backups made before the PAC IP field import cleanly.
     val pacIp: String = "127.0.0.1",

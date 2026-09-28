@@ -11,7 +11,7 @@ class ConfigSerializationTest {
         val config = YggstackConfig(
             peers = listOf("tls://example.org:1234"), privateKey = key,
             socksProxy = "127.0.0.1:1088", httpProxy = "127.0.0.1:8080",
-            dnsServer = "[300::1]:53", proxyEnabled = true,
+            dnsServer = "[300::1]:53", dnsServer2 = "[300::2]:53", proxyEnabled = true,
             exposeMappings = listOf(
                 ExposeMapping(Protocol.TCP, 80, "127.0.0.2", 8080, "web",
                     "api key: abc\nnotes", enabled = false)),
