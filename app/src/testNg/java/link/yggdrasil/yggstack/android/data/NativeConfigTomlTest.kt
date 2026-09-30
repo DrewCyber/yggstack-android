@@ -38,6 +38,28 @@ class NativeConfigTomlTest {
         assertEquals(listOf("tcp://active:1", "tcp://fresh:1"), peersOf(NativeConfigToml.build(config, now = 4000001)))
     }
 
+    @Test fun listenMirrorsConfigOrFallsBackToEphemeralDefault() {
+        val config = YggstackConfig(privateKey = key, listenEnabled = true,
+            listenEntries = listOf(ListenEntry(ListenScheme.TLS, "192.168.1.5", 4321)))
+        assertTrue(NativeConfigToml.build(config).contains("listen = [\"tls://192.168.1.5:4321\"]"))
+        // Tick off: the ng core's own default (ephemeral all-interfaces listener)
+        assertTrue(NativeConfigToml.build(config.copy(listenEnabled = false))
+            .contains("listen = [\"tcp://[::]:0\"]"))
+    }
+
+    @Test fun listenDropsSchemesTheNgCoreDoesNotSupport() {
+        // quic/ws would fail ng engine start with "unsupported scheme" — e.g.
+        // after importing a go-flavor backup — so they are filtered instead.
+        val config = YggstackConfig(privateKey = key, listenEnabled = true,
+            listenEntries = listOf(ListenEntry(ListenScheme.TCP, "0.0.0.0", 1),
+                ListenEntry(ListenScheme.QUIC, "0.0.0.0", 2)))
+        assertTrue(NativeConfigToml.build(config).contains("listen = [\"tcp://0.0.0.0:1\"]"))
+        // Nothing left after filtering: same as nothing configured (ephemeral
+        // default listener), rather than an explicit empty listen list
+        val quicOnly = config.copy(listenEntries = listOf(ListenEntry(ListenScheme.QUIC, "0.0.0.0", 2)))
+        assertTrue(NativeConfigToml.build(quicOnly).contains("listen = [\"tcp://[::]:0\"]"))
+    }
+
     @Test fun extractsKeyFromGeneratedToml() {
         val generated = "if_name = \"auto\"\nprivate_key = \"$key\"\npeers = []\n"
         assertEquals(key, NativeConfigToml.privateKey(generated))

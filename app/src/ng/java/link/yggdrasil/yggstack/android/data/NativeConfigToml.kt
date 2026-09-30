@@ -54,10 +54,25 @@ internal object NativeConfigToml {
             // actually disables multicast discovery.
             "multicast_interfaces = []"
         }
+        // The ng core honors only tcp:// and tls:// listen URIs; entries with
+        // other schemes (e.g. imported from a go-flavor backup) are dropped
+        // rather than failing engine start with "unsupported scheme".
+        val listenUris = if (config.hasActiveListen()) {
+            config.listenEntries.filter { it.scheme.supportedByNg }.map { it.toUri() }
+        } else {
+            emptyList()
+        }
+        val listenLines = if (listenUris.isEmpty()) {
+            // Inactive or fully filtered: the ng core's own default (an
+            // ephemeral all-interfaces listener), kept explicit here.
+            "listen = [\"tcp://[::]:0\"]"
+        } else {
+            "listen = [" + listenUris.joinToString(", ") { "\"$it\"" } + "]"
+        }
         return buildString {
             appendLine("private_key = \"$key\"")
             appendLine(peerLines)
-            appendLine("listen = [\"tcp://[::]:0\"]")
+            appendLine(listenLines)
             appendLine("admin_listen = \"none\"")
             appendLine("if_name = \"none\"")
             appendLine("if_mtu = 65535")

@@ -34,6 +34,10 @@ data class YggstackConfig(
     val forwardEnabled: Boolean = false,
     val multicastBeacon: Boolean = false,
     val multicastListen: Boolean = false,
+    // Inbound peering (Yggdrasil `Listen`): master tick + saved entries; when
+    // unticked the entries stay saved (same model as socksEnabled).
+    val listenEnabled: Boolean = false,
+    val listenEntries: List<ListenEntry> = emptyList(),
     val logLevel: String = "info",
     val groupPasswordEnabled: Boolean = false,
     val groupPassword: String = "",
@@ -52,6 +56,15 @@ data class YggstackConfig(
 /** True if at least one expose mapping would actually accept connections from the Yggdrasil network. */
 fun YggstackConfig.hasActiveExposedPorts(): Boolean =
     exposeEnabled && exposeMappings.any { it.enabled }
+
+/** True if the node would accept inbound peer connections on configured Listen sockets. */
+fun YggstackConfig.hasActiveListen(): Boolean =
+    listenEnabled && listenEntries.isNotEmpty()
+
+/** True if something requires the node to stay reachable from the network,
+ *  making Power Save unavailable (exposed ports, multicast announce, Listen). */
+fun YggstackConfig.hasAlwaysOnInbound(): Boolean =
+    hasActiveExposedPorts() || multicastBeacon || hasActiveListen()
 
 /** True if there is at least one local SOCKS/HTTP proxy or forward mapping Power Save could wake on. */
 fun YggstackConfig.hasWakeableTargets(): Boolean =
@@ -113,6 +126,48 @@ data class ForwardMapping(
 @Serializable
 enum class Protocol : Parcelable {
     TCP, UDP
+}
+
+/**
+ * Transport a Listen entry accepts incoming peer connections on. The Go core
+ * honors all four; the ng core only TCP and TLS (see [supportedByNg]).
+ */
+@Parcelize
+@Serializable
+enum class ListenScheme : Parcelable {
+    TCP, TLS, QUIC, WS;
+
+    val uri: String get() = name.lowercase()
+    val supportedByNg: Boolean get() = this == TCP || this == TLS
+}
+
+/**
+ * One Yggdrasil `Listen` address: a socket this node accepts peer
+ * connections on, e.g. tcp://0.0.0.0:1234.
+ */
+@Parcelize
+@Serializable
+data class ListenEntry(
+    val scheme: ListenScheme,
+    val ip: String,        // bind address; IPv6 stored unbracketed
+    val port: Int
+) : Parcelable {
+    /** URI form written to the native config; IPv6 hosts are bracketed. */
+    fun toUri(): String =
+        "${scheme.uri}://" + (if (ip.contains(':')) "[$ip]" else ip) + ":$port"
+
+    companion object {
+        private val uriRegex = Regex("""^(tcp|tls|quic|ws)://(\[[^\]]+\]|[^:\s]+):(\d+)$""")
+
+        /** Parse "scheme://[host]:port"; null when malformed or the scheme is unknown. */
+        fun fromUri(uri: String): ListenEntry? {
+            val m = uriRegex.find(uri.trim()) ?: return null
+            val scheme = ListenScheme.entries.firstOrNull { it.uri == m.groupValues[1] } ?: return null
+            val port = m.groupValues[3].toIntOrNull() ?: return null
+            if (port !in 1..65535) return null
+            return ListenEntry(scheme, m.groupValues[2].removeSurrounding("[", "]"), port)
+        }
+    }
 }
 
 data class PeerDetail(

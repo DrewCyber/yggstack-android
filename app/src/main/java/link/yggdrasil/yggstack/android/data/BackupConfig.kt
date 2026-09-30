@@ -13,6 +13,9 @@ data class YggdrasilSettings(
     val peers: List<String>,
     val multicastBeacon: Boolean,
     val multicastListen: Boolean,
+    // Inbound peering (Listen); defaulted so legacy backups import cleanly.
+    val listenEnabled: Boolean = false,
+    val listenEntries: List<ListenEntry> = emptyList(),
     val groupPasswordEnabled: Boolean = false,
     val groupPassword: String = "",
     val maxBackoffEnabled: Boolean = true,
@@ -49,6 +52,8 @@ data class BackupConfig(
                     peers = config.peers,
                     multicastBeacon = config.multicastBeacon,
                     multicastListen = config.multicastListen,
+                    listenEnabled = config.listenEnabled,
+                    listenEntries = config.listenEntries,
                     groupPasswordEnabled = config.groupPasswordEnabled,
                     groupPassword = config.groupPassword,
                     maxBackoffEnabled = config.maxBackoffEnabled,
@@ -92,6 +97,8 @@ data class BackupConfig(
             val ygPeers = mutableListOf<String>()
             var ygMulticastBeacon = false
             var ygMulticastListen = false
+            var ygListenEnabled = false
+            val ygListenEntries = mutableListOf<ListenEntry>()
             var ygGroupPasswordEnabled = false
             var ygGroupPassword = ""
             var ygMaxBackoffEnabled = true
@@ -201,6 +208,11 @@ data class BackupConfig(
                         "peers"           -> ygPeers.addAll(parseTomlStringArray(rawVal))
                         "multicastBeacon" -> ygMulticastBeacon  = boolVal()
                         "multicastListen" -> ygMulticastListen  = boolVal()
+                        "listenEnabled"   -> ygListenEnabled    = boolVal()
+                        // Stored as URI strings ("tcp://0.0.0.0:1234"); malformed
+                        // entries are skipped rather than failing the whole import.
+                        "listen"          -> ygListenEntries.addAll(
+                            parseTomlStringArray(rawVal).mapNotNull(ListenEntry::fromUri))
                         "groupPasswordEnabled" -> ygGroupPasswordEnabled = boolVal()
                         "groupPassword"  -> ygGroupPassword = strVal()
                         "maxBackoffEnabled" -> ygMaxBackoffEnabled = boolVal()
@@ -252,6 +264,8 @@ data class BackupConfig(
                     peers           = ygPeers,
                     multicastBeacon = ygMulticastBeacon,
                     multicastListen = ygMulticastListen,
+                    listenEnabled   = ygListenEnabled,
+                    listenEntries   = ygListenEntries,
                     groupPasswordEnabled = ygGroupPasswordEnabled,
                     groupPassword = ygGroupPassword,
                     maxBackoffEnabled = ygMaxBackoffEnabled,
@@ -320,6 +334,9 @@ data class BackupConfig(
             appendLine("peers = [$peersToml]")
             appendLine("multicastBeacon = ${yggdrasil.multicastBeacon}")
             appendLine("multicastListen = ${yggdrasil.multicastListen}")
+            val listenToml = yggdrasil.listenEntries.joinToString(", ") { "\"${it.toUri().tomlEscape()}\"" }
+            appendLine("listen = [$listenToml]")
+            appendLine("listenEnabled = ${yggdrasil.listenEnabled}")
             appendLine("groupPasswordEnabled = ${yggdrasil.groupPasswordEnabled}")
             appendLine("groupPassword = \"${yggdrasil.groupPassword.tomlEscape()}\"")
             appendLine("maxBackoffEnabled = ${yggdrasil.maxBackoffEnabled}")
@@ -400,6 +417,8 @@ data class BackupConfig(
                 peers = it.peers,
                 multicastBeacon = it.multicastBeacon,
                 multicastListen = it.multicastListen,
+                listenEnabled = it.listenEnabled,
+                listenEntries = it.listenEntries,
                 groupPasswordEnabled = it.groupPasswordEnabled,
                 groupPassword = it.groupPassword,
                 maxBackoffEnabled = it.maxBackoffEnabled,
@@ -429,6 +448,11 @@ data class BackupConfig(
                 }
                 if (mapping.remotePort !in 1..65535) {
                     return@validate Result.failure(IllegalArgumentException("Invalid remote port: ${mapping.remotePort}"))
+                }
+            }
+            yggdrasil?.listenEntries?.forEach { entry ->
+                if (entry.port !in 1..65535) {
+                    return@validate Result.failure(IllegalArgumentException("Invalid listen port: ${entry.port}"))
                 }
             }
             Result.success(Unit)

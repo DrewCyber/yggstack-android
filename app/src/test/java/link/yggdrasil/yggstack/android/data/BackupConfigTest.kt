@@ -59,6 +59,32 @@ class BackupConfigTest {
         assertEquals("127.0.0.1:1080", applied.socksProxy)
     }
 
+    @Test fun listenEntriesRoundTripThroughTomlAndLegacyImportsAsEmpty() {
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(privateKey = key, listenEnabled = true,
+                listenEntries = listOf(
+                    ListenEntry(ListenScheme.TCP, "0.0.0.0", 1234),
+                    ListenEntry(ListenScheme.QUIC, "192.168.1.5", 4321))),
+            includeYggdrasil = true
+        )
+        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        assertEquals(listOf("tcp://0.0.0.0:1234", "quic://192.168.1.5:4321"),
+            restored.yggdrasil!!.listenEntries.map { it.toUri() })
+        assertTrue(restored.yggdrasil!!.listenEnabled)
+        val applied = restored.applyTo(YggstackConfig(privateKey = key))
+        assertEquals(backup.yggdrasil!!.listenEntries, applied.listenEntries)
+        assertTrue(applied.listenEnabled)
+
+        // Legacy backup without listen lines: entries empty, tick off
+        val legacy = BackupConfig.fromToml(toml("")).getOrThrow()
+        assertTrue(legacy.yggdrasil!!.listenEntries.isEmpty())
+        assertFalse(legacy.applyTo(YggstackConfig(privateKey = key)).listenEnabled)
+
+        // Malformed listen URIs in a hand-edited backup are skipped, not fatal
+        val handEdited = BackupConfig.fromToml(toml("listen = [\"tcp://0.0.0.0:99\", \"bogus\"]")).getOrThrow()
+        assertEquals(listOf("tcp://0.0.0.0:99"), handEdited.yggdrasil!!.listenEntries.map { it.toUri() })
+    }
+
     @Test fun failoverDnsServerRoundTripsThroughToml() {
         val backup = BackupConfig.fromYggstackConfig(
             YggstackConfig(dnsServer = "[308:1::]:53", dnsServer2 = "[308:2::]:53", proxyEnabled = true)

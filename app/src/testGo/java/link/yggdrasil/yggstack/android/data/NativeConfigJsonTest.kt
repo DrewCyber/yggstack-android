@@ -40,6 +40,20 @@ class NativeConfigJsonTest {
         assertEquals(listOf("tcp://active:1", "tcp://fresh:1"), result.getValue("Peers").jsonArray.map { it.jsonPrimitive.content })
     }
 
+    @Test fun listenWrittenOnlyWhenEnabledWithEntries() {
+        val config = YggstackConfig(privateKey = key, listenEnabled = true,
+            listenEntries = listOf(ListenEntry(ListenScheme.TCP, "0.0.0.0", 1234),
+                ListenEntry(ListenScheme.QUIC, "::1", 5555)))
+        val active = Json.parseToJsonElement(NativeConfigJson.build(config)).jsonObject
+        assertEquals(listOf("tcp://0.0.0.0:1234", "quic://[::1]:5555"),
+            active.getValue("Listen").jsonArray.map { it.jsonPrimitive.content })
+        // Tick off or no entries: back to the previous behavior (no listeners)
+        val tickedOff = Json.parseToJsonElement(NativeConfigJson.build(config.copy(listenEnabled = false))).jsonObject
+        assertEquals(emptyList<String>(), tickedOff.getValue("Listen").jsonArray.map { it.jsonPrimitive.content })
+        val noEntries = Json.parseToJsonElement(NativeConfigJson.build(config.copy(listenEntries = emptyList()))).jsonObject
+        assertEquals(emptyList<String>(), noEntries.getValue("Listen").jsonArray.map { it.jsonPrimitive.content })
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsMalformedKeyBeforeBinding() { NativeConfigJson.build(YggstackConfig(privateKey = "short")) }
 

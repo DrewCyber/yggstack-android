@@ -64,6 +64,7 @@ fun ConfigurationScreen(
     var editingForwardMapping by remember { mutableStateOf<ForwardMapping?>(null) }
     var deepLinkForwardPrefill by remember { mutableStateOf<ForwardMapping?>(null) }
     var showPeerDiscovery by remember { mutableStateOf(false) }
+    var showListenScreen by remember { mutableStateOf(false) }
     var showGroupPassword by remember { mutableStateOf(false) }
 
     // Open the relevant dialog when a deep link arrives
@@ -517,7 +518,14 @@ fun ConfigurationScreen(
             // Power Save Section
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    val exposedActive = config.hasActiveExposedPorts()
+                    // One hint line per blocker so the user sees exactly what
+                    // is disabling Power Save: exposed ports, multicast
+                    // announce, Listen — in any combination.
+                    val powerSaveBlockers = buildList {
+                        if (config.hasActiveExposedPorts()) add(R.string.power_save_exposed_hint)
+                        if (config.multicastBeacon) add(R.string.power_save_multicast_hint)
+                        if (config.hasActiveListen()) add(R.string.power_save_listen_hint)
+                    }
                     var showHowItWorks by remember { mutableStateOf(false) }
 
                     Row(
@@ -545,17 +553,19 @@ fun ConfigurationScreen(
                         Switch(
                             checked = config.powerSaveEnabled,
                             onCheckedChange = { viewModel.setPowerSaveEnabled(it) },
-                            enabled = !isServiceRunning && !exposedActive,
+                            enabled = !isServiceRunning && powerSaveBlockers.isEmpty(),
                             modifier = Modifier.scale(0.8f)
                         )
                     }
-                    if (exposedActive) {
+                    if (powerSaveBlockers.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.power_save_exposed_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        powerSaveBlockers.forEach { hintRes ->
+                            Text(
+                                text = stringResource(hintRes),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     if (showHowItWorks) {
@@ -761,6 +771,25 @@ fun ConfigurationScreen(
                             )
                         }
 
+                        // Listen (inbound peering): same row pattern as the
+                        // proxy card's address rows; entries are managed on a
+                        // dedicated screen opened on tap. The row itself is
+                        // always tappable while stopped (otherwise the first
+                        // entry could never be added); the tick follows the
+                        // Group Password model — enabled only once an entry
+                        // exists.
+                        ProxySettingRow(
+                            label = stringResource(R.string.listen_title),
+                            value = config.listenEntries.joinToString(", ") { it.toUri() }
+                                .ifBlank { stringResource(R.string.listen_row_hint) },
+                            checked = config.listenEnabled,
+                            onCheckedChange = { viewModel.setListenEnabled(it) },
+                            enabled = !isServiceRunning,
+                            checkboxEnabled = !isServiceRunning &&
+                                (config.listenEnabled || config.listenEntries.isNotEmpty()),
+                            onClick = { showListenScreen = true }
+                        )
+
                         Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
@@ -930,6 +959,13 @@ fun ConfigurationScreen(
         PeerDiscoveryScreen(
             viewModel = discoveryViewModel,
             onDismiss = { showPeerDiscovery = false }
+        )
+    }
+
+    if (showListenScreen) {
+        ListenScreen(
+            viewModel = viewModel,
+            onDismiss = { showListenScreen = false }
         )
     }
 
@@ -1112,6 +1148,10 @@ fun ConfigSectionWithToggle(
  * current value beneath it, optional trailing content, and an optional
  * enable tick at the far right (absent for rows without an on/off state,
  * e.g. DNS). Tapping the row opens the setting's edit dialog.
+ *
+ * [checkboxEnabled] decouples the tick from the row's clickability — e.g. the
+ * Listen row is always tappable (its entries live on a separate screen) while
+ * its tick stays locked until an entry exists. Null (default) follows [enabled].
  */
 @Composable
 fun ProxySettingRow(
@@ -1122,6 +1162,7 @@ fun ProxySettingRow(
     checked: Boolean? = null,
     onCheckedChange: ((Boolean) -> Unit)? = null,
     enabled: Boolean = true,
+    checkboxEnabled: Boolean? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {
     val contentColor = if (checked == false) {
@@ -1156,7 +1197,7 @@ fun ProxySettingRow(
             Checkbox(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                enabled = enabled
+                enabled = checkboxEnabled ?: enabled
             )
         }
     }

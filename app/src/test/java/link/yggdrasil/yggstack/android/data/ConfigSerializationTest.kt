@@ -20,6 +20,8 @@ class ConfigSerializationTest {
                 ForwardMapping(Protocol.UDP, "127.0.0.1", 1234, "300::1", 53, "dns",
                     "wake-on-lan\nsecret \"quoted\" and back\\slash", enabled = false)),
             forwardEnabled = true, multicastBeacon = true, multicastListen = true, logLevel = "debug",
+            listenEnabled = true,
+            listenEntries = listOf(ListenEntry(ListenScheme.TLS, "0.0.0.0", 1234)),
             groupPasswordEnabled = true, groupPassword = "quote\" slash\\ newline\n tab\t\u0000$",
             cachedPeers = listOf(CachedPeer("tcp://cached:1", "multicast", 123L, 4, 2)),
             maxBackoffEnabled = true, maxBackoff = 27, disabledPeers = listOf("tls://disabled:1"),
@@ -113,6 +115,29 @@ class ConfigSerializationTest {
             pacEnabled = true, pacPort = 9911, pacAllTraffic = true
         )
         assertEquals(config, ConfigSerializer.decode(ConfigSerializer.encode(config)))
+    }
+
+    @Test fun oldSnapshotWithoutListenKeepsDefaults() {
+        val restored = ConfigSerializer.decode(
+            """{"version":1,"config":{"privateKey":"abc","peers":[]}}"""
+        )
+        assertFalse(restored.listenEnabled)
+        assertTrue(restored.listenEntries.isEmpty())
+    }
+
+    @Test fun hasAlwaysOnInboundCoversAllThreeBlockers() {
+        val base = YggstackConfig()
+        assertFalse(base.hasAlwaysOnInbound())
+        assertTrue(base.copy(exposeEnabled = true,
+            exposeMappings = listOf(ExposeMapping(Protocol.TCP, 80, "127.0.0.1", 80))).hasAlwaysOnInbound())
+        assertTrue(base.copy(multicastBeacon = true).hasAlwaysOnInbound())
+        // Unticked Listen with saved entries must NOT block Power Save
+        assertFalse(base.copy(listenEnabled = false,
+            listenEntries = listOf(ListenEntry(ListenScheme.TCP, "0.0.0.0", 1))).hasAlwaysOnInbound())
+        assertTrue(base.copy(listenEnabled = true,
+            listenEntries = listOf(ListenEntry(ListenScheme.TCP, "0.0.0.0", 1))).hasAlwaysOnInbound())
+        // Tick without entries (possible only via hand-edited import) is inert
+        assertFalse(base.copy(listenEnabled = true).hasAlwaysOnInbound())
     }
 
     @Test fun readsUnversionedRecoverySnapshot() {

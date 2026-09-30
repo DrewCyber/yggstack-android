@@ -14,6 +14,17 @@
     <string name="multicast_discovery">Multicast Peer Discovery</string>
     <string name="multicast_discover">Connect to discovered peers</string>
     <string name="multicast_advertise">Announce for incoming connections</string>
+    <string name="listen_title">Listen</string>
+    <string name="listen_row_hint">Tap to add an address</string>
+    <string name="listen_add_address">Add Address</string>
+    <string name="listen_empty_hint">No listen addresses. Add one so other nodes can peer with this device.</string>
+    <string name="listen_screen_hint">Addresses this node accepts incoming peer connections on. Add the address to the other node\'s Peers list.</string>
+    <string name="listen_uri_label">Listen URI</string>
+    <string name="listen_port_in_use">An entry with this address and port already exists.</string>
+    <string name="edit">Edit</string>
+    <string name="delete">Delete</string>
+    <string name="update">Update</string>
+    <string name="add">Add</string>
     <string name="group_password_section">Private Group</string>
     <string name="group_password_label">Group Password</string>
     <string name="group_password_hint">Enter shared password</string>
@@ -178,12 +189,13 @@
     <string name="backup_preview_label">Preview:</string>
     <string name="backup_include_yggdrasil">Include Yggdrasil parameters</string>
     <string name="backup_desc_yggstack_only">Includes: proxy settings, expose/forward port mappings</string>
-    <string name="backup_desc_full">Includes: Yggdrasil private key, peers, multicast settings, group password, max backoff + proxy settings, expose/forward port mappings</string>
+    <string name="backup_desc_full">Includes: Yggdrasil private key, peers, listen, multicast settings, group password, max backoff + proxy settings, expose/forward port mappings</string>
     <string name="backup_yggdrasil_settings">Yggdrasil Settings:</string>
     <string name="backup_private_key_label">• Private key: %s</string>
     <string name="backup_peers_count">• Peers: %d</string>
     <string name="backup_multicast_beacon">• Multicast beacon: %s</string>
     <string name="backup_multicast_listen">• Multicast listen: %s</string>
+    <string name="backup_listen_entries">• Listen: %s</string>
     <string name="backup_group_password_enabled">• Group password enabled: %s</string>
     <string name="backup_group_password_value">• Group password: %s</string>
     <string name="backup_max_backoff">• Max backoff: %ds</string>
@@ -201,7 +213,7 @@
     <string name="mappings_count">• Mappings: %d</string>
     <string name="more_mappings">  - ... and %d more</string>
     <string name="import_note">Note: This will replace your current proxy and port forwarding settings. Other settings (peers, private key, multicast) will not be affected.</string>
-    <string name="import_note_full">Note: This will replace your current Yggdrasil settings (private key, peers, multicast, group password, max backoff) AND proxy/port forwarding settings.</string>
+    <string name="import_note_full">Note: This will replace your current Yggdrasil settings (private key, peers, listen, multicast, group password, max backoff) AND proxy/port forwarding settings.</string>
     <string name="import_button">Import</string>
     <string name="no_peers_message">No peers connected. Add peers in the Configuration tab to connect to the Yggdrasil network.</string>
     <string name="uptime">Uptime</string>
@@ -224,9 +236,11 @@
     <!-- Power Save -->
     <string name="power_save_title">Power Save</string>
     <string name="power_save_exposed_hint">Unavailable while an exposed port is enabled.</string>
+    <string name="power_save_multicast_hint">Unavailable while \"Announce for incoming connections\" is enabled.</string>
+    <string name="power_save_listen_hint">Unavailable while Listen is enabled.</string>
     <string name="power_save_how_it_works">How it works?</string>
     <string name="power_save_how_it_works_title">How Power Save works</string>
-    <string name="power_save_how_it_works_body">When Power Save is enabled, the node powers down and wakes based on four independent events you can toggle separately:\n\n• Sleep on ports idle — the app watches active connections through the SOCKS/HTTP proxy and forwarded ports. When the last connection closes, a countdown starts (the timeout shown next to the toggle). If no new connection arrives before it ends, the node powers down: all listeners are closed and CPU, Wi-Fi and wake locks are released so the device can sleep.\n\n• Wake on ports active — while the node is powered down, lightweight placeholder listeners keep holding the SOCKS/HTTP and forwarded ports. Any incoming connection attempt (or the first packet on a UDP port) wakes the node: real listeners are restored within a few seconds and the client can retry.\n\n• Sleep during screen off — the node powers down the moment the screen turns off, dropping active connections. While the screen stays off, port knocking does not wake the node (even with \"Wake on ports active\" enabled) — it wakes when the screen comes back on (if \"Wake on screen on\" is enabled) or manually.\n\n• Wake on screen on — turning the screen on wakes the node if it was powered down.\n\nThe events complement each other and work in any combination. You can also wake the node manually with the \"Wake Now\" button on the Ports and Peers screens or in the notification.\n\nThe \"Up for\" and \"Idle for\" counters on the Power Save card show how the time since the service was started is split between the running node and Power Save idle. They reset when the service is fully stopped.\n\nPower Save is unavailable while an exposed port is enabled, because exposed ports must accept connections at all times.</string>
+    <string name="power_save_how_it_works_body">When Power Save is enabled, the node powers down and wakes based on four independent events you can toggle separately:\n\n• Sleep on ports idle — the app watches active connections through the SOCKS/HTTP proxy and forwarded ports. When the last connection closes, a countdown starts (the timeout shown next to the toggle). If no new connection arrives before it ends, the node powers down: all listeners are closed and CPU, Wi-Fi and wake locks are released so the device can sleep.\n\n• Wake on ports active — while the node is powered down, lightweight placeholder listeners keep holding the SOCKS/HTTP and forwarded ports. Any incoming connection attempt (or the first packet on a UDP port) wakes the node: real listeners are restored within a few seconds and the client can retry.\n\n• Sleep during screen off — the node powers down the moment the screen turns off, dropping active connections. While the screen stays off, port knocking does not wake the node (even with \"Wake on ports active\" enabled) — it wakes when the screen comes back on (if \"Wake on screen on\" is enabled) or manually.\n\n• Wake on screen on — turning the screen on wakes the node if it was powered down.\n\nThe events complement each other and work in any combination. You can also wake the node manually with the \"Wake Now\" button on the Ports and Peers screens or in the notification.\n\nThe \"Up for\" and \"Idle for\" counters on the Power Save card show how the time since the service was started is split between the running node and Power Save idle. They reset when the service is fully stopped.\n\nPower Save is unavailable while an exposed port, Listen or \"Announce for incoming connections\" is enabled, because they must accept connections at all times.</string>
     <string name="power_save_sleep_ports_idle">Sleep on ports idle</string>
     <string name="power_save_wake_ports_active">Wake on ports active</string>
     <string name="power_save_sleep_screen_off">Sleep during screen off</string>

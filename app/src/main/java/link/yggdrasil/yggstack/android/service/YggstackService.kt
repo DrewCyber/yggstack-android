@@ -32,7 +32,7 @@ import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
 import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.CachedPeer
-import link.yggdrasil.yggstack.android.data.hasActiveExposedPorts
+import link.yggdrasil.yggstack.android.data.hasAlwaysOnInbound
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -516,7 +516,7 @@ class YggstackService : Service() {
 
                 // Build config JSON (handles both new and existing private keys)
                 logDebug("Loading configuration...")
-                logInfo("Config summary: ${config.peers.size} peer(s), multicast=${config.multicastBeacon || config.multicastListen}, proxy=${config.proxyEnabled}")
+                logInfo("Config summary: ${config.peers.size} peer(s), multicast=${config.multicastBeacon || config.multicastListen}, listen=${config.listenEntries.size}(enabled=${config.listenEnabled}), proxy=${config.proxyEnabled}")
                 val configJson = buildConfigJson(config)
                 
                 // Store SANITIZED config JSON for diagnostics display (private key truncated)
@@ -1368,12 +1368,13 @@ class YggstackService : Service() {
 
     /**
      * Starts or stops the Power Save idle monitor to match current eligibility
-     * (running + enabled + "Sleep on ports idle" + no active exposed ports).
-     * Safe to call any time the live config changes.
+     * (running + enabled + "Sleep on ports idle" + no always-on inbound:
+     * exposed ports, Listen or multicast announce). Safe to call any time the
+     * live config changes.
      */
     private fun syncPowerSaveMonitor(config: YggstackConfig) {
         val eligible = _isRunning.value && config.powerSaveEnabled &&
-            config.powerSaveSleepOnPortsIdle && !config.hasActiveExposedPorts()
+            config.powerSaveSleepOnPortsIdle && !config.hasAlwaysOnInbound()
         if (eligible) {
             if (idlePowerSaveMonitorJob?.isActive != true) {
                 startIdlePowerSaveMonitor()
@@ -1402,7 +1403,7 @@ class YggstackService : Service() {
             _idleCountdownSeconds.value = remainingSeconds
             while (_isRunning.value) {
                 val cfg = lastConfig
-                if (cfg == null || !cfg.powerSaveEnabled || !cfg.powerSaveSleepOnPortsIdle || cfg.hasActiveExposedPorts()) {
+                if (cfg == null || !cfg.powerSaveEnabled || !cfg.powerSaveSleepOnPortsIdle || cfg.hasAlwaysOnInbound()) {
                     _idleCountdownSeconds.value = null
                     break
                 }
@@ -2622,7 +2623,7 @@ class YggstackService : Service() {
         logDebug("Screen off - device screen locked")
         screenOn = false
         val cfg = lastConfig ?: return
-        if (!cfg.powerSaveEnabled || !cfg.powerSaveSleepDuringScreenOff || cfg.hasActiveExposedPorts()) return
+        if (!cfg.powerSaveEnabled || !cfg.powerSaveSleepDuringScreenOff || cfg.hasAlwaysOnInbound()) return
         if (_isRunning.value) {
             logInfo("Power Save: screen off - powering down node immediately")
             triggerIdlePowerDown("screen off")

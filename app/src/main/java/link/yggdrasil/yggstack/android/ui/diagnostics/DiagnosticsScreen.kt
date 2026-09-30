@@ -550,6 +550,16 @@ fun ImportPreviewDialog(
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace
                     )
+                    if (ygd.listenEntries.isNotEmpty()) {
+                        Text(
+                            text = stringResource(
+                                R.string.backup_listen_entries,
+                                ygd.listenEntries.joinToString(", ") { it.toUri() }
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                     Text(
                         text = stringResource(R.string.backup_group_password_enabled, ygd.groupPasswordEnabled),
                         style = MaterialTheme.typography.bodySmall,

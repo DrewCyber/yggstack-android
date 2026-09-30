@@ -34,7 +34,13 @@ internal object NativeConfigJson {
         fields.putIfAbsent("Certificate", JsonNull)
         fields["Peers"] = JsonArray(configuredPeers.map(::JsonPrimitive))
         fields.putIfAbsent("InterfacePeers", JsonObject(emptyMap()))
-        fields["Listen"] = JsonArray(emptyList())
+        val listenUris = if (config.hasActiveListen()) config.listenEntries.map { it.toUri() } else emptyList()
+        listenUris.forEach { uri ->
+            require(uri.none { it.code < 32 || it.code == 127 }) {
+                "Listen URI must contain no control characters"
+            }
+        }
+        fields["Listen"] = JsonArray(listenUris.map(::JsonPrimitive))
         fields["AdminListen"] = JsonPrimitive("none")
         fields["MulticastInterfaces"] = JsonArray(if (config.multicastBeacon || config.multicastListen) {
             val defaults = (fields["MulticastInterfaces"] as? JsonArray)?.takeIf { it.isNotEmpty() }

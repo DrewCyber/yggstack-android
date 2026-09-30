@@ -455,6 +455,36 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(multicastListen = enabled))
     }
 
+    fun setListenEnabled(enabled: Boolean) {
+        updateConfig(_config.value.copy(listenEnabled = enabled))
+    }
+
+    fun addListenEntry(entry: ListenEntry) {
+        val current = _config.value.listenEntries.toMutableList()
+        current.add(entry)
+        updateConfig(_config.value.copy(listenEntries = current))
+    }
+
+    fun removeListenEntry(entry: ListenEntry) {
+        val current = _config.value.listenEntries.toMutableList()
+        current.remove(entry)
+        // Removing the last entry also releases the tick — a ticked-but-empty
+        // Listen would silently do nothing
+        updateConfig(_config.value.copy(
+            listenEntries = current,
+            listenEnabled = _config.value.listenEnabled && current.isNotEmpty()
+        ))
+    }
+
+    fun updateListenEntry(oldEntry: ListenEntry, newEntry: ListenEntry) {
+        val current = _config.value.listenEntries.toMutableList()
+        val index = current.indexOf(oldEntry)
+        if (index != -1) {
+            current[index] = newEntry
+            updateConfig(_config.value.copy(listenEntries = current))
+        }
+    }
+
     fun updateGroupPassword(password: String) {
         val trimmed = password.trim()
         val keepEnabled = _config.value.groupPasswordEnabled && trimmed.isNotBlank()
@@ -639,9 +669,10 @@ class ConfigurationViewModel(
     }
 
     private fun updateConfig(config: YggstackConfig, debouncePersist: Boolean = false) {
-        // Power Save and exposed ports are mutually exclusive (exposed mappings
-        // require the node to stay up to accept inbound network connections)
-        val finalConfig = if (config.powerSaveEnabled && config.hasActiveExposedPorts()) {
+        // Power Save and always-on inbound are mutually exclusive: exposed
+        // mappings, Listen and multicast announce all require the node to stay
+        // up to accept inbound network connections
+        val finalConfig = if (config.powerSaveEnabled && config.hasAlwaysOnInbound()) {
             config.copy(powerSaveEnabled = false)
         } else {
             config
