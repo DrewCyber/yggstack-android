@@ -15,7 +15,7 @@
     <string name="multicast_discover">Connect to discovered peers</string>
     <string name="multicast_advertise">Announce for incoming connections</string>
     <string name="listen_title">Listen</string>
-    <string name="listen_row_hint">Tap to add an address</string>
+    <string name="listen_row_hint">No listen addresses</string>
     <string name="listen_add_address">Add Address</string>
     <string name="listen_empty_hint">No listen addresses. Add one so other nodes can peer with this device.</string>
     <string name="listen_screen_hint">Addresses this node accepts incoming peer connections on. Add the address to the other node\'s Peers list.</string>

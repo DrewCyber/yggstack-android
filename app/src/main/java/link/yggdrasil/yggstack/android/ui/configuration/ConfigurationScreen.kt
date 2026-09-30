@@ -715,14 +715,12 @@ fun ConfigurationScreen(
                                     }
                                 }
                             )
-                            Switch(
+                            Checkbox(
                                 checked = config.groupPasswordEnabled,
                                 onCheckedChange = { viewModel.setGroupPasswordEnabled(it) },
                                 enabled = !isServiceRunning &&
                                         (config.groupPasswordEnabled || config.groupPassword.isNotBlank()),
-                                modifier = Modifier
-                                    .align(Alignment.CenterVertically)
-                                    .scale(0.6f)
+                                modifier = Modifier.align(Alignment.CenterVertically)
                             )
                         }
 
@@ -751,11 +749,10 @@ fun ConfigurationScreen(
                                         style = MaterialTheme.typography.titleMedium
                                     )
                                 }
-                                Switch(
+                                Checkbox(
                                     checked = config.maxBackoffEnabled,
                                     onCheckedChange = { viewModel.setMaxBackoffEnabled(it) },
-                                    enabled = !isServiceRunning,
-                                    modifier = Modifier.scale(0.6f)
+                                    enabled = !isServiceRunning
                                 )
                             }
                         }

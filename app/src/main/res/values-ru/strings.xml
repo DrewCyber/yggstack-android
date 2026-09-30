@@ -15,7 +15,7 @@
     <string name="multicast_discover">Подключаться к обнаруженным узлам</string>
     <string name="multicast_advertise">Анонсировать для входящих подключений</string>
     <string name="listen_title">Listen</string>
-    <string name="listen_row_hint">Нажмите, чтобы добавить адрес</string>
+    <string name="listen_row_hint">Нет адресов Listen</string>
     <string name="listen_add_address">Добавить адрес</string>
     <string name="listen_empty_hint">Нет адресов Listen. Добавьте адрес, чтобы другие узлы могли подключаться к этому устройству.</string>
     <string name="listen_screen_hint">Адреса, по которым этот узел принимает входящие подключения от узлов. Добавьте адрес в список узлов на другом устройстве.</string>
