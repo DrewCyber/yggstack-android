@@ -239,64 +239,12 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState())
     ) {
-        // Backup Configuration Card (top)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.backup_configuration),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = stringResource(R.string.backup_restore_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Export button – opens export dialog
-                    IconButton(
-                        onClick = { showExportDialog = true },
-                        enabled = yggstackConfig != null
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "Export configuration",
-                            tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
-                        )
-                    }
-                    // Import button
-                    IconButton(onClick = {
-                        importLauncher.launch(arrayOf("*/*"))
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Upload,
-                            contentDescription = "Import configuration",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         // Yggdrasil Configuration Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -373,6 +321,58 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                             text = stringResource(R.string.no_config_available),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Backup Configuration Card (pinned to the bottom; scrolls never move it)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.backup_configuration),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Export button – opens export dialog
+                    IconButton(
+                        onClick = { showExportDialog = true },
+                        enabled = yggstackConfig != null
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Export configuration",
+                            tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
+                        )
+                    }
+                    // Import button
+                    IconButton(onClick = {
+                        importLauncher.launch(arrayOf("*/*"))
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Upload,
+                            contentDescription = "Import configuration",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }

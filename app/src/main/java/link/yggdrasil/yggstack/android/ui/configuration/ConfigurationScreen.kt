@@ -1255,6 +1255,8 @@ fun ProxyAddressDialog(
     }
 
     val portValid = validatePort(port)
+    // 1..1024 stays accepted (rooted devices can bind it) — only a soft warning
+    val privilegedPort = isPrivilegedPort(port.toIntOrNull() ?: 0)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1282,14 +1284,20 @@ fun ProxyAddressDialog(
                     value = port,
                     onValueChange = { port = it },
                     label = { Text(stringResource(R.string.port_label)) },
-                    placeholder = { Text("1-65535") },
+                    placeholder = { Text("1025-65535") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = port.isNotEmpty() && !portValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    supportingText = if (port.isNotEmpty() && !portValid) {
-                        { Text("Port must be between 1-65535") }
-                    } else null
+                    supportingText = when {
+                        port.isNotEmpty() && !portValid ->
+                            ({ Text("Port must be between 1-65535") })
+                        privilegedPort -> ({
+                            Text(stringResource(R.string.port_below_1025_warning),
+                                color = PrivilegedPortWarning)
+                        })
+                        else -> null
+                    }
                 )
             }
         },
@@ -1456,9 +1464,15 @@ fun PacServerDialog(
                     singleLine = true,
                     isError = port.isNotEmpty() && !portValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    supportingText = if (port.isNotEmpty() && !portValid) {
-                        { Text("Port must be between 1-65535") }
-                    } else null
+                    supportingText = when {
+                        port.isNotEmpty() && !portValid ->
+                            ({ Text("Port must be between 1-65535") })
+                        isPrivilegedPort(port.toIntOrNull() ?: 0) -> ({
+                            Text(stringResource(R.string.port_below_1025_warning),
+                                color = PrivilegedPortWarning)
+                        })
+                        else -> null
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1735,17 +1749,21 @@ fun ExposeMappingDialog(
 
                 OutlinedTextField(
                     value = localPort,
-                    onValueChange = { 
+                    onValueChange = {
                         localPort = it
                         localPortError = it.isNotEmpty() && !validatePort(it)
                     },
                     label = { Text(stringResource(R.string.local_port)) },
-                    placeholder = { Text("1-65535") },
+                    placeholder = { Text("1025-65535") },
                     modifier = Modifier.fillMaxWidth(),
                     isError = localPortError || localConflict,
                     supportingText = when {
                         localPortError -> { { Text("Port must be between 1-65535") } }
                         localConflict -> { { Text("Already in use by another mapping") } }
+                        isPrivilegedPort(localPort.toIntOrNull() ?: 0) -> ({
+                            Text(stringResource(R.string.port_below_1025_warning),
+                                color = PrivilegedPortWarning)
+                        })
                         else -> null
                     }
                 )
@@ -1957,17 +1975,21 @@ fun ForwardMappingDialog(
 
                 OutlinedTextField(
                     value = localPort,
-                    onValueChange = { 
+                    onValueChange = {
                         localPort = it
                         localPortError = it.isNotEmpty() && !validatePort(it)
                     },
                     label = { Text(stringResource(R.string.local_port)) },
-                    placeholder = { Text("1-65535") },
+                    placeholder = { Text("1025-65535") },
                     modifier = Modifier.fillMaxWidth(),
                     isError = localPortError || localConflict,
                     supportingText = when {
                         localPortError -> { { Text("Port must be between 1-65535") } }
                         localConflict -> { { Text("Already in use by another mapping") } }
+                        isPrivilegedPort(localPort.toIntOrNull() ?: 0) -> ({
+                            Text(stringResource(R.string.port_below_1025_warning),
+                                color = PrivilegedPortWarning)
+                        })
                         else -> null
                     }
                 )

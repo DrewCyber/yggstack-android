@@ -48,6 +48,7 @@
     <string name="http_proxy_title">HTTP proxy</string>
     <string name="ip_label">IP</string>
     <string name="port_label">Port</string>
+    <string name="port_below_1025_warning">Ports below 1025 usually require root to bind.</string>
     <string name="pac_server">PAC Server</string>
     <string name="pac_server_subtitle">Proxy Auto-Configuration server</string>
     <string name="pac_port">PAC Port</string>
@@ -183,7 +184,6 @@
     <string name="inbound">Inbound</string>
     <string name="outbound">Outbound</string>
     <string name="backup_configuration">Backup Configuration</string>
-    <string name="backup_restore_description">Export or import configuration settings</string>
     <string name="backup_export_title">Export Configuration</string>
     <string name="backup_export_button">Export</string>
     <string name="backup_preview_label">Preview:</string>

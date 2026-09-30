@@ -297,7 +297,7 @@ private fun ListenEntryDialog(
                     value = port,
                     onValueChange = { port = it },
                     label = { Text(stringResource(R.string.port_label)) },
-                    placeholder = { Text("1-65535") },
+                    placeholder = { Text("1025-65535") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = (port.isNotEmpty() && !portValid) || duplicate,
@@ -305,6 +305,10 @@ private fun ListenEntryDialog(
                     supportingText = when {
                         duplicate -> ({ Text(stringResource(R.string.listen_port_in_use)) })
                         port.isNotEmpty() && !portValid -> ({ Text(stringResource(R.string.invalid_port)) })
+                        isPrivilegedPort(portNum ?: 0) -> ({
+                            Text(stringResource(R.string.port_below_1025_warning),
+                                color = PrivilegedPortWarning)
+                        })
                         else -> null
                     }
                 )

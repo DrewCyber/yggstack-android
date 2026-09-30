@@ -48,6 +48,7 @@
     <string name="http_proxy_title">HTTP прокси</string>
     <string name="ip_label">IP</string>
     <string name="port_label">Порт</string>
+    <string name="port_below_1025_warning">Порты ниже 1025 обычно требуют root-доступа для привязки.</string>
     <string name="pac_server">PAC-сервер</string>
     <string name="pac_server_subtitle">Сервер автоконфигурации прокси</string>
     <string name="pac_port">PAC-порт</string>
@@ -183,7 +184,6 @@
     <string name="inbound">Входящий</string>
     <string name="outbound">Исходящий</string>
     <string name="backup_configuration">Резервная копия</string>
-    <string name="backup_restore_description">Экспорт или импорт параметров конфигурации</string>
     <string name="backup_export_title">Экспорт конфигурации</string>
     <string name="backup_export_button">Экспорт</string>
     <string name="backup_preview_label">Предпросмотр:</string>

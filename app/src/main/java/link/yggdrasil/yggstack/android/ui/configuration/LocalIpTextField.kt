@@ -14,10 +14,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.window.PopupProperties
 import java.net.Inet4Address
 import java.net.NetworkInterface
+
+/**
+ * Lowest port most Android devices can bind without root; used for the
+ * local-port placeholders. Ports below it are still accepted — rooted devices
+ * can bind them — they only get a gentle warning.
+ */
+internal const val UNPRIVILEGED_PORT_MIN = 1025
+
+/** True for a valid port in the privileged range 1..1024 (bind usually needs root). */
+internal fun isPrivilegedPort(port: Int): Boolean = port in 1 until UNPRIVILEGED_PORT_MIN
+
+/** Amber supporting-text color for the privileged-port warning (soft highlight, not an error). */
+internal val PrivilegedPortWarning = Color(0xFFB36B00)
 
 /**
  * One entry of the suggestion dropdown: [value] is what gets inserted into
