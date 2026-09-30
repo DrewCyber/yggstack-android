@@ -20,23 +20,35 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 
 /**
- * Local IPv4 addresses to offer as suggestions: "127.0.0.1" first, then every
- * non-loopback IPv4 address on the device, deduplicated, "0.0.0.0" last.
+ * One entry of the suggestion dropdown: [value] is what gets inserted into
+ * the field, [label] is extra display-only context — the network interface
+ * name the address belongs to (e.g. "10.0.0.5 (wlan0)").
  */
-internal fun localIpSuggestions(): List<String> {
-    val ipv4 = LinkedHashSet<String>()
+data class IpSuggestion(val value: String, val label: String? = null)
+
+/**
+ * Local IPv4 addresses to offer as suggestions: "127.0.0.1" first, then every
+ * non-loopback IPv4 address on the device (annotated with its interface
+ * name), deduplicated, "0.0.0.0" (all interfaces) last.
+ */
+internal fun localIpSuggestions(): List<IpSuggestion> {
+    val seen = LinkedHashSet<String>()
+    val ifaceIps = mutableListOf<IpSuggestion>()
     runCatching {
-        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return listOf("127.0.0.1", "0.0.0.0")
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return@runCatching
         for (networkInterface in interfaces) {
+            val name = networkInterface.name?.takeIf { it.isNotBlank() }
             for (interfaceAddress in networkInterface.interfaceAddresses) {
                 val address = interfaceAddress.address ?: continue
                 if (address is Inet4Address && !address.isLoopbackAddress) {
-                    address.hostAddress?.let { ipv4.add(it) }
+                    address.hostAddress?.let { ip ->
+                        if (seen.add(ip)) ifaceIps += IpSuggestion(ip, name)
+                    }
                 }
             }
         }
     }
-    return listOf("127.0.0.1") + ipv4 + "0.0.0.0"
+    return listOf(IpSuggestion("127.0.0.1", "lo")) + ifaceIps + IpSuggestion("0.0.0.0", "all")
 }
 
 /**
@@ -44,22 +56,23 @@ internal fun localIpSuggestions(): List<String> {
  * suggestions for the DNS server field (the default :53 port is appended on
  * save by ConfigRepository.normalizeDnsServer).
  */
-internal fun dnsServerSuggestions(): List<String> = listOf(
+internal fun dnsServerSuggestions(): List<IpSuggestion> = listOf(
     "308:62:45:62::",
     "308:25:40:bd::",
     "308:84:68:55::",
     "308:c8:48:45::"
-)
+).map { IpSuggestion(it) }
 
 /**
  * [OutlinedTextField] with a suggestion dropdown that opens only on the
  * first focus of each focus session. Typing, moving the cursor, or dismissing
  * the dropdown closes it; it does not reopen until focus leaves the field and
  * returns. Suggested values come from [suggestionsProvider] — local IPv4
- * addresses by default.
+ * addresses (with interface-name labels) by default.
  *
- * [onPick] transforms a picked suggestion into the new field value (e.g. to keep
- * the port of an ip:port field); default is the bare address.
+ * A suggestion's [IpSuggestion.label] is display-only; only [IpSuggestion.value]
+ * is ever inserted into the field, transformed by [onPick] (e.g. to keep the
+ * port of an ip:port field); default is the bare address.
  */
 @Composable
 fun LocalIpTextField(
@@ -71,7 +84,7 @@ fun LocalIpTextField(
     enabled: Boolean = true,
     isError: Boolean = false,
     supportingText: (@Composable () -> Unit)? = null,
-    suggestionsProvider: () -> List<String> = ::localIpSuggestions,
+    suggestionsProvider: () -> List<IpSuggestion> = ::localIpSuggestions,
     trailingIcon: (@Composable () -> Unit)? = null,
     onPick: (suggestedIp: String, currentText: String) -> String = { ip, _ -> ip }
 ) {
@@ -83,7 +96,7 @@ fun LocalIpTextField(
     // selection-only change after focus — swallow exactly one so the just-opened
     // dropdown does not close immediately.
     var swallowSelectionEvent by remember { mutableStateOf(false) }
-    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var suggestions by remember { mutableStateOf<List<IpSuggestion>>(emptyList()) }
 
     LaunchedEffect(value, isFocused) {
         if (!isFocused && value != textFieldValue.text) {
@@ -138,11 +151,13 @@ fun LocalIpTextField(
             onDismissRequest = { suggestionsExpanded = false },
             properties = PopupProperties(focusable = false)
         ) {
-            suggestions.forEach { ip ->
+            suggestions.forEach { suggestion ->
                 DropdownMenuItem(
-                    text = { Text(ip) },
+                    text = {
+                        Text(suggestion.label?.let { "${suggestion.value} ($it)" } ?: suggestion.value)
+                    },
                     onClick = {
-                        val picked = onPick(ip, textFieldValue.text)
+                        val picked = onPick(suggestion.value, textFieldValue.text)
                         textFieldValue = TextFieldValue(picked)
                         onValueChange(picked)
                         suggestionsExpanded = false
