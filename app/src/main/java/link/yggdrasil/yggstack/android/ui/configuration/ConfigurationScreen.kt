@@ -770,20 +770,19 @@ fun ConfigurationScreen(
 
                         // Listen (inbound peering): same row pattern as the
                         // proxy card's address rows; entries are managed on a
-                        // dedicated screen opened on tap. The row itself is
-                        // always tappable while stopped (otherwise the first
-                        // entry could never be added); the tick follows the
-                        // Group Password model — enabled only once an entry
-                        // exists.
+                        // dedicated screen opened on tap. With no entries yet,
+                        // the tick also opens that screen — a ticked-but-empty
+                        // Listen would silently do nothing.
                         ProxySettingRow(
                             label = stringResource(R.string.listen_title),
                             value = config.listenEntries.joinToString(", ") { it.toUri() }
                                 .ifBlank { stringResource(R.string.listen_row_hint) },
                             checked = config.listenEnabled,
-                            onCheckedChange = { viewModel.setListenEnabled(it) },
+                            onCheckedChange = {
+                                if (config.listenEntries.isEmpty()) showListenScreen = true
+                                else viewModel.setListenEnabled(it)
+                            },
                             enabled = !isServiceRunning,
-                            checkboxEnabled = !isServiceRunning &&
-                                (config.listenEnabled || config.listenEntries.isNotEmpty()),
                             onClick = { showListenScreen = true }
                         )
 
@@ -1145,10 +1144,6 @@ fun ConfigSectionWithToggle(
  * current value beneath it, optional trailing content, and an optional
  * enable tick at the far right (absent for rows without an on/off state,
  * e.g. DNS). Tapping the row opens the setting's edit dialog.
- *
- * [checkboxEnabled] decouples the tick from the row's clickability — e.g. the
- * Listen row is always tappable (its entries live on a separate screen) while
- * its tick stays locked until an entry exists. Null (default) follows [enabled].
  */
 @Composable
 fun ProxySettingRow(
@@ -1159,7 +1154,6 @@ fun ProxySettingRow(
     checked: Boolean? = null,
     onCheckedChange: ((Boolean) -> Unit)? = null,
     enabled: Boolean = true,
-    checkboxEnabled: Boolean? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {
     val contentColor = if (checked == false) {
@@ -1194,7 +1188,7 @@ fun ProxySettingRow(
             Checkbox(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                enabled = checkboxEnabled ?: enabled
+                enabled = enabled
             )
         }
     }
