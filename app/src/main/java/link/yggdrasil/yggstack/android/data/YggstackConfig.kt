@@ -174,6 +174,9 @@ data class PeerDetail(
     val uri: String,
     val up: Boolean,
     val inbound: Boolean,
+    /** The peer's Yggdrasil IPv6 address, derived from its public key by the
+     *  engine; null when unknown (configured-but-never-connected peer). */
+    val address: String? = null,
     val port: Long,
     val priority: Int,
     val cost: Long,

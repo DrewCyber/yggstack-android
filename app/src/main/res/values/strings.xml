@@ -87,6 +87,7 @@
 
     <!-- Internal ping (netstack ICMPv6) -->
     <string name="ping_target_label">Yggdrasil address</string>
+    <string name="ping_target_hint">200:abcd::1234</string>
     <string name="ping_count_label">Packets</string>
     <string name="ping_infinite">\u221e</string>
     <string name="ping_button_start">Ping</string>

@@ -143,7 +143,11 @@ fun LocalIpTextField(
                     if (focusState.isFocused) {
                         if (!shownThisFocus) {
                             suggestions = suggestionsProvider()
-                            suggestionsExpanded = true
+                            // Only pop the dropdown when there is something to
+                            // show (e.g. the ping field with no connected peers).
+                            if (suggestions.isNotEmpty()) {
+                                suggestionsExpanded = true
+                            }
                             shownThisFocus = true
                             swallowSelectionEvent = true
                         }

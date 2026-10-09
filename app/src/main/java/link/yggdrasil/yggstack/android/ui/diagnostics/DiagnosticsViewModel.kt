@@ -428,6 +428,7 @@ class DiagnosticsViewModel(
                     uri = peerObj.optString("URI", ""),
                     up = peerObj.optBoolean("Up", false),
                     inbound = peerObj.optBoolean("Inbound", false),
+                    address = peerObj.optString("Address", "").takeIf { it.isNotBlank() },
                     port = peerObj.optLong("Port", 0),
                     priority = peerObj.optInt("Priority", 0),
                     cost = peerObj.optLong("Cost", 0),

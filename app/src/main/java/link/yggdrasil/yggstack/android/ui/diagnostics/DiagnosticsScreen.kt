@@ -46,10 +46,13 @@ import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
-import link.yggdrasil.yggstack.android.data.PacGenerator
 import link.yggdrasil.yggstack.android.data.PeerDetail
+import link.yggdrasil.yggstack.android.data.PingSessionState
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
+import link.yggdrasil.yggstack.android.data.PacGenerator
 import link.yggdrasil.yggstack.android.data.YggstackConfig
+import link.yggdrasil.yggstack.android.ui.configuration.IpSuggestion
+import link.yggdrasil.yggstack.android.ui.configuration.LocalIpTextField
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -127,7 +130,10 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
                         viewModel = viewModel,
                         isVisible = pagerState.currentPage == 2
                     )
-                    3 -> PingViewer(viewModel)
+                    3 -> PingViewer(
+                        viewModel = viewModel,
+                        isVisible = pagerState.currentPage == 3
+                    )
                     4 -> LogsViewer(viewModel)
                 }
             }
@@ -1610,20 +1616,54 @@ fun isValidYggAddress(value: String): Boolean {
 /** Packet-count choices for the Ping tab; 0 means "until stopped". */
 private val PingCountOptions = listOf(1, 3, 5, 10, 0)
 
+/**
+ * Yggdrasil addresses of currently connected peers, deduplicated, labeled
+ * with the peer URI's host:port — offered as ping target suggestions.
+ */
+private fun peerAddressSuggestions(peers: List<PeerDetail>): List<IpSuggestion> {
+    val seen = LinkedHashSet<String>()
+    val suggestions = mutableListOf<IpSuggestion>()
+    for (peer in peers) {
+        val address = peer.address ?: continue
+        if (!peer.up) continue
+        if (seen.add(address)) {
+            suggestions += IpSuggestion(
+                value = address,
+                label = peer.uri.substringBefore('?').substringAfter("://")
+            )
+        }
+    }
+    return suggestions
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PingViewer(viewModel: DiagnosticsViewModel) {
+fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
     val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsStateWithLifecycle()
     val yggstackConfig by viewModel.yggstackConfig.collectAsStateWithLifecycle()
     val isPowerSaveIdleCapable = yggstackConfig?.powerSaveEnabled == true
     val pingSession by viewModel.pingSession.collectAsStateWithLifecycle()
     val savedTarget by viewModel.pingTarget.collectAsStateWithLifecycle()
+    val peerDetails by viewModel.peerDetails.collectAsStateWithLifecycle()
+    val serviceConnected by viewModel.serviceConnected.collectAsStateWithLifecycle()
 
     var target by remember { mutableStateOf("") }
     var count by remember { mutableStateOf(5) }
     var countExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    // Feed the target suggestions: collect peer details only while this tab
+    // is visible and the service is running and bound (same pattern as the
+    // Peers tab — the SharedFlow subscription also drives the poller).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(isVisible, isServiceRunning, serviceConnected, lifecycleOwner) {
+        if (isVisible && isServiceRunning && serviceConnected) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.collectPeerDetails()
+            }
+        }
+    }
 
     // Prefill the field once the persisted target arrives (DataStore is async)
     LaunchedEffect(savedTarget) {
@@ -1802,13 +1842,15 @@ fun PingViewer(viewModel: DiagnosticsViewModel) {
                     .fillMaxWidth()
                     .onSizeChanged { fieldSize = it }
             ) {
-                OutlinedTextField(
+                // Same suggestion-dropdown behaviour as the "local IP" field,
+                // offering the connected peers' Yggdrasil addresses.
+                LocalIpTextField(
                     value = target,
                     onValueChange = { if (!sessionRunning) target = it },
                     label = { Text(stringResource(R.string.ping_target_label)) },
+                    placeholder = { Text(stringResource(R.string.ping_target_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !sessionRunning,
-                    singleLine = true,
                     isError = target.isNotBlank() && !targetValid,
                     supportingText = {
                         val hintRes = when {
@@ -1818,6 +1860,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel) {
                         }
                         if (hintRes != null) Text(stringResource(hintRes))
                     },
+                    suggestionsProvider = { peerAddressSuggestions(peerDetails) },
                     trailingIcon = {
                         // Right-aligned group: packet-count picker, then the
                         // Ping/Stop word button.
