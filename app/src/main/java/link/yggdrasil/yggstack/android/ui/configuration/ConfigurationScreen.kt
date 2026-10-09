@@ -189,7 +189,7 @@ fun ConfigurationScreen(
                     }
 
                     if (!isServiceRunning) {
-                        Button(
+                        FilledTonalButton(
                             onClick = {
                                 editingPeer = null
                                 showPeerDialog = true
@@ -457,7 +457,7 @@ fun ConfigurationScreen(
                 }
 
                 if (!isServiceRunning && config.exposeEnabled) {
-                    Button(
+                    FilledTonalButton(
                         onClick = { showExposeDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -500,7 +500,7 @@ fun ConfigurationScreen(
                 }
 
                 if (!isServiceRunning && config.forwardEnabled) {
-                    Button(
+                    FilledTonalButton(
                         onClick = { showForwardDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
