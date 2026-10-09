@@ -9,6 +9,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Toolchain version is a deliberate pin that must match local dev
+      # (see AGENTS.md) and be bumped manually alongside the ng engine libs;
+      # dependabot bumps it to tags that don't exist on static.rust-lang.org
+      # (e.g. 1.120.0 404s and broke the ng release build)
+      - dependency-name: "dtolnay/rust-toolchain"
 
   - package-ecosystem: "gomod"
     directory: "/lib/yggstack"
