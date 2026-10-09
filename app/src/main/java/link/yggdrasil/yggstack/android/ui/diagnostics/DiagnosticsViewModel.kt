@@ -143,6 +143,10 @@ class DiagnosticsViewModel(
     private val _pingTarget = MutableStateFlow("")
     val pingTarget: StateFlow<String> = _pingTarget.asStateFlow()
 
+    // Last selected packet count (0 = infinite), persisted across restarts.
+    private val _pingCount = MutableStateFlow(5)
+    val pingCount: StateFlow<Int> = _pingCount.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -269,6 +273,13 @@ class DiagnosticsViewModel(
         viewModelScope.launch {
             repository.pingTargetFlow.collect { target ->
                 _pingTarget.value = target
+            }
+        }
+
+        // Restore the last ping packet count
+        viewModelScope.launch {
+            repository.pingCountFlow.collect { count ->
+                _pingCount.value = count
             }
         }
         
@@ -656,6 +667,14 @@ class DiagnosticsViewModel(
 
     fun stopPing() {
         yggstackService?.stopPing()
+    }
+
+    /** Selects (and persists) the ping packet count; 0 = infinite. */
+    fun setPingCount(count: Int) {
+        _pingCount.value = count
+        viewModelScope.launch {
+            repository.savePingCount(count)
+        }
     }
 
     class Factory(

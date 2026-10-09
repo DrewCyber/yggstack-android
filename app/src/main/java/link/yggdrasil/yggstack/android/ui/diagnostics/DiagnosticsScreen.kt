@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -1649,7 +1651,11 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val serviceConnected by viewModel.serviceConnected.collectAsStateWithLifecycle()
 
     var target by remember { mutableStateOf("") }
-    var count by remember { mutableStateOf(5) }
+    val savedCount by viewModel.pingCount.collectAsStateWithLifecycle()
+    // Local override of the restored count, so the picker is instant while
+    // the DataStore write lands.
+    var pickedCount by remember { mutableStateOf<Int?>(null) }
+    val count = pickedCount ?: savedCount
     var countExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
@@ -1678,7 +1684,9 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val nodeAvailable = isServiceRunning || (isPowerSaveIdleCapable && isPowerSaveIdle)
 
     // No outer horizontal padding: the address field is full-bleed, the log
-    // and the dropdown carry their own side insets.
+    // and the dropdown carry their own side insets. IME handling is global:
+    // the navigation bar lifts above the keyboard, which grows the Scaffold's
+    // content padding here.
     Column(modifier = Modifier.fillMaxSize()) {
         if (!nodeAvailable) {
             Card(
@@ -1716,11 +1724,20 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     .weight(1f)
                     .padding(start = 16.dp, end = 16.dp, top = 16.dp)
             ) {
-            // Terminal-style results, mirroring the Logs viewer
+            // Terminal-style results, mirroring the Logs viewer. Tapping it
+            // explicitly clears focus from the address field — closing the
+            // keyboard — so the next tap on the field re-opens the
+            // suggestions. Covers the empty state too.
+            val logInteraction = remember { MutableInteractionSource() }
+            val focusManager = LocalFocusManager.current
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .clickable(
+                        interactionSource = logInteraction,
+                        indication = null
+                    ) { focusManager.clearFocus() },
                 colors = CardDefaults.cardColors(containerColor = Color.Black)
             ) {
                 if (probes.isEmpty() && session?.error == null) {
@@ -1843,7 +1860,9 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     .onSizeChanged { fieldSize = it }
             ) {
                 // Same suggestion-dropdown behaviour as the "local IP" field,
-                // offering the connected peers' Yggdrasil addresses.
+                // offering the connected peers' Yggdrasil addresses. Single
+                // line so a long address scrolls instead of wrapping the
+                // field under the keyboard.
                 LocalIpTextField(
                     value = target,
                     onValueChange = { if (!sessionRunning) target = it },
@@ -1851,6 +1870,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     placeholder = { Text(stringResource(R.string.ping_target_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !sessionRunning,
+                    singleLine = true,
                     isError = target.isNotBlank() && !targetValid,
                     supportingText = {
                         val hintRes = when {
@@ -1937,7 +1957,8 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                                 )
                             },
                             onClick = {
-                                count = option
+                                pickedCount = option
+                                viewModel.setPingCount(option)
                                 countExpanded = false
                             }
                         )

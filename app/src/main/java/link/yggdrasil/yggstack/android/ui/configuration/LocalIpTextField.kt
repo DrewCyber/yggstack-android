@@ -96,6 +96,7 @@ fun LocalIpTextField(
     placeholder: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    singleLine: Boolean = false,
     isError: Boolean = false,
     supportingText: (@Composable () -> Unit)? = null,
     suggestionsProvider: () -> List<IpSuggestion> = ::localIpSuggestions,
@@ -136,6 +137,7 @@ fun LocalIpTextField(
             },
             label = label,
             placeholder = placeholder,
+            singleLine = singleLine,
             modifier = Modifier
                 .fillMaxWidth()
                 .onFocusChanged { focusState ->

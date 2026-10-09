@@ -85,6 +85,7 @@ class ConfigRepository(private val context: Context) {
         private val POWER_SAVE_ENABLED = booleanPreferencesKey("power_save_enabled")
         private val POWER_SAVE_IDLE_TIMEOUT = intPreferencesKey("power_save_idle_timeout")
         private val PING_TARGET_KEY = stringPreferencesKey("ping_target")
+        private val PING_COUNT_KEY = intPreferencesKey("ping_count")
 
         fun normalizeDnsServer(value: String): String {
             val trimmed = value.trim()
@@ -370,6 +371,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun savePingTarget(target: String) {
         context.dataStore.edit { preferences ->
             preferences[PING_TARGET_KEY] = target
+        }
+    }
+
+    /**
+     * Get the last selected ping packet count (0 = infinite).
+     */
+    val pingCountFlow: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[PING_COUNT_KEY] ?: 5
+    }
+
+    /**
+     * Save the selected ping packet count.
+     */
+    suspend fun savePingCount(count: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PING_COUNT_KEY] = count
         }
     }
 
