@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,9 +14,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -87,6 +94,13 @@ internal fun dnsServerSuggestions(): List<IpSuggestion> = listOf(
  * A suggestion's [IpSuggestion.label] is display-only; only [IpSuggestion.value]
  * is ever inserted into the field, transformed by [onPick] (e.g. to keep the
  * port of an ip:port field); default is the bare address.
+ *
+ * [fadeBeforeTrailing] overlays a gradient fading the text out just before the
+ * trailing icon group, for fields whose trailing content sits tight against a
+ * long scrolling value (the ping target field). It shows only while the field
+ * is unfocused — editing needs the full text, cursor included. The gradient is
+ * drawn over the input text band only, so the outline, label and supporting
+ * text stay intact.
  */
 @Composable
 fun LocalIpTextField(
@@ -101,7 +115,8 @@ fun LocalIpTextField(
     supportingText: (@Composable () -> Unit)? = null,
     suggestionsProvider: () -> List<IpSuggestion> = ::localIpSuggestions,
     trailingIcon: (@Composable () -> Unit)? = null,
-    onPick: (suggestedIp: String, currentText: String) -> String = { ip, _ -> ip }
+    onPick: (suggestedIp: String, currentText: String) -> String = { ip, _ -> ip },
+    fadeBeforeTrailing: Boolean = false
 ) {
     var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
     var isFocused by remember { mutableStateOf(false) }
@@ -112,6 +127,10 @@ fun LocalIpTextField(
     // dropdown does not close immediately.
     var swallowSelectionEvent by remember { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<IpSuggestion>>(emptyList()) }
+    // Width of the trailing icon group, measured so the fade gradient can stop
+    // short of it instead of tinting the icons.
+    var trailingWidthPx by remember { mutableStateOf(0f) }
+    val fadeColor = MaterialTheme.colorScheme.surface
 
     LaunchedEffect(value, isFocused) {
         if (!isFocused && value != textFieldValue.text) {
@@ -140,6 +159,43 @@ fun LocalIpTextField(
             singleLine = singleLine,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    // Fade only while unfocused: editing puts the cursor (and
+                    // the character being typed) at the right edge, under the
+                    // gradient — the full text must stay visible then.
+                    if (!fadeBeforeTrailing || isFocused) Modifier
+                    else Modifier.drawWithContent {
+                        drawContent()
+                        if (trailingWidthPx <= 0f) return@drawWithContent
+                        // Fade the text out over 28dp, then a solid stretch of
+                        // background before the trailing icons — the visible
+                        // spacing between the address text and the counter. The
+                        // solid strip must be painted, not just left empty: the
+                        // input text renders right up to the icon boundary. The
+                        // vertical band covers the single-line input only,
+                        // leaving the outline, floated label and supporting
+                        // text untouched.
+                        val fade = 28.dp.toPx()
+                        val gap = 8.dp.toPx()
+                        val iconLeft = size.width - trailingWidthPx
+                        if (iconLeft > fade + gap) {
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    listOf(Color.Transparent, fadeColor),
+                                    startX = iconLeft - gap - fade,
+                                    endX = iconLeft - gap
+                                ),
+                                topLeft = Offset(iconLeft - gap - fade, 12.dp.toPx()),
+                                size = Size(fade, 34.dp.toPx())
+                            )
+                            drawRect(
+                                color = fadeColor,
+                                topLeft = Offset(iconLeft - gap, 12.dp.toPx()),
+                                size = Size(gap, 34.dp.toPx())
+                            )
+                        }
+                    }
+                )
                 .onFocusChanged { focusState ->
                     isFocused = focusState.isFocused
                     if (focusState.isFocused) {
@@ -162,7 +218,15 @@ fun LocalIpTextField(
             enabled = enabled,
             isError = isError,
             supportingText = supportingText,
-            trailingIcon = trailingIcon
+            trailingIcon = if (fadeBeforeTrailing && trailingIcon != null) {
+                {
+                    Box(modifier = Modifier.onSizeChanged { trailingWidthPx = it.width.toFloat() }) {
+                        trailingIcon?.invoke()
+                    }
+                }
+            } else {
+                trailingIcon
+            }
         )
         // focusable = false keeps focus (and the keyboard) on the text field —
         // a focusable popup would blur it and re-arm the first-tap logic.

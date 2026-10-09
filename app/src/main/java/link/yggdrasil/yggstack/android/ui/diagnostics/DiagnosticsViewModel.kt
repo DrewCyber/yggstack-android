@@ -669,6 +669,12 @@ class DiagnosticsViewModel(
         yggstackService?.stopPing()
     }
 
+    /** Clears a finished session's ping results off the screen. */
+    fun clearPing() {
+        val service = yggstackService
+        if (service != null) service.clearPing() else _pingSession.value = null
+    }
+
     /** Selects (and persists) the ping packet count; 0 = infinite. */
     fun setPingCount(count: Int) {
         _pingCount.value = count

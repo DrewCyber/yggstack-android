@@ -90,8 +90,8 @@
     <string name="ping_target_hint">200:abcd::1234</string>
     <string name="ping_count_label">Пакеты</string>
     <string name="ping_infinite">\u221e</string>
-    <string name="ping_button_start">Пинг</string>
     <string name="ping_button_stop">Стоп</string>
+    <string name="ping_clear">Очистить результаты пинга</string>
     <string name="ping_invalid_address">Введите корректный IPv6-адрес Yggdrasil (200::/7)</string>
     <string name="ping_start_service">Запустите сервис, чтобы выполнять пинг</string>
     <string name="ping_waking">Пробуждение узла\u2026</string>

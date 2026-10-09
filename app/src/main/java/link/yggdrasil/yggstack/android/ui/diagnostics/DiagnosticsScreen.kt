@@ -1616,7 +1616,7 @@ fun isValidYggAddress(value: String): Boolean {
 }
 
 /** Packet-count choices for the Ping tab; 0 means "until stopped". */
-private val PingCountOptions = listOf(1, 3, 5, 10, 0)
+private val PingCountOptions = listOf(1, 3, 4, 5, 10, 0)
 
 /**
  * Yggdrasil addresses of currently connected peers, deduplicated, labeled
@@ -1811,32 +1811,49 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Live summary: sent/received/loss and min/avg/max RTT
+            // Live summary: sent/received/loss and min/avg/max RTT stacked on
+            // their own lines — side by side they squeezed each other into
+            // mid-phrase wraps in longer locales. The trash icon clears a
+            // finished session's results off the screen.
             val received = probes.count { it.rttMs != null }
             if (probes.isNotEmpty()) {
                 val lossPct = (probes.size - received) * 100.0 / probes.size
                 val rtts = probes.mapNotNull { it.rttMs }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.ping_summary, probes.size, received, "%.0f%%".format(lossPct)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (rtts.isNotEmpty()) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(
-                                R.string.ping_rtt_summary,
-                                "%.1f".format(rtts.min()),
-                                "%.1f".format(rtts.average()),
-                                "%.1f".format(rtts.max())
-                            ),
+                            text = stringResource(R.string.ping_summary, probes.size, received, "%.0f%%".format(lossPct)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (rtts.isNotEmpty()) {
+                            Text(
+                                text = stringResource(
+                                    R.string.ping_rtt_summary,
+                                    "%.1f".format(rtts.min()),
+                                    "%.1f".format(rtts.average()),
+                                    "%.1f".format(rtts.max())
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                     }
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.ping_clear),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = if (sessionRunning) 0.35f else 1f
+                        ),
+                        modifier = Modifier
+                            .clickable(enabled = !sessionRunning) { viewModel.clearPing() }
+                            .padding(8.dp)
+                            .size(20.dp)
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -1881,6 +1898,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         if (hintRes != null) Text(stringResource(hintRes))
                     },
                     suggestionsProvider = { peerAddressSuggestions(peerDetails) },
+                    fadeBeforeTrailing = true,
                     trailingIcon = {
                         // Right-aligned group: packet-count picker, then the
                         // Ping/Stop word button.

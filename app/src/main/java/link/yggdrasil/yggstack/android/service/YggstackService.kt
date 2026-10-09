@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.data.ConfigSerializer
 import link.yggdrasil.yggstack.android.data.PingProbe
@@ -62,6 +63,7 @@ import android.content.SharedPreferences
 import link.yggdrasil.yggstack.android.utils.LocaleHelper
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Foreground service for running Yggstack
@@ -213,6 +215,13 @@ class YggstackService : Service() {
     // idle is woken on start — a ping needs a running node.
     private val _pingSession = MutableStateFlow<PingSessionState?>(null)
     val pingSession: StateFlow<PingSessionState?> = _pingSession.asStateFlow()
+
+    /**
+     * Monotonic tag of the current ping session. Engine callbacks hop to
+     * serviceScope (multi-threaded), so events of a replaced or cleared
+     * session can land after its replacement — they are dropped by tag.
+     */
+    private val pingSessionTag = AtomicInteger(0)
 
     // Power Save session accounting: cumulative up/idle time since the last
     // full start. "Up" accrues while the node runs, "idle" while Power Save
@@ -1544,18 +1553,21 @@ class YggstackService : Service() {
                 )
                 return@launch
             }
+            val tag = pingSessionTag.incrementAndGet()
             _pingSession.value = PingSessionState(target, running = true, probes = emptyList(), doneReason = null)
             try {
                 engine.startPing(target, count, pingTimeoutMs, pingIntervalMs, object : NativePingCallback {
                     override fun onResult(result: String) {
                         // The engine calls back on its own thread; hop to the
                         // service scope for state updates.
-                        serviceScope.launch { handlePingEvent(result) }
+                        serviceScope.launch { handlePingEvent(tag, result) }
                     }
                 })
             } catch (e: Exception) {
                 logWarn("Ping: failed to start: ${e.message}")
-                _pingSession.value = _pingSession.value?.copy(running = false, doneReason = "error", error = e.message)
+                _pingSession.update { s ->
+                    s?.copy(running = false, doneReason = "error", error = e.message)
+                }
             }
         }
     }
@@ -1567,8 +1579,16 @@ class YggstackService : Service() {
         }
     }
 
-    private fun handlePingEvent(result: String) {
+    /** Clears a finished session's results off [pingSession]; a running session is left alone. */
+    fun clearPing() {
         val session = _pingSession.value ?: return
+        if (session.running) return
+        pingSessionTag.incrementAndGet() // drop any straggler events
+        _pingSession.value = null
+    }
+
+    private fun handlePingEvent(tag: Int, result: String) {
+        if (tag != pingSessionTag.get()) return // stale event of a replaced/cleared session
         try {
             val obj = JSONObject(result)
             when (obj.optString("Type")) {
@@ -1579,14 +1599,17 @@ class YggstackService : Service() {
                     } else {
                         PingProbe(seq, null, obj.optString("Error", "timeout"))
                     }
-                    _pingSession.value = session.copy(
-                        probes = (session.probes + probe).takeLast(pingMaxLines)
-                    )
+                    // Atomic read-modify-write: the final probe and the done
+                    // event arrive back-to-back and their coroutines race on
+                    // this scope — a plain read+copy lost the last probe.
+                    _pingSession.update { s ->
+                        s?.copy(probes = (s.probes + probe).takeLast(pingMaxLines))
+                    }
                 }
                 "done" -> {
                     val reason = obj.optString("Reason", "completed")
                     if (reason == "error") logWarn("Ping: session failed")
-                    _pingSession.value = session.copy(running = false, doneReason = reason)
+                    _pingSession.update { s -> s?.copy(running = false, doneReason = reason) }
                 }
             }
         } catch (e: Exception) {
