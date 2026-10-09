@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
+import link.yggdrasil.yggstack.android.data.PingSessionState
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
 import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.YggstackConfig
@@ -133,6 +134,15 @@ class DiagnosticsViewModel(
     private val _powerSaveStateSince = MutableStateFlow(0L)
     val powerSaveStateSince: StateFlow<Long> = _powerSaveStateSince.asStateFlow()
 
+    // Internal ping session, owned by the service so it (and its results)
+    // survive page switches and re-navigation.
+    private val _pingSession = MutableStateFlow<PingSessionState?>(null)
+    val pingSession: StateFlow<PingSessionState?> = _pingSession.asStateFlow()
+
+    // Last pinged target, persisted so the field is prefilled on return.
+    private val _pingTarget = MutableStateFlow("")
+    val pingTarget: StateFlow<String> = _pingTarget.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -203,6 +213,11 @@ class DiagnosticsViewModel(
                         _powerSaveStateSince.value = since
                     }
                 }
+                viewModelScope.launch {
+                    service.pingSession.collect { session ->
+                        _pingSession.value = session
+                    }
+                }
 
                 // Sync initial state
                 _logs.value = service.logs.value
@@ -217,6 +232,7 @@ class DiagnosticsViewModel(
                 _powerSaveUpMillis.value = service.powerSaveUpMillis.value
                 _powerSaveIdleMillis.value = service.powerSaveIdleMillis.value
                 _powerSaveStateSince.value = service.powerSaveStateSince.value
+                _pingSession.value = service.pingSession.value
             }
         }
 
@@ -246,6 +262,13 @@ class DiagnosticsViewModel(
         viewModelScope.launch {
             repository.portsCompactModeFlow.collect { compact ->
                 _portsCompactMode.value = compact
+            }
+        }
+
+        // Restore the last ping target
+        viewModelScope.launch {
+            repository.pingTargetFlow.collect { target ->
+                _pingTarget.value = target
             }
         }
         
@@ -615,6 +638,23 @@ class DiagnosticsViewModel(
 
     fun wakeNow() {
         yggstackService?.wakeNow()
+    }
+
+    /**
+     * Starts a ping session against [target] with the chosen packet count
+     * (0 = until stopped). The service owns the session; results arrive
+     * through [pingSession].
+     */
+    fun startPing(target: String, count: Int) {
+        viewModelScope.launch {
+            repository.savePingTarget(target)
+        }
+        _pingTarget.value = target
+        yggstackService?.startPing(target, count)
+    }
+
+    fun stopPing() {
+        yggstackService?.stopPing()
     }
 
     class Factory(

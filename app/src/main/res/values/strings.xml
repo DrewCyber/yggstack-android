@@ -83,6 +83,23 @@
     <string name="tab_peers">Peers</string>
     <string name="tab_ports">Ports</string>
     <string name="tab_logs">Logs</string>
+    <string name="tab_ping">Ping</string>
+
+    <!-- Internal ping (netstack ICMPv6) -->
+    <string name="ping_target_label">Yggdrasil address</string>
+    <string name="ping_count_label">Packets</string>
+    <string name="ping_infinite">\u221e</string>
+    <string name="ping_button_start">Ping</string>
+    <string name="ping_button_stop">Stop</string>
+    <string name="ping_invalid_address">Enter a valid Yggdrasil IPv6 address (200::/7)</string>
+    <string name="ping_start_service">Start the service to ping</string>
+    <string name="ping_waking">Waking node\u2026</string>
+    <string name="ping_summary">Sent %1$d \u00b7 Received %2$d \u00b7 Loss %3$s</string>
+    <string name="ping_rtt_summary">min/avg/max %1$s/%2$s/%3$s ms</string>
+    <string name="ping_done_completed">Session completed</string>
+    <string name="ping_done_stopped">Session stopped</string>
+    <string name="ping_done_error">Session failed</string>
+    <string name="ping_error_line">Error: %1$s</string>
 
     <!-- Ports Stats Page -->
     <string name="ports_service_stopped">Start the service to view port statistics</string>

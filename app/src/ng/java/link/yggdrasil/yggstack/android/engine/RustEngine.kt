@@ -3,6 +3,7 @@ package link.yggdrasil.yggstack.android.engine
 import link.yggdrasil.yggstack.android.data.NativeConfigToml
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import uniffi.yggstack_mobile.LogCallback
+import uniffi.yggstack_mobile.PingCallback
 import uniffi.yggstack_mobile.YggstackException
 import uniffi.yggstack_mobile.YggstackMobile
 
@@ -99,6 +100,27 @@ internal class RustEngine : NativeEngine {
     override fun getPeersJson(): String? = yggstack.getPeersJson()
 
     override fun getListenersJson(): String? = yggstack.getListenersJson()
+
+    override fun startPing(
+        address: String,
+        count: Int,
+        timeoutMs: Long,
+        intervalMs: Long,
+        callback: NativePingCallback
+    ) {
+        try {
+            yggstack.startPing(address, count, timeoutMs, intervalMs, object : PingCallback {
+                override fun onResult(result: String) {
+                    callback.onResult(result)
+                }
+            })
+        } catch (e: YggstackException) {
+            // Match Go semantics: surface engine errors as plain exceptions
+            throw IllegalStateException(e.message)
+        }
+    }
+
+    override fun stopPing() = yggstack.stopPing()
 
     private fun localForwardSpec(localAddr: String, remoteAddr: String): String {
         val (localIp, localPort) = splitHostPort(localAddr)

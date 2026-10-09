@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,9 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
@@ -61,6 +67,7 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
         stringResource(R.string.tab_config),
         stringResource(R.string.tab_peers),
         stringResource(R.string.tab_ports),
+        stringResource(R.string.tab_ping),
         stringResource(R.string.tab_logs)
     )
 
@@ -69,7 +76,7 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         repository.migrateDiagnosticsTabIfNeeded()
-        initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 3)
+        initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 4)
     }
     
     // Only show content after initial tab is loaded
@@ -86,7 +93,13 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
         }
 
         Column(modifier = modifier.fillMaxSize()) {
-            TabRow(selectedTabIndex = pagerState.currentPage) {
+            // Scrollable so a long tab title never wraps ("Confi/g"): each
+            // tab sizes to its single-line text and the row scrolls when the
+            // titles overflow the width.
+            ScrollableTabRow(
+                selectedTabIndex = pagerState.currentPage,
+                edgePadding = 16.dp
+            ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = pagerState.currentPage == index,
@@ -114,7 +127,8 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
                         viewModel = viewModel,
                         isVisible = pagerState.currentPage == 2
                     )
-                    3 -> LogsViewer(viewModel)
+                    3 -> PingViewer(viewModel)
+                    4 -> LogsViewer(viewModel)
                 }
             }
         }
@@ -1572,6 +1586,321 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/**
+ * True for a literal IPv6 address inside 200::/7 (the Yggdrasil range).
+ * Only hex-and-colon strings are attempted, so a hostname can never reach
+ * DNS from here; malformed literals fail as local UnknownHostExceptions.
+ */
+fun isValidYggAddress(value: String): Boolean {
+    val host = value.trim().removePrefix("[").removeSuffix("]")
+    if (!host.contains(':')) return false
+    if (!host.all { it.isDigit() || it in "abcdefABCDEF:" }) return false
+    return try {
+        val bytes = java.net.InetAddress.getByName(host).address
+        bytes.size == 16 && (bytes[0].toInt() and 0xFF) in 0x02..0x03
+    } catch (_: Exception) {
+        false
+    }
+}
+
+/** Packet-count choices for the Ping tab; 0 means "until stopped". */
+private val PingCountOptions = listOf(1, 3, 5, 10, 0)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PingViewer(viewModel: DiagnosticsViewModel) {
+    val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
+    val isPowerSaveIdle by viewModel.isPowerSaveIdle.collectAsStateWithLifecycle()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsStateWithLifecycle()
+    val isPowerSaveIdleCapable = yggstackConfig?.powerSaveEnabled == true
+    val pingSession by viewModel.pingSession.collectAsStateWithLifecycle()
+    val savedTarget by viewModel.pingTarget.collectAsStateWithLifecycle()
+
+    var target by remember { mutableStateOf("") }
+    var count by remember { mutableStateOf(5) }
+    var countExpanded by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    // Prefill the field once the persisted target arrives (DataStore is async)
+    LaunchedEffect(savedTarget) {
+        if (target.isBlank() && savedTarget.isNotBlank()) target = savedTarget
+    }
+
+    val session = pingSession
+    val probes = session?.probes.orEmpty()
+    val sessionRunning = session?.running == true
+    val targetValid = isValidYggAddress(target)
+    // Ping needs a running node; a Power Save idle node is woken on start.
+    val nodeAvailable = isServiceRunning || (isPowerSaveIdleCapable && isPowerSaveIdle)
+
+    // No outer horizontal padding: the address field is full-bleed, the log
+    // and the dropdown carry their own side insets.
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (!nodeAvailable) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.ping_start_service),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+            ) {
+            // Terminal-style results, mirroring the Logs viewer
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color.Black)
+            ) {
+                if (probes.isEmpty() && session?.error == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "ping 200::/7",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.Gray
+                        )
+                    }
+                } else {
+                    // Auto-scroll to the latest probe unless the user scrolled up
+                    LaunchedEffect(probes.size) {
+                        if (probes.isNotEmpty()) listState.animateScrollToItem(probes.lastIndex)
+                    }
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp)
+                    ) {
+                        items(probes.size) { index ->
+                            val probe = probes[index]
+                            val line = if (probe.rttMs != null) {
+                                "reply from ${session?.target}: seq=${probe.seq} time=%.2f ms".format(probe.rttMs)
+                            } else {
+                                "request timeout for seq ${probe.seq}"
+                            }
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (probe.rttMs != null) Color.Green else Color(0xFFCC8888),
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                        session?.error?.let { error ->
+                            item(key = "error") {
+                                Text(
+                                    text = stringResource(R.string.ping_error_line, error),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.Red,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                        }
+                        session?.doneReason?.let { reason ->
+                            item(key = "done") {
+                                Text(
+                                    text = stringResource(
+                                        when (reason) {
+                                            "stopped" -> R.string.ping_done_stopped
+                                            "error" -> R.string.ping_done_error
+                                            else -> R.string.ping_done_completed
+                                        }
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Live summary: sent/received/loss and min/avg/max RTT
+            val received = probes.count { it.rttMs != null }
+            if (probes.isNotEmpty()) {
+                val lossPct = (probes.size - received) * 100.0 / probes.size
+                val rtts = probes.mapNotNull { it.rttMs }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.ping_summary, probes.size, received, "%.0f%%".format(lossPct)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (rtts.isNotEmpty()) {
+                        Text(
+                            text = stringResource(
+                                R.string.ping_rtt_summary,
+                                "%.1f".format(rtts.min()),
+                                "%.1f".format(rtts.average()),
+                                "%.1f".format(rtts.max())
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            } // end padded log + summary column
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Full-bleed address field: the trailing group holds the packet
+            // count picker and the Ping/Stop word button. The count menu is a
+            // plain DropdownMenu in a Box (the LocalIpTextField pattern), NOT
+            // ExposedDropdownMenuBox — menuAnchor() would make the entire
+            // field toggle the menu on every tap.
+            val canToggle = sessionRunning || (targetValid && nodeAvailable)
+            // Measured so the count menu can stick to the field's right edge,
+            // under the picker.
+            var fieldSize by remember { mutableStateOf(IntSize(0, 0)) }
+            val density = LocalDensity.current
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { fieldSize = it }
+            ) {
+                OutlinedTextField(
+                    value = target,
+                    onValueChange = { if (!sessionRunning) target = it },
+                    label = { Text(stringResource(R.string.ping_target_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !sessionRunning,
+                    singleLine = true,
+                    isError = target.isNotBlank() && !targetValid,
+                    supportingText = {
+                        val hintRes = when {
+                            target.isNotBlank() && !targetValid -> R.string.ping_invalid_address
+                            isPowerSaveIdle && !sessionRunning -> R.string.ping_waking
+                            else -> null
+                        }
+                        if (hintRes != null) Text(stringResource(hintRes))
+                    },
+                    trailingIcon = {
+                        // Right-aligned group: packet-count picker, then the
+                        // Ping/Stop word button.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val pickerColor = if (sessionRunning) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.primary
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable(enabled = !sessionRunning) { countExpanded = true }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = if (count == 0) stringResource(R.string.ping_infinite)
+                                    else count.toString(),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = pickerColor
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = stringResource(R.string.ping_count_label),
+                                    tint = pickerColor
+                                )
+                            }
+                            Text(
+                                text = stringResource(
+                                    if (sessionRunning) R.string.ping_button_stop
+                                    else R.string.ping_button_start
+                                ),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    !canToggle -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    sessionRunning -> MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.primary
+                                },
+                                modifier = Modifier
+                                    .clickable(enabled = canToggle) {
+                                        if (sessionRunning) viewModel.stopPing()
+                                        else viewModel.startPing(target.trim(), count)
+                                    }
+                                    // End padding 12dp + the trailing slot's own
+                                    // 4dp inset = 16dp: the same edge spacing the
+                                    // address text gets on the left.
+                                    .padding(start = 4.dp, top = 8.dp, end = 12.dp, bottom = 8.dp)
+                            )
+                        }
+                    }
+                )
+                DropdownMenu(
+                    expanded = countExpanded,
+                    onDismissRequest = { countExpanded = false },
+                    // 112.dp is the menu's minimum width: shifting the anchor
+                    // by field width minus that pins it to the right edge
+                    // under the picker (the position provider clamps any
+                    // overshoot into the window).
+                    offset = DpOffset(
+                        x = with(density) {
+                            maxOf(0, fieldSize.width - 112.dp.roundToPx()).toDp()
+                        },
+                        y = 0.dp
+                    )
+                ) {
+                    PingCountOptions.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (option == 0) stringResource(R.string.ping_infinite)
+                                    else option.toString()
+                                )
+                            },
+                            onClick = {
+                                count = option
+                                countExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }

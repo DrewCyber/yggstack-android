@@ -6,6 +6,10 @@ fun interface NativeLogCallback {
     fun onLog(message: String)
 }
 
+fun interface NativePingCallback {
+    fun onResult(result: String)
+}
+
 /**
  * Abstraction over the native yggstack engine. Two builds exist:
  * the Go flavor (gomobile AAR) and the ng flavor (Rust UniFFI bindings),
@@ -66,4 +70,20 @@ interface NativeEngine {
 
     /** Per-listener stats JSON (shared schema), or null. */
     fun getListenersJson(): String?
+
+    /** Start an ICMPv6 echo ("ping") session to [address] (a Yggdrasil
+     *  address in 200::/7) through the engine's internal netstack. Sends
+     *  [count] probes (0 = until stopped) every [intervalMs] ms, each
+     *  waiting up to [timeoutMs] for its reply. Results stream through
+     *  [callback] as JSON events (shared schema with both engines):
+     *  `{"Type":"probe","Seq":N,"Success":bool,"RttMs":float|"Error":str}`
+     *  and a final `{"Type":"done","Reason":"completed"|"stopped"|"error"}`.
+     *  Replaces any running session; throws when the engine is not running.
+     *  The first probe to a never-contacted address may time out (overlay
+     *  key lookup) — it is reported as a plain timeout. */
+    fun startPing(address: String, count: Int, timeoutMs: Long, intervalMs: Long, callback: NativePingCallback)
+
+    /** Stop the running ping session, if any. The callback receives its
+     *  final done event before this returns. */
+    fun stopPing()
 }

@@ -50,14 +50,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.data.ConfigSerializer
+import link.yggdrasil.yggstack.android.data.PingProbe
+import link.yggdrasil.yggstack.android.data.PingSessionState
 import link.yggdrasil.yggstack.android.engine.EngineFactory
 import link.yggdrasil.yggstack.android.engine.NativeEngine
 import link.yggdrasil.yggstack.android.engine.NativeLogCallback
+import link.yggdrasil.yggstack.android.engine.NativePingCallback
 import org.json.JSONArray
 import org.json.JSONObject
 import android.content.SharedPreferences
 import link.yggdrasil.yggstack.android.utils.LocaleHelper
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Foreground service for running Yggstack
@@ -203,6 +207,12 @@ class YggstackService : Service() {
     // service session (Ports cards, traffic counters) survives idle periods.
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
+
+    // Internal (netstack) ping session. While running it blocks every Power
+    // Save idle entry (ports-idle timeout and screen-off), and Power Save
+    // idle is woken on start — a ping needs a running node.
+    private val _pingSession = MutableStateFlow<PingSessionState?>(null)
+    val pingSession: StateFlow<PingSessionState?> = _pingSession.asStateFlow()
 
     // Power Save session accounting: cumulative up/idle time since the last
     // full start. "Up" accrues while the node runs, "idle" while Power Save
@@ -688,6 +698,12 @@ class YggstackService : Service() {
             _totalPeerCount.value = 0
             _generatedPrivateKey.value = null
             hasNoNetwork = false
+            // The engine stop ends its ping session with a done event, but a
+            // replaced engine instance may not deliver it — never leave a
+            // "running" session behind.
+            _pingSession.value = _pingSession.value?.let {
+                if (it.running) it.copy(running = false, doneReason = "stopped") else it
+            }
 
             if (enterPowerSaveIdle && !lifecycle.isDestroyed) {
                 lastRawListenersJSON?.let { raw ->
@@ -1430,7 +1446,9 @@ class YggstackService : Service() {
                     0L
                 }
 
-                if (activeConnections > 0) {
+                if (activeConnections > 0 || isPingActive()) {
+                    // An active ping session holds the node up like an active
+                    // connection would.
                     remainingSeconds = cfg.powerSaveIdleTimeoutSeconds.toLong()
                     _idleCountdownSeconds.value = remainingSeconds
                 } else {
@@ -1478,6 +1496,101 @@ class YggstackService : Service() {
                 wakeInProgress = false
                 logWarn("Power Save: cannot wake, no saved config")
             }
+        }
+    }
+
+    // ── Internal ping (netstack ICMPv6) ─────────────────────────────────────
+
+    /** Per-probe reply timeout. */
+    private val pingTimeoutMs = 2_000L
+
+    /** Delay between probes. */
+    private val pingIntervalMs = 1_000L
+
+    /** Cap on retained probe lines (continuous mode would otherwise grow). */
+    private val pingMaxLines = 500
+
+    /** True while a ping session is probing — blocks Power Save idle entry. */
+    private fun isPingActive(): Boolean = _pingSession.value?.running == true
+
+    /**
+     * Starts an internal ping session to [target] (a Yggdrasil address),
+     * replacing any running session. Wakes the node from Power Save idle
+     * first — ping needs a running node. Probe results arrive through
+     * [pingSession]; [count] of 0 pings until stopped.
+     */
+    fun startPing(target: String, count: Int) {
+        if (lifecycle.isDestroyed) return
+        serviceScope.launch {
+            if (_isPowerSaveIdle.value) {
+                logInfo("Ping: waking node from Power Save idle")
+                wakeNow("ping")
+                val woke = withTimeoutOrNull(15_000) { _isRunning.first { it } } != null
+                if (!woke) {
+                    _pingSession.value = PingSessionState(
+                        target, running = false, probes = emptyList(),
+                        doneReason = "error",
+                        error = "could not wake the node"
+                    )
+                    return@launch
+                }
+            }
+            val engine = yggstack
+            if (!_isRunning.value || engine == null) {
+                _pingSession.value = PingSessionState(
+                    target, running = false, probes = emptyList(),
+                    doneReason = "error",
+                    error = "service is not running"
+                )
+                return@launch
+            }
+            _pingSession.value = PingSessionState(target, running = true, probes = emptyList(), doneReason = null)
+            try {
+                engine.startPing(target, count, pingTimeoutMs, pingIntervalMs, object : NativePingCallback {
+                    override fun onResult(result: String) {
+                        // The engine calls back on its own thread; hop to the
+                        // service scope for state updates.
+                        serviceScope.launch { handlePingEvent(result) }
+                    }
+                })
+            } catch (e: Exception) {
+                logWarn("Ping: failed to start: ${e.message}")
+                _pingSession.value = _pingSession.value?.copy(running = false, doneReason = "error", error = e.message)
+            }
+        }
+    }
+
+    /** Stops the running ping session; its final done event lands in [pingSession]. */
+    fun stopPing() {
+        serviceScope.launch {
+            yggstack?.stopPing()
+        }
+    }
+
+    private fun handlePingEvent(result: String) {
+        val session = _pingSession.value ?: return
+        try {
+            val obj = JSONObject(result)
+            when (obj.optString("Type")) {
+                "probe" -> {
+                    val seq = obj.optInt("Seq")
+                    val probe = if (obj.optBoolean("Success")) {
+                        PingProbe(seq, obj.optDouble("RttMs"), null)
+                    } else {
+                        PingProbe(seq, null, obj.optString("Error", "timeout"))
+                    }
+                    _pingSession.value = session.copy(
+                        probes = (session.probes + probe).takeLast(pingMaxLines)
+                    )
+                }
+                "done" -> {
+                    val reason = obj.optString("Reason", "completed")
+                    if (reason == "error") logWarn("Ping: session failed")
+                    _pingSession.value = session.copy(running = false, doneReason = reason)
+                }
+            }
+        } catch (e: Exception) {
+            logError("Ping: error parsing event: ${e.message}")
         }
     }
 
@@ -2625,6 +2738,12 @@ class YggstackService : Service() {
         val cfg = lastConfig ?: return
         if (!cfg.powerSaveEnabled || !cfg.powerSaveSleepDuringScreenOff || cfg.hasAlwaysOnInbound()) return
         if (_isRunning.value) {
+            // An active ping session blocks Power Save idle, including the
+            // screen-off trigger.
+            if (isPingActive()) {
+                logInfo("Power Save: screen off - ping active, staying up")
+                return
+            }
             logInfo("Power Save: screen off - powering down node immediately")
             triggerIdlePowerDown("screen off")
         } else if (_isPowerSaveIdle.value) {

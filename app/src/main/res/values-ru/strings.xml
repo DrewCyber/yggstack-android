@@ -83,6 +83,23 @@
     <string name="tab_peers">Пиры</string>
     <string name="tab_ports">Порты</string>
     <string name="tab_logs">Логи</string>
+    <string name="tab_ping">Пинг</string>
+
+    <!-- Internal ping (netstack ICMPv6) -->
+    <string name="ping_target_label">Адрес Yggdrasil</string>
+    <string name="ping_count_label">Пакеты</string>
+    <string name="ping_infinite">\u221e</string>
+    <string name="ping_button_start">Пинг</string>
+    <string name="ping_button_stop">Стоп</string>
+    <string name="ping_invalid_address">Введите корректный IPv6-адрес Yggdrasil (200::/7)</string>
+    <string name="ping_start_service">Запустите сервис, чтобы выполнять пинг</string>
+    <string name="ping_waking">Пробуждение узла\u2026</string>
+    <string name="ping_summary">Отправлено %1$d \u00b7 Получено %2$d \u00b7 Потери %3$s</string>
+    <string name="ping_rtt_summary">мин/сред/макс %1$s/%2$s/%3$s мс</string>
+    <string name="ping_done_completed">Сессия завершена</string>
+    <string name="ping_done_stopped">Сессия остановлена</string>
+    <string name="ping_done_error">Ошибка сессии</string>
+    <string name="ping_error_line">Ошибка: %1$s</string>
 
     <!-- Ports Stats Page -->
     <string name="ports_service_stopped">Запустите сервис для просмотра статистики портов</string>

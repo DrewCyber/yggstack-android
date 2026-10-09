@@ -657,6 +657,9 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 internal interface UniffiCallbackInterfaceLogCallbackMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`message`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfacePingCallbackMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 @Structure.FieldOrder("onLog", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceLogCallback(
     @JvmField internal var `onLog`: UniffiCallbackInterfaceLogCallbackMethod0? = null,
@@ -673,6 +676,28 @@ internal open class UniffiVTableCallbackInterfaceLogCallback(
     }
 
 }
+@Structure.FieldOrder("onResult", "uniffiFree")
+internal open class UniffiVTableCallbackInterfacePingCallback(
+    @JvmField internal var `onResult`: UniffiCallbackInterfacePingCallbackMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onResult`: UniffiCallbackInterfacePingCallbackMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfacePingCallback(`onResult`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfacePingCallback) {
+        `onResult` = other.`onResult`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
+
+
+
+
+
+
 
 
 
@@ -874,11 +899,17 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_socks(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_start(
 ): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_start_ping(
+): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop_ping(
 ): Short
 fun uniffi_yggstack_mobile_checksum_constructor_yggstackmobile_new(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_logcallback_on_log(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_pingcallback_on_result(
 ): Short
 fun ffi_yggstack_mobile_uniffi_contract_version(
 ): Int
@@ -919,6 +950,7 @@ internal interface UniffiLib : Library {
             // No need to check the contract version and checksums, since 
             // we already did that with `IntegrityCheckingUniffiLib` above.
             uniffiCallbackInterfaceLogCallback.register(lib)
+            uniffiCallbackInterfacePingCallback.register(lib)
             // Loading of library with integrity check done.
             lib
         }
@@ -990,9 +1022,15 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_socks(`ptr`: Pointer,`ad
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_start(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_start_ping(`ptr`: Pointer,`address`: RustBuffer.ByValue,`count`: Int,`timeoutMs`: Long,`intervalMs`: Long,`callback`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_stop_ping(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_yggstack_mobile_fn_init_callback_vtable_logcallback(`vtable`: UniffiVTableCallbackInterfaceLogCallback,
+): Unit
+fun uniffi_yggstack_mobile_fn_init_callback_vtable_pingcallback(`vtable`: UniffiVTableCallbackInterfacePingCallback,
 ): Unit
 fun uniffi_yggstack_mobile_fn_func_check_quic_peer(`uri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -1216,13 +1254,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_start() != 26847.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_start_ping() != 41866.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop() != 22976.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop_ping() != 57572.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_constructor_yggstackmobile_new() != 50883.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_logcallback_on_log() != 55898.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_pingcallback_on_result() != 46389.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1397,6 +1444,29 @@ private class JavaLangRefCleanable(
     val cleanable: java.lang.ref.Cleaner.Cleanable
 ) : UniffiCleaner.Cleanable {
     override fun clean() = cleanable.clean()
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterInt: FfiConverter<Int, Int> {
+    override fun lift(value: Int): Int {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Int {
+        return buf.getInt()
+    }
+
+    override fun lower(value: Int): Int {
+        return value
+    }
+
+    override fun allocationSize(value: Int) = 4UL
+
+    override fun write(value: Int, buf: ByteBuffer) {
+        buf.putInt(value)
+    }
 }
 
 /**
@@ -1745,9 +1815,29 @@ public interface YggstackMobileInterface {
     fun `start`()
     
     /**
+     * Start an ICMPv6 ping session to a Yggdrasil address (200::/7),
+     * sending `count` probes (0 = until stopped) every `interval_ms` ms,
+     * each waiting up to `timeout_ms` for its reply. Every probe result
+     * and the session end are reported through `callback` as JSON events:
+     *   {"Type":"probe","Seq":1,"Success":true,"RttMs":12.3}
+     *   {"Type":"probe","Seq":2,"Success":false,"Error":"timeout"}
+     *   {"Type":"done","Reason":"completed"|"stopped"|"error"}
+     * The first probe to an unknown destination may be delayed by the
+     * overlay's key lookup and time out — it is reported as-is.
+     * Replaces any running session. Requires a running node.
+     */
+    fun `startPing`(`address`: kotlin.String, `count`: kotlin.Int, `timeoutMs`: kotlin.Long, `intervalMs`: kotlin.Long, `callback`: PingCallback)
+    
+    /**
      * Stop everything.
      */
     fun `stop`()
+    
+    /**
+     * Stop the running ping session (if any). Its callback receives a
+     * final {"Type":"done","Reason":"stopped"} event.
+     */
+    fun `stopPing`()
     
     companion object
 }
@@ -2250,12 +2340,51 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
 
     
     /**
+     * Start an ICMPv6 ping session to a Yggdrasil address (200::/7),
+     * sending `count` probes (0 = until stopped) every `interval_ms` ms,
+     * each waiting up to `timeout_ms` for its reply. Every probe result
+     * and the session end are reported through `callback` as JSON events:
+     *   {"Type":"probe","Seq":1,"Success":true,"RttMs":12.3}
+     *   {"Type":"probe","Seq":2,"Success":false,"Error":"timeout"}
+     *   {"Type":"done","Reason":"completed"|"stopped"|"error"}
+     * The first probe to an unknown destination may be delayed by the
+     * overlay's key lookup and time out — it is reported as-is.
+     * Replaces any running session. Requires a running node.
+     */
+    @Throws(YggstackException::class)override fun `startPing`(`address`: kotlin.String, `count`: kotlin.Int, `timeoutMs`: kotlin.Long, `intervalMs`: kotlin.Long, `callback`: PingCallback)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(YggstackException) { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_start_ping(
+        it, FfiConverterString.lower(`address`),FfiConverterInt.lower(`count`),FfiConverterLong.lower(`timeoutMs`),FfiConverterLong.lower(`intervalMs`),FfiConverterTypePingCallback.lower(`callback`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Stop everything.
      */override fun `stop`()
         = 
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_stop(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Stop the running ping session (if any). Its callback receives a
+     * final {"Type":"done","Reason":"stopped"} event.
+     */override fun `stopPing`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_stop_ping(
         it, _status)
 }
     }
@@ -2420,6 +2549,59 @@ internal object uniffiCallbackInterfaceLogCallback {
  * @suppress
  */
 public object FfiConverterTypeLogCallback: FfiConverterCallbackInterface<LogCallback>()
+
+
+
+
+
+public interface PingCallback {
+    
+    fun `onResult`(`result`: kotlin.String)
+    
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfacePingCallback {
+    internal object `onResult`: UniffiCallbackInterfacePingCallbackMethod0 {
+        override fun callback(`uniffiHandle`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypePingCallback.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onResult`(
+                    FfiConverterString.lift(`result`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypePingCallback.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfacePingCallback.UniffiByValue(
+        `onResult`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_yggstack_mobile_fn_init_callback_vtable_pingcallback(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypePingCallback: FfiConverterCallbackInterface<PingCallback>()
         /**
          * Measure RTT to a QUIC peer via handshake (TLS 1.3, no ALPN).
          * Returns RTT in milliseconds, or -1 if unreachable within 5 seconds.

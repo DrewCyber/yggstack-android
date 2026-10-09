@@ -73,6 +73,7 @@ class ConfigRepository(private val context: Context) {
         private val DISABLED_PEERS = stringPreferencesKey("disabled_peers")
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
         private val DIAGNOSTICS_TAB_MIGRATED = booleanPreferencesKey("diagnostics_tab_ports_migrated")
+        private val DIAGNOSTICS_TAB_PING_MIGRATED = booleanPreferencesKey("diagnostics_tab_ping_migrated")
         private val PUBLIC_PEERS_CACHE = stringPreferencesKey("public_peers_cache")
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
@@ -83,6 +84,7 @@ class ConfigRepository(private val context: Context) {
         private val PORTS_COMPACT_MODE = booleanPreferencesKey("ports_compact_mode")
         private val POWER_SAVE_ENABLED = booleanPreferencesKey("power_save_enabled")
         private val POWER_SAVE_IDLE_TIMEOUT = intPreferencesKey("power_save_idle_timeout")
+        private val PING_TARGET_KEY = stringPreferencesKey("ping_target")
 
         fun normalizeDnsServer(value: String): String {
             val trimmed = value.trim()
@@ -322,23 +324,27 @@ class ConfigRepository(private val context: Context) {
      * Get diagnostics tab preference.
      */
     val diagnosticsTabFlow: Flow<Int> = context.dataStore.data.map { preferences ->
-        (preferences[DIAGNOSTICS_TAB_KEY] ?: 0).coerceIn(0, 3)
+        (preferences[DIAGNOSTICS_TAB_KEY] ?: 0).coerceIn(0, 4)
     }
 
     /**
-     * One-time migration for the inserted "Ports" tab: indices saved before it
-     * existed map old Logs (2) to its new index (3). Called explicitly instead
-     * of writing from inside a flow transformation, where any collector could
-     * trigger a write as a side effect.
+     * One-time migrations for tabs inserted before "Logs": first "Ports"
+     * (old Logs 2 -> 3), then "Ping" (old Logs 3 -> 4). Called explicitly
+     * instead of writing from inside a flow transformation, where any
+     * collector could trigger a write as a side effect.
      */
     suspend fun migrateDiagnosticsTabIfNeeded() {
         context.dataStore.edit { preferences ->
-            val saved = preferences[DIAGNOSTICS_TAB_KEY] ?: 0
-            val migrated = preferences[DIAGNOSTICS_TAB_MIGRATED] ?: false
-            if (!migrated && saved == 2) {
-                preferences[DIAGNOSTICS_TAB_KEY] = 3
+            var saved = preferences[DIAGNOSTICS_TAB_KEY] ?: 0
+            if (preferences[DIAGNOSTICS_TAB_MIGRATED] != true) {
+                if (saved == 2) saved = 3
+                preferences[DIAGNOSTICS_TAB_MIGRATED] = true
             }
-            preferences[DIAGNOSTICS_TAB_MIGRATED] = true
+            if (preferences[DIAGNOSTICS_TAB_PING_MIGRATED] != true) {
+                if (saved == 3) saved = 4
+                preferences[DIAGNOSTICS_TAB_PING_MIGRATED] = true
+            }
+            preferences[DIAGNOSTICS_TAB_KEY] = saved
         }
     }
 
@@ -348,6 +354,22 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveDiagnosticsTab(tabIndex: Int) {
         context.dataStore.edit { preferences ->
             preferences[DIAGNOSTICS_TAB_KEY] = tabIndex
+        }
+    }
+
+    /**
+     * Get the last pinged target address (empty when never used).
+     */
+    val pingTargetFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PING_TARGET_KEY] ?: ""
+    }
+
+    /**
+     * Save the last pinged target address.
+     */
+    suspend fun savePingTarget(target: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PING_TARGET_KEY] = target
         }
     }
 

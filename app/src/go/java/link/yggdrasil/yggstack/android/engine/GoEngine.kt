@@ -4,6 +4,7 @@ import link.yggdrasil.yggstack.android.data.NativeConfigJson
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
+import link.yggdrasil.yggstack.mobile.PingCallback
 import link.yggdrasil.yggstack.mobile.Yggstack
 
 /**
@@ -85,4 +86,21 @@ internal class GoEngine : NativeEngine {
     override fun getPeersJson(): String? = yggstack.getPeersJSON()
 
     override fun getListenersJson(): String? = yggstack.getListenersJSON()
+
+    override fun startPing(
+        address: String,
+        count: Int,
+        timeoutMs: Long,
+        intervalMs: Long,
+        callback: NativePingCallback
+    ) = yggstack.startPing(
+        address, count.toLong(), timeoutMs, intervalMs,
+        object : PingCallback {
+            override fun onResult(result: String) {
+                callback.onResult(result)
+            }
+        }
+    )
+
+    override fun stopPing() = yggstack.stopPing()
 }
