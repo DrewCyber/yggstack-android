@@ -134,6 +134,9 @@
     <string name="download_update">Скачать обновление</string>
     <string name="check_for_update_now">Проверить обновления</string>
     <string name="reset_suspended_dialogs">Показать все скрытые диалоги снова</string>
+    <string name="system_menu">Системное меню</string>
+    <string name="app_links_not_enabled">Открытие ссылок %1$s ещё не включено в Android. Включите его, чтобы ссылки маппинга открывались в приложении.</string>
+    <string name="enable_app_links">Включить открытие ссылок</string>
     <string name="no_updates_available">Обновлений нет</string>
     <string name="suspended_dialogs_reset">Скрытые диалоги сброшены</string>
 
@@ -152,6 +155,7 @@
     <string name="permission_notifications_required">Разрешить уведомления (необходимо для фонового сервиса)</string>
     <string name="permission_battery_required">Отключить оптимизацию батареи</string>
     <string name="permission_background_required">Разрешить неограниченную фоновую активность</string>
+    <string name="app_links_dialog_title">Открытие ссылок в приложении</string>
     <string name="permission_dialog_instructions">Нажмите \"Открыть настройки\" для настройки этих разрешений. Это обеспечит активность сервиса даже когда приложение не на переднем плане.</string>
     <string name="permission_dialog_open_settings">Открыть настройки</string>
     <string name="permission_dialog_later">Позже</string>

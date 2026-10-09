@@ -134,6 +134,9 @@
     <string name="download_update">Download Update</string>
     <string name="check_for_update_now">Check for update</string>
     <string name="reset_suspended_dialogs">Show all hidded dialogs again</string>
+    <string name="system_menu">System Menu</string>
+    <string name="app_links_not_enabled">Link opening for %1$s is not enabled in Android yet. Enable it so mapping links open in this app.</string>
+    <string name="enable_app_links">Enable Link Opening</string>
     <string name="no_updates_available">No updates available</string>
     <string name="suspended_dialogs_reset">Suspended dialogs reset</string>
 
@@ -152,6 +155,7 @@
     <string name="permission_notifications_required">Allow notifications (required for foreground service)</string>
     <string name="permission_battery_required">Disable battery optimization</string>
     <string name="permission_background_required">Allow unrestricted background activity</string>
+    <string name="app_links_dialog_title">Open Links in This App</string>
     <string name="permission_dialog_instructions">Tap \"Open Settings\" to configure these permissions. This ensures the service stays active even when the app is not in the foreground.</string>
     <string name="permission_dialog_open_settings">Open Settings</string>
     <string name="permission_dialog_later">Later</string>

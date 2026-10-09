@@ -51,6 +51,7 @@ import link.yggdrasil.yggstack.android.ui.configuration.PendingDeepLink
 import link.yggdrasil.yggstack.android.ui.diagnostics.DiagnosticsScreen
 import link.yggdrasil.yggstack.android.ui.settings.SettingsScreen
 import link.yggdrasil.yggstack.android.ui.theme.YggstackAndroidTheme
+import link.yggdrasil.yggstack.android.utils.AppLinkHelper
 import link.yggdrasil.yggstack.android.utils.LocaleHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -226,6 +227,7 @@ fun MainScreen(initialUseSystemColors: Boolean) {
     // Use temp screen from companion object if available (after recreation), otherwise default to 0
     var selectedScreen by remember { mutableStateOf(MainActivity.tempSelectedScreen ?: 0) }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    var showAppLinksDialog by remember { mutableStateOf(false) }
     var permissionsChecked by remember { mutableStateOf(false) }
     var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -270,13 +272,19 @@ fun MainScreen(initialUseSystemColors: Boolean) {
     // Check permissions and version on startup
     LaunchedEffect(Unit) {
         // First, request notification permission if needed (Android 13+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             !PermissionHelper.isNotificationPermissionGranted(context)) {
             notificationPermissionLauncher.launch(PermissionHelper.NOTIFICATION_PERMISSION)
         } else if (!PermissionHelper.hasAllBackgroundPermissions(context)) {
             showPermissionDialog = true
         }
         permissionsChecked = true
+
+        // Link handling is unrelated to background work, so it gets its own
+        // dialog; it waits below while the permissions dialog is on screen
+        if (AppLinkHelper.getDisabledLinkDomains(context).isNotEmpty()) {
+            showAppLinksDialog = true
+        }
         
         // Check and download public peers cache if needed
         coroutineScope.launch {
@@ -338,7 +346,7 @@ fun MainScreen(initialUseSystemColors: Boolean) {
         val needsNotification = !PermissionHelper.isNotificationPermissionGranted(context)
         val needsBattery = !PermissionHelper.isBatteryOptimizationDisabled(context)
         val needsBackground = PermissionHelper.isBackgroundRestricted(context)
-        
+
         BackgroundPermissionDialog(
             needsNotification = needsNotification,
             needsBattery = needsBattery,
@@ -365,6 +373,23 @@ fun MainScreen(initialUseSystemColors: Boolean) {
                 }
             }
         )
+    }
+
+    // App-links dialog: separate from the background-permissions dialog so each
+    // issue gets its own message and its own settings screen. Rendered only
+    // once the permissions dialog (if any) is gone.
+    if (showAppLinksDialog && !showPermissionDialog) {
+        val disabledLinkDomains = remember { AppLinkHelper.getDisabledLinkDomains(context) }
+        if (disabledLinkDomains.isNotEmpty()) {
+            AppLinksDialog(
+                disabledLinkDomains = disabledLinkDomains,
+                onDismiss = { showAppLinksDialog = false },
+                onOpenSettings = {
+                    showAppLinksDialog = false
+                    AppLinkHelper.openOpenByDefaultSettings(context)
+                }
+            )
+        }
     }
     
     // Update dialog
@@ -461,7 +486,7 @@ fun BackgroundPermissionDialog(
             Column {
                 Text(stringResource(R.string.permission_dialog_message))
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 if (needsNotification) {
                     Text(
                         text = "• " + stringResource(R.string.permission_notifications_required),
@@ -491,6 +516,38 @@ fun BackgroundPermissionDialog(
         confirmButton = {
             Button(onClick = onOpenSettings) {
                 Text(stringResource(R.string.permission_dialog_open_settings))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.permission_dialog_later))
+            }
+        }
+    )
+}
+
+@Composable
+fun AppLinksDialog(
+    disabledLinkDomains: List<String>,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Link, contentDescription = null) },
+        title = { Text(stringResource(R.string.app_links_dialog_title)) },
+        text = {
+            Text(
+                text = stringResource(
+                    R.string.app_links_not_enabled,
+                    disabledLinkDomains.joinToString()
+                ),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        confirmButton = {
+            Button(onClick = onOpenSettings) {
+                Text(stringResource(R.string.enable_app_links))
             }
         },
         dismissButton = {

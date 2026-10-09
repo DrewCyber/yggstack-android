@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.BuildConfig
@@ -29,6 +30,7 @@ import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.ServiceStartMode
 import link.yggdrasil.yggstack.android.data.VersionChecker
+import link.yggdrasil.yggstack.android.utils.AppLinkHelper
 import link.yggdrasil.yggstack.android.utils.AutostartHelper
 import link.yggdrasil.yggstack.android.utils.PermissionHelper
 import kotlinx.coroutines.launch
@@ -446,7 +448,47 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Force Stop Button
+        // Link-handling check: warn when Android isn't set to open this app's
+        // links (Settings → Open by default). Re-checked on every resume so the
+        // card disappears once the user enables the toggles.
+        var disabledLinkDomains by remember { mutableStateOf(AppLinkHelper.getDisabledLinkDomains(context)) }
+        LifecycleResumeEffect(Unit) {
+            disabledLinkDomains = AppLinkHelper.getDisabledLinkDomains(context)
+            onPauseOrDispose { }
+        }
+        if (disabledLinkDomains.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.app_links_not_enabled,
+                                disabledLinkDomains.joinToString()
+                            ),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { AppLinkHelper.openOpenByDefaultSettings(context) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.enable_app_links))
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // System Menu Button: opens Android's per-app system settings screen
         Button(
             onClick = {
                 try {
@@ -474,7 +516,7 @@ fun SettingsScreen(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Force Stop")
+            Text(stringResource(R.string.system_menu))
         }
     }
 }

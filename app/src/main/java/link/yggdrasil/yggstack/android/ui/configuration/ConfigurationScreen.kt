@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -1722,16 +1724,16 @@ fun ExposeMappingDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        ProtocolOption(
+                            label = stringResource(R.string.protocol_tcp),
                             selected = protocol == Protocol.TCP,
-                            onClick = { protocol = Protocol.TCP },
-                            label = { Text(stringResource(R.string.protocol_tcp)) }
+                            onClick = { protocol = Protocol.TCP }
                         )
-                        FilterChip(
+                        ProtocolOption(
+                            label = stringResource(R.string.protocol_udp),
                             selected = protocol == Protocol.UDP,
-                            onClick = { protocol = Protocol.UDP },
-                            label = { Text(stringResource(R.string.protocol_udp)) }
+                            onClick = { protocol = Protocol.UDP }
                         )
                     }
                     if (onDelete != null) {
@@ -1805,6 +1807,8 @@ fun ExposeMappingDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
+                NoteUrlPreview(note = note)
 
                 OutlinedTextField(
                     value = note,
@@ -1933,16 +1937,16 @@ fun ForwardMappingDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        ProtocolOption(
+                            label = stringResource(R.string.protocol_tcp),
                             selected = protocol == Protocol.TCP,
-                            onClick = { protocol = Protocol.TCP },
-                            label = { Text(stringResource(R.string.protocol_tcp)) }
+                            onClick = { protocol = Protocol.TCP }
                         )
-                        FilterChip(
+                        ProtocolOption(
+                            label = stringResource(R.string.protocol_udp),
                             selected = protocol == Protocol.UDP,
-                            onClick = { protocol = Protocol.UDP },
-                            label = { Text(stringResource(R.string.protocol_udp)) }
+                            onClick = { protocol = Protocol.UDP }
                         )
                     }
                     if (onDelete != null) {
@@ -2031,6 +2035,8 @@ fun ForwardMappingDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
+                NoteUrlPreview(note = note)
 
                 OutlinedTextField(
                     value = note,
@@ -2315,6 +2321,67 @@ fun ProxyHowItWorksDialog(onDismiss: () -> Unit) {
 }
 
 private val URL_PATTERN = Regex("""https?://\S+""")
+
+// Horizontal bullet selector for the mapping protocol (TCP/UDP), in the same
+// RadioButton-with-label style as SettingsScreen's theme options
+@Composable
+private fun ProtocolOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(
+            text = label,
+            modifier = Modifier.padding(start = 4.dp)
+        )
+    }
+}
+
+// URLs typed into a mapping Note, in order of first appearance: leading
+// http(s) match with trailing punctuation (e.g. a sentence-final dot) trimmed.
+internal fun extractNoteUrls(note: String): List<String> =
+    URL_PATTERN.findAll(note)
+        .map { it.value.trimEnd('.', ',', ';', ':', ')', ']', '}', '>', '"', '\'') }
+        .filter { it.length > "https://".length }
+        .distinct()
+        .toList()
+
+// Live preview of the http(s) URLs inside a mapping Note, shown as tappable
+// links between the Short Name and Note fields while editing. Mirrors
+// linkifiedBody's styling; disappears entirely when the Note has no URL.
+@Composable
+internal fun NoteUrlPreview(note: String) {
+    val context = LocalContext.current
+    val urls = remember(note) { extractNoteUrls(note) }
+    if (urls.isEmpty()) return
+    val linkStyles = TextLinkStyles(
+        style = SpanStyle(
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline
+        )
+    )
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        urls.forEach { url ->
+            Text(
+                text = buildAnnotatedString {
+                    withLink(
+                        LinkAnnotation.Url(url, linkStyles) {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    ) {
+                        append(url)
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+            )
+        }
+    }
+}
 
 // Turns plain http(s) URLs inside a localized string into tappable links,
 // so translations keep working without resource restructuring. Trailing
