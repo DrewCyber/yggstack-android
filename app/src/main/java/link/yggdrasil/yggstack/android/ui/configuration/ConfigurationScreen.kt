@@ -149,32 +149,13 @@ fun ConfigurationScreen(
             // Peers Section with clickable header
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    // Header with title and manage button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = stringResource(R.string.peers_section),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        
-                        TextButton(
-                            onClick = { showPeerDiscovery = true },
-                            enabled = !isServiceRunning
-                        ) {
-                            Icon(
-                                Icons.Default.ManageSearch,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.discover_peers))
-                        }
-                    }
-                    
+                    // Header
+                    Text(
+                        text = stringResource(R.string.peers_section),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+
                     config.peers.forEach { peer ->
                         PeerItem(
                             peer = peer,
@@ -188,17 +169,19 @@ fun ConfigurationScreen(
                         )
                     }
 
+                    // Peer discovery entry, where manual Add Peer used to be.
                     if (!isServiceRunning) {
                         FilledTonalButton(
-                            onClick = {
-                                editingPeer = null
-                                showPeerDialog = true
-                            },
+                            onClick = { showPeerDiscovery = true },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null)
+                            Icon(
+                                Icons.Default.ManageSearch,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.add_peer))
+                            Text(stringResource(R.string.discover_peers))
                         }
                     }
 
@@ -430,6 +413,50 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
             }
+            item(key = "forward") {
+            // Forward Remote Port Section — above Expose: forwarding is the
+            // more common direction, so it leads.
+            ConfigSectionWithToggle(
+                title = stringResource(R.string.forward_remote_port_section),
+                enabled = config.forwardEnabled,
+                onToggle = { viewModel.toggleForwardEnabled() },
+                isServiceRunning = isServiceRunning
+            ) {
+                ReorderableColumn(
+                    items = config.forwardMappings,
+                    onReorder = { viewModel.reorderForwardMappings(it) },
+                    enabled = !isServiceRunning && config.forwardEnabled
+                ) { mapping, isDragging ->
+                    ForwardMappingItem(
+                        mapping = mapping,
+                        enabled = !isServiceRunning && config.forwardEnabled,
+                        checkboxEnabled = config.forwardEnabled,
+                        isDragging = isDragging,
+                        onEdit = {
+                            editingForwardMapping = mapping
+                            showForwardDialog = true
+                        },
+                        onToggle = { viewModel.toggleForwardMapping(mapping) }
+                    )
+                }
+
+                if (!isServiceRunning && config.forwardEnabled) {
+                    FilledTonalButton(
+                        onClick = { showForwardDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.add_mapping))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            }
             item(key = "expose") {
             // Expose Local Port Section
             ConfigSectionWithToggle(
@@ -459,49 +486,6 @@ fun ConfigurationScreen(
                 if (!isServiceRunning && config.exposeEnabled) {
                     FilledTonalButton(
                         onClick = { showExposeDialog = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.add_mapping))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            }
-            item(key = "forward") {
-            // Forward Remote Port Section
-            ConfigSectionWithToggle(
-                title = stringResource(R.string.forward_remote_port_section),
-                enabled = config.forwardEnabled,
-                onToggle = { viewModel.toggleForwardEnabled() },
-                isServiceRunning = isServiceRunning
-            ) {
-                ReorderableColumn(
-                    items = config.forwardMappings,
-                    onReorder = { viewModel.reorderForwardMappings(it) },
-                    enabled = !isServiceRunning && config.forwardEnabled
-                ) { mapping, isDragging ->
-                    ForwardMappingItem(
-                        mapping = mapping,
-                        enabled = !isServiceRunning && config.forwardEnabled,
-                        checkboxEnabled = config.forwardEnabled,
-                        isDragging = isDragging,
-                        onEdit = {
-                            editingForwardMapping = mapping
-                            showForwardDialog = true
-                        },
-                        onToggle = { viewModel.toggleForwardMapping(mapping) }
-                    )
-                }
-
-                if (!isServiceRunning && config.forwardEnabled) {
-                    FilledTonalButton(
-                        onClick = { showForwardDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
@@ -795,106 +779,8 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
             }
-            item(key = "logLevel") {
-            // Log Level Section
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    val logsEnabled by viewModel.logsEnabled.collectAsStateWithLifecycle()
-                    val logLevels = listOf("error", "warn", "info", "debug")
-                    val logLevelLabels = mapOf(
-                        "error" to stringResource(R.string.log_level_error),
-                        "warn" to stringResource(R.string.log_level_warn),
-                        "info" to stringResource(R.string.log_level_info),
-                        "debug" to stringResource(R.string.log_level_debug)
-                    )
-                    
-                    // Title with toggle on same row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.log_level),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Switch(
-                            checked = logsEnabled,
-                            onCheckedChange = { viewModel.setLogsEnabled(it) },
-                            enabled = !isServiceRunning,
-                            modifier = Modifier.scale(0.8f)
-                        )
-                    }
-                    
-                    if (logsEnabled) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                        ) {
-                        logLevels.forEachIndexed { index, level ->
-                            Button(
-                                onClick = { viewModel.setLogLevel(level) },
-                                enabled = !isServiceRunning && logsEnabled,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (config.logLevel == level) {
-                                        // Use red color for debug level when selected
-                                        if (level == "debug") {
-                                            Color(0xFFDC3545) // Red color for debug
-                                        } else {
-                                            MaterialTheme.colorScheme.primary
-                                        }
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    },
-                                    contentColor = if (config.logLevel == level) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                    disabledContainerColor = if (config.logLevel == level) {
-                                        // Keep red color for debug when disabled
-                                        if (level == "debug") {
-                                            Color(0xFFDC3545).copy(alpha = 0.5f)
-                                        } else {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                                        }
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    },
-                                    disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
-                                ),
-                                shape = when (index) {
-                                    0 -> MaterialTheme.shapes.small.copy(
-                                        topEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
-                                        bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp)
-                                    )
-                                    logLevels.size - 1 -> MaterialTheme.shapes.small.copy(
-                                        topStart = androidx.compose.foundation.shape.CornerSize(0.dp),
-                                        bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp)
-                                    )
-                                    else -> androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text(
-                                    text = logLevelLabels[level] ?: level,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
-                    }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                }
-            }
-        }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            }
+        // Log Level card removed — logging is controlled from the
+        // Diagnostics "Logs" tab (level dropdown incl. Disabled).
         }
 
 
@@ -956,7 +842,14 @@ fun ConfigurationScreen(
         
         PeerDiscoveryScreen(
             viewModel = discoveryViewModel,
-            onDismiss = { showPeerDiscovery = false }
+            onDismiss = { showPeerDiscovery = false },
+            // Stay on the discovery screen: the dialog opens on top, and its
+            // ADD lands in config.peers — which the discovery screen mirrors
+            // as a checked (custom) peer.
+            onAddPeer = {
+                editingPeer = null
+                showPeerDialog = true
+            }
         )
     }
 

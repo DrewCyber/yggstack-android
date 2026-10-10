@@ -31,7 +31,10 @@ import link.yggdrasil.yggstack.android.data.PublicPeerInfo
 fun PeerDiscoveryScreen(
     viewModel: PeerDiscoveryViewModel,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Opens the manual Add Peer dialog; required so the button can never
+    // silently degrade into something else.
+    onAddPeer: () -> Unit
 ) {
     val externalIp by viewModel.externalIp.collectAsStateWithLifecycle()
     val displayPeers by viewModel.getDisplayPeers().collectAsStateWithLifecycle()
@@ -135,7 +138,19 @@ fun PeerDiscoveryScreen(
                 }
             }
 
-
+            // Third action: manual entry — the old Add Peer dialog, for a
+            // custom peer discovery can't find. Only adds to the selected
+            // peers list; no discovery involved.
+            FilledTonalButton(
+                onClick = onAddPeer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.add_custom_peer))
+            }
 
             // Loading indicator
             if (isLoading) {
@@ -232,8 +247,16 @@ fun PeerDiscoveryScreen(
                         }
                     }
                     
-                    // Separate selected and main lists
-                    val selectedPeersList = displayPeers.filter { it.uri in selectedPeers }
+                    // Separate selected and main lists. Selected peers not in
+                    // the discovery cache — manually added through Add Peer —
+                    // are synthesized as entries so they show up checked too.
+                    val cachedUris = displayPeers.mapTo(mutableSetOf()) { it.uri }
+                    val selectedPeersList = buildList {
+                        addAll(displayPeers.filter { it.uri in selectedPeers })
+                        selectedPeers.filter { it !in cachedUris }.forEach { uri ->
+                            add(PublicPeerInfo(uri = uri, country = ""))
+                        }
+                    }
                     val hasSelectedPeers = selectedPeersList.isNotEmpty()
                     
                     LazyColumn(

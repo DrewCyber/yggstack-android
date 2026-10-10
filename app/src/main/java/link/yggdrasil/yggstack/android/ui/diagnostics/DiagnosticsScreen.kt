@@ -27,15 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
@@ -267,6 +265,12 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
+        // GroupPassword notice — a group password limits direct reachability
+        // to peers sharing it (see GroupPasswordInfoCard).
+        if (groupPasswordActive(yggstackConfig)) {
+            GroupPasswordInfoCard(modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         // Yggdrasil Configuration Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -376,24 +380,25 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Export button – opens export dialog
+                    // Backup (export) button – opens export dialog.
+                    // Icons: "output" for backup, "input" for restore.
                     IconButton(
                         onClick = { showExportDialog = true },
                         enabled = yggstackConfig != null
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "Export configuration",
+                            painter = painterResource(R.drawable.ic_output),
+                            contentDescription = "Backup configuration",
                             tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
                         )
                     }
-                    // Import button
+                    // Restore (import) button
                     IconButton(onClick = {
                         importLauncher.launch(arrayOf("*/*"))
                     }) {
                         Icon(
-                            imageVector = Icons.Default.Upload,
-                            contentDescription = "Import configuration",
+                            painter = painterResource(R.drawable.ic_input),
+                            contentDescription = "Restore configuration",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -424,7 +429,6 @@ fun ExportBackupDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
-                    .verticalScroll(rememberScrollState())
             ) {
                 Text(
                     text = stringResource(R.string.backup_export_title),
@@ -470,8 +474,12 @@ fun ExportBackupDialog(
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
 
+                // Scrollable preview: the dialog itself stays fixed-height so
+                // Cancel/Export remain visible regardless of preview length.
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
@@ -480,7 +488,9 @@ fun ExportBackupDialog(
                         text = backupToml,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .verticalScroll(rememberScrollState())
                     )
                 }
 
@@ -1463,9 +1473,31 @@ fun formatBytes(bytes: Long): String {
 @Composable
 fun LogsViewer(viewModel: DiagnosticsViewModel) {
     val logs by viewModel.logs.collectAsStateWithLifecycle()
+    val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsStateWithLifecycle()
+    val logsEnabled by viewModel.logsEnabled.collectAsStateWithLifecycle()
+    val appliedLogging by viewModel.appliedLogging.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var userScrolled by remember { mutableStateOf(false) }
+    var levelMenuExpanded by remember { mutableStateOf(false) }
+
+    // The current selection: "disabled" when logging is off, else the level
+    // from the config.
+    val selectedLevel = if (!logsEnabled) "disabled" else yggstackConfig?.logLevel ?: "error"
+    val levelLabels = mapOf(
+        "disabled" to stringResource(R.string.log_level_disabled),
+        "error" to stringResource(R.string.log_level_error),
+        "warn" to stringResource(R.string.log_level_warn),
+        "info" to stringResource(R.string.log_level_info),
+        "debug" to stringResource(R.string.log_level_debug)
+    )
+    // Logging applies at node start: a selection differing from what the
+    // node started with, while it runs, needs the restart button.
+    val selectedPlainLevel = yggstackConfig?.logLevel ?: "error"
+    val needsRestart = isServiceRunning && appliedLogging != null &&
+        (appliedLogging!!.first != selectedPlainLevel || appliedLogging!!.second != logsEnabled)
 
     // Initial scroll to bottom when screen opens
     LaunchedEffect(Unit) {
@@ -1499,58 +1531,11 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        // The terminal log fills the tab; the Service logs card moved below
+        // it so the controls sit at the bottom of the screen.
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = stringResource(R.string.service_logs),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = stringResource(R.string.log_entries, logs.size),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (logs.isNotEmpty()) {
-                    Row {
-                        IconButton(onClick = {
-                            // Download logs as file
-                            viewModel.downloadLogs(context)
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.InsertDriveFile,
-                                contentDescription = "Download logs"
-                            )
-                        }
-                        IconButton(onClick = { viewModel.clearLogs() }) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Clear logs"
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxSize(),
             colors = CardDefaults.cardColors(
                 containerColor = Color.Black
             )
@@ -1586,14 +1571,142 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
             }
         }
 
-        if (logs.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
+            // While scrolled back through history: jump to the end and let
+            // the log follow its tail again. Mirror of Peer Discovery's
+            // scroll-to-top FAB, pointing down in secondary colors.
+            if (userScrolled && logs.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = {
+                        userScrolled = false
+                        scope.launch {
+                            listState.animateScrollToItem(logs.lastIndex)
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = stringResource(R.string.logs_scroll_end)
+                    )
+                }
+            }
+        }
 
-            Text(
-                text = stringResource(R.string.logs_collected_realtime),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Service logs card, pinned to the bottom: entry count, download and
+        // clear, the log-level dropdown (always usable) and — when the
+        // selection changed while the service runs — the restart button.
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
             )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.service_logs),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.log_entries, logs.size),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (logs.isNotEmpty()) {
+                        Row {
+                            IconButton(onClick = {
+                                // Download logs as file
+                                viewModel.downloadLogs(context)
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.InsertDriveFile,
+                                    contentDescription = "Download logs"
+                                )
+                            }
+                            IconButton(onClick = { viewModel.clearLogs() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Clear logs"
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.log_level_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable { levelMenuExpanded = true }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = levelLabels[selectedLevel] ?: selectedLevel,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = levelMenuExpanded,
+                            onDismissRequest = { levelMenuExpanded = false }
+                        ) {
+                            listOf("disabled", "error", "warn", "info", "debug").forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(levelLabels[option] ?: option) },
+                                    onClick = {
+                                        viewModel.setLogSelection(option)
+                                        levelMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (needsRestart) {
+                    Button(
+                        onClick = { viewModel.restartService() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.restart_service))
+                    }
+                }
+            }
         }
     }
 }
@@ -1682,49 +1795,23 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val targetValid = isValidYggAddress(target)
     // Ping needs a running node; a Power Save idle node is woken on start.
     val nodeAvailable = isServiceRunning || (isPowerSaveIdleCapable && isPowerSaveIdle)
+    val context = LocalContext.current
 
     // No outer horizontal padding: the address field is full-bleed, the log
-    // and the dropdown carry their own side insets. IME handling is global:
+    // and the toolbar carry their own side insets. IME handling is global:
     // the navigation bar lifts above the keyboard, which grows the Scaffold's
-    // content padding here.
+    // content padding here. The screen stays visible with the service
+    // stopped — the input and the start button are disabled instead.
     Column(modifier = Modifier.fillMaxSize()) {
-        if (!nodeAvailable) {
-            Card(
+        if (groupPasswordActive(yggstackConfig)) {
+            GroupPasswordInfoCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.ping_start_service),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
                     .padding(start = 16.dp, end = 16.dp, top = 16.dp)
-            ) {
-            // Terminal-style results, mirroring the Logs viewer. Tapping it
+            )
+        }
+        // Terminal-style results, mirroring the Logs viewer, fixed at 60% of
+        // the screen height. Tapping it
             // explicitly clears focus from the address field — closing the
             // keyboard — so the next tap on the field re-opens the
             // suggestions. Covers the empty state too.
@@ -1733,7 +1820,11 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .padding(
+                        start = 16.dp, end = 16.dp,
+                        top = if (groupPasswordActive(yggstackConfig)) 8.dp else 16.dp
+                    )
+                    .fillMaxHeight(0.6f)
                     .clickable(
                         interactionSource = logInteraction,
                         indication = null
@@ -1757,6 +1848,9 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     LaunchedEffect(probes.size) {
                         if (probes.isNotEmpty()) listState.animateScrollToItem(probes.lastIndex)
                     }
+                    // Selectable: any part of the log can be marked and copied
+                    // with the native text-selection menu.
+                    SelectionContainer {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -1805,169 +1899,122 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                                 )
                             }
                         }
+                        // Session statistics close the log, ping(1)-style:
+                        // sent/received/loss, then min/avg/max RTT.
+                        if (probes.isNotEmpty()) {
+                            item(key = "stats") {
+                                val received = probes.count { it.rttMs != null }
+                                val lossPct = (probes.size - received) * 100.0 / probes.size
+                                val rtts = probes.mapNotNull { it.rttMs }
+                                Column {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.ping_summary,
+                                            probes.size, received, "%.0f%%".format(lossPct)
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color.Gray,
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                    if (rtts.isNotEmpty()) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.ping_rtt_summary,
+                                                "%.1f".format(rtts.min()),
+                                                "%.1f".format(rtts.average()),
+                                                "%.1f".format(rtts.max())
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
+                    } // SelectionContainer
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        // Controls, permanently visible under the log: clear, copy, the
+        // packet-count picker ("Count N") and the Ping/Stop word button —
+        // right aligned in that order. Copy puts the whole log — probes,
+        // error, done line, statistics — on the clipboard.
+        @Composable
+        fun countValue(n: Int): String =
+            if (n == 0) stringResource(R.string.ping_count_value, stringResource(R.string.ping_infinite))
+            else stringResource(R.string.ping_count_value, n.toString())
 
-            // Live summary: sent/received/loss and min/avg/max RTT stacked on
-            // their own lines — side by side they squeezed each other into
-            // mid-phrase wraps in longer locales. The trash icon clears a
-            // finished session's results off the screen.
-            val received = probes.count { it.rttMs != null }
-            if (probes.isNotEmpty()) {
-                val lossPct = (probes.size - received) * 100.0 / probes.size
-                val rtts = probes.mapNotNull { it.rttMs }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.ping_summary, probes.size, received, "%.0f%%".format(lossPct)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (rtts.isNotEmpty()) {
-                            Text(
-                                text = stringResource(
-                                    R.string.ping_rtt_summary,
-                                    "%.1f".format(rtts.min()),
-                                    "%.1f".format(rtts.average()),
-                                    "%.1f".format(rtts.max())
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 2.dp)
+        val canToggle = sessionRunning || (targetValid && nodeAvailable)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 4.dp, top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = stringResource(R.string.ping_clear),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (sessionRunning) 0.35f else 1f
+                ),
+                modifier = Modifier
+                    .clickable(enabled = !sessionRunning) { viewModel.clearPing() }
+                    .padding(8.dp)
+                    .size(20.dp)
+            )
+            Icon(
+                imageVector = Icons.Default.ContentCopy,
+                contentDescription = stringResource(R.string.ping_copy),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (session == null) 0.35f else 1f
+                ),
+                modifier = Modifier
+                    .clickable(enabled = session != null) {
+                        session?.let { s ->
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText("ping log", buildPingLogText(context, s))
                             )
                         }
                     }
+                    .padding(8.dp)
+                    .size(20.dp)
+            )
+            val pickerColor = if (sessionRunning) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.primary
+            Box {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable(enabled = !sessionRunning) { countExpanded = true }
+                        .padding(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = countValue(count),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = pickerColor
+                    )
                     Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.ping_clear),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                            alpha = if (sessionRunning) 0.35f else 1f
-                        ),
-                        modifier = Modifier
-                            .clickable(enabled = !sessionRunning) { viewModel.clearPing() }
-                            .padding(8.dp)
-                            .size(20.dp)
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = stringResource(R.string.ping_count_label),
+                        tint = pickerColor
                     )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            } // end padded log + summary column
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Full-bleed address field: the trailing group holds the packet
-            // count picker and the Ping/Stop word button. The count menu is a
-            // plain DropdownMenu in a Box (the LocalIpTextField pattern), NOT
-            // ExposedDropdownMenuBox — menuAnchor() would make the entire
-            // field toggle the menu on every tap.
-            val canToggle = sessionRunning || (targetValid && nodeAvailable)
-            // Measured so the count menu can stick to the field's right edge,
-            // under the picker.
-            var fieldSize by remember { mutableStateOf(IntSize(0, 0)) }
-            val density = LocalDensity.current
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { fieldSize = it }
-            ) {
-                // Same suggestion-dropdown behaviour as the "local IP" field,
-                // offering the connected peers' Yggdrasil addresses. Single
-                // line so a long address scrolls instead of wrapping the
-                // field under the keyboard.
-                LocalIpTextField(
-                    value = target,
-                    onValueChange = { if (!sessionRunning) target = it },
-                    label = { Text(stringResource(R.string.ping_target_label)) },
-                    placeholder = { Text(stringResource(R.string.ping_target_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !sessionRunning,
-                    singleLine = true,
-                    isError = target.isNotBlank() && !targetValid,
-                    supportingText = {
-                        val hintRes = when {
-                            target.isNotBlank() && !targetValid -> R.string.ping_invalid_address
-                            isPowerSaveIdle && !sessionRunning -> R.string.ping_waking
-                            else -> null
-                        }
-                        if (hintRes != null) Text(stringResource(hintRes))
-                    },
-                    suggestionsProvider = { peerAddressSuggestions(peerDetails) },
-                    fadeBeforeTrailing = true,
-                    trailingIcon = {
-                        // Right-aligned group: packet-count picker, then the
-                        // Ping/Stop word button.
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val pickerColor = if (sessionRunning) MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.primary
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clickable(enabled = !sessionRunning) { countExpanded = true }
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = if (count == 0) stringResource(R.string.ping_infinite)
-                                    else count.toString(),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = pickerColor
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = stringResource(R.string.ping_count_label),
-                                    tint = pickerColor
-                                )
-                            }
-                            Text(
-                                text = stringResource(
-                                    if (sessionRunning) R.string.ping_button_stop
-                                    else R.string.ping_button_start
-                                ),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = when {
-                                    !canToggle -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    sessionRunning -> MaterialTheme.colorScheme.error
-                                    else -> MaterialTheme.colorScheme.primary
-                                },
-                                modifier = Modifier
-                                    .clickable(enabled = canToggle) {
-                                        if (sessionRunning) viewModel.stopPing()
-                                        else viewModel.startPing(target.trim(), count)
-                                    }
-                                    // End padding 12dp + the trailing slot's own
-                                    // 4dp inset = 16dp: the same edge spacing the
-                                    // address text gets on the left.
-                                    .padding(start = 4.dp, top = 8.dp, end = 12.dp, bottom = 8.dp)
-                            )
-                        }
-                    }
-                )
                 DropdownMenu(
                     expanded = countExpanded,
-                    onDismissRequest = { countExpanded = false },
-                    // 112.dp is the menu's minimum width: shifting the anchor
-                    // by field width minus that pins it to the right edge
-                    // under the picker (the position provider clamps any
-                    // overshoot into the window).
-                    offset = DpOffset(
-                        x = with(density) {
-                            maxOf(0, fieldSize.width - 112.dp.roundToPx()).toDp()
-                        },
-                        y = 0.dp
-                    )
+                    onDismissRequest = { countExpanded = false }
                 ) {
                     PingCountOptions.forEach { option ->
                         DropdownMenuItem(
+                            // Bare value here — the "Count" word belongs to
+                            // the picker label, not every menu row.
                             text = {
                                 Text(
                                     if (option == 0) stringResource(R.string.ping_infinite)
@@ -1982,6 +2029,138 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                     }
                 }
+            }
+            Button(
+                onClick = {
+                    if (sessionRunning) viewModel.stopPing()
+                    else viewModel.startPing(target.trim(), count)
+                },
+                enabled = canToggle,
+                colors = if (sessionRunning) ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                ) else ButtonDefaults.buttonColors(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .height(36.dp)
+            ) {
+                Text(
+                    text = stringResource(
+                        if (sessionRunning) R.string.ping_button_stop
+                        else R.string.ping_button_start
+                    ),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Full-bleed address field; all controls live in the row above.
+        LocalIpTextField(
+            value = target,
+            onValueChange = { if (!sessionRunning) target = it },
+            label = { Text(stringResource(R.string.ping_target_label)) },
+            placeholder = { Text(stringResource(R.string.ping_target_hint)) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !sessionRunning && nodeAvailable,
+            singleLine = true,
+            isError = target.isNotBlank() && !targetValid,
+            supportingText = {
+                val hintRes = when {
+                    target.isNotBlank() && !targetValid -> R.string.ping_invalid_address
+                    isPowerSaveIdle && !sessionRunning -> R.string.ping_waking
+                    !nodeAvailable -> R.string.ping_start_service
+                    else -> null
+                }
+                if (hintRes != null) Text(stringResource(hintRes))
+            },
+            suggestionsProvider = { peerAddressSuggestions(peerDetails) }
+        )
+    }
+}
+
+/** True when a group password is configured and enabled in the config. */
+private fun groupPasswordActive(config: YggstackConfig?): Boolean =
+    config?.groupPasswordEnabled == true && !config.groupPassword.isNullOrBlank()
+
+/**
+ * The full ping log as plain text — probe lines, error and done lines,
+ * statistics — as shown in the terminal card, for the copy button.
+ */
+private fun buildPingLogText(context: Context, session: PingSessionState): String {
+    val lines = session.probes.map { probe ->
+        if (probe.rttMs != null) {
+            "reply from ${session.target}: seq=${probe.seq} time=%.2f ms".format(probe.rttMs)
+        } else {
+            "request timeout for seq ${probe.seq}"
+        }
+    }.toMutableList()
+    session.error?.let { lines += context.getString(R.string.ping_error_line, it) }
+    session.doneReason?.let { reason ->
+        lines += context.getString(
+            when (reason) {
+                "stopped" -> R.string.ping_done_stopped
+                "error" -> R.string.ping_done_error
+                else -> R.string.ping_done_completed
+            }
+        )
+    }
+    if (session.probes.isNotEmpty()) {
+        val received = session.probes.count { it.rttMs != null }
+        val lossPct = (session.probes.size - received) * 100.0 / session.probes.size
+        val rtts = session.probes.mapNotNull { it.rttMs }
+        lines += context.getString(
+            R.string.ping_summary, session.probes.size, received, "%.0f%%".format(lossPct)
+        )
+        if (rtts.isNotEmpty()) {
+            lines += context.getString(
+                R.string.ping_rtt_summary,
+                "%.1f".format(rtts.min()),
+                "%.1f".format(rtts.average()),
+                "%.1f".format(rtts.max())
+            )
+        }
+    }
+    return lines.joinToString("\n")
+}
+
+/**
+ * Notice shown when a group password is configured: it restricts direct
+ * reachability to peers sharing the same password, so pings and other
+ * requests to everyone else won't be answered.
+ */
+@Composable
+private fun GroupPasswordInfoCard(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.group_password_info_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.group_password_info_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

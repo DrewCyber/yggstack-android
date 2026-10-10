@@ -56,9 +56,6 @@ class ConfigurationViewModel(
 
     private val _pendingDeepLink = MutableStateFlow<PendingDeepLink?>(null)
     val pendingDeepLink: StateFlow<PendingDeepLink?> = _pendingDeepLink.asStateFlow()
-    
-    private val _logsEnabled = MutableStateFlow(true)
-    val logsEnabled: StateFlow<Boolean> = _logsEnabled.asStateFlow()
 
     // Expansion state of the collapsible Configuration cards; persisted in
     // DataStore so it survives app restarts
@@ -172,13 +169,6 @@ class ConfigurationViewModel(
         android.util.Log.d("ConfigViewModel", "ViewModel init, context=$context, hashCode=${this.hashCode()}")
         loadConfig()
         bindToService()
-        
-        // Load logs enabled setting
-        viewModelScope.launch {
-            repository.logsEnabledFlow.collect { enabled ->
-                _logsEnabled.value = enabled
-            }
-        }
 
         // Load transit warning suppression preference
         viewModelScope.launch {
@@ -502,15 +492,8 @@ class ConfigurationViewModel(
         updateConfig(_config.value.copy(groupPasswordEnabled = enabled && canEnable))
     }
 
-    fun setLogLevel(level: String) {
-        updateConfig(_config.value.copy(logLevel = level))
-    }
-    
-    fun setLogsEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.saveLogsEnabled(enabled)
-        }
-    }
+    // Log level UI lives on the Diagnostics "Logs" tab now
+    // (DiagnosticsViewModel.setLogSelection).
 
     fun setYggdrasilConfExpanded(expanded: Boolean) {
         _yggdrasilConfExpanded.value = expanded

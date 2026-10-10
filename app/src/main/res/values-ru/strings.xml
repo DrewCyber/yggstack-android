@@ -10,6 +10,7 @@
     <!-- Configuration Screen -->
     <string name="peers_section">Узлы</string>
     <string name="add_peer">Добавить узел</string>
+    <string name="add_custom_peer">Добавить свой узел</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
     <string name="multicast_discovery">Обнаружение узлов Multicast</string>
     <string name="multicast_discover">Подключаться к обнаруженным узлам</string>
@@ -89,6 +90,7 @@
     <string name="ping_target_label">Адрес Yggdrasil</string>
     <string name="ping_target_hint">200:abcd::1234</string>
     <string name="ping_count_label">Пакеты</string>
+    <string name="ping_count_value">Кол-во %1$s</string>
     <string name="ping_infinite">\u221e</string>
     <string name="ping_button_stop">Стоп</string>
     <string name="ping_clear">Очистить результаты пинга</string>
@@ -101,6 +103,9 @@
     <string name="ping_done_stopped">Сессия остановлена</string>
     <string name="ping_done_error">Ошибка сессии</string>
     <string name="ping_error_line">Ошибка: %1$s</string>
+    <string name="ping_copy">Копировать журнал пинга</string>
+    <string name="group_password_info_title">Настроен GroupPassword</string>
+    <string name="group_password_info_body">Групповой пароль ограничивает прямое взаимодействие с другими узлами в сети. Вы по прежнему можете оказаться транзитным узлом, но ping, SSH, HTTP и иные запросы дойдут только до устройств с таким же групповым паролем.</string>
 
     <!-- Ports Stats Page -->
     <string name="ports_service_stopped">Запустите сервис для просмотра статистики портов</string>
@@ -180,11 +185,14 @@
 
     <!-- Log Level -->
     <string name="log_level">Логи</string>
+    <string name="log_level_label">Уровень логов</string>
     <string name="log_level_description">Уровень детализации логирования Yggstack</string>
     <string name="log_level_error">Error</string>
     <string name="log_level_warn">Warn</string>
     <string name="log_level_info">Info</string>
     <string name="log_level_debug">Debug</string>
+    <string name="log_level_disabled">Отключено</string>
+    <string name="restart_service">Перезапустить сервис</string>
 
     <!-- Language Settings -->
     <string name="language_section">Язык</string>
@@ -196,6 +204,7 @@
     <string name="service_logs">Логи сервиса</string>
     <string name="log_entries">%d записей в логе</string>
     <string name="logs_collected_realtime">Логи собираются в реальном времени</string>
+    <string name="logs_scroll_end">Прокрутить к концу и следить за новыми логами</string>
     <string name="no_logs_yet">Логов пока нет. Запустите сервис для просмотра логов.</string>
     <string name="service_running">Сервис запущен</string>
     <string name="service_stopped_status">Сервис остановлен</string>
@@ -206,7 +215,7 @@
     <string name="inbound">Входящий</string>
     <string name="outbound">Исходящий</string>
     <string name="backup_configuration">Резервная копия</string>
-    <string name="backup_export_title">Экспорт конфигурации</string>
+    <string name="backup_export_title">Резервная копия конфигурации</string>
     <string name="backup_export_button">Экспорт</string>
     <string name="backup_preview_label">Предпросмотр:</string>
     <string name="backup_include_yggdrasil">Включить параметры Yggdrasil</string>

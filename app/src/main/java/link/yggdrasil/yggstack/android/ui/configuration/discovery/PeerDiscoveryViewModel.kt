@@ -51,6 +51,18 @@ class PeerDiscoveryViewModel(
     private val _isCancellable = MutableStateFlow(false)
     val isCancellable: StateFlow<Boolean> = _isCancellable.asStateFlow()
 
+    init {
+        // Keep the selection mirrored on config.peers: peers added through
+        // the manual Add Peer dialog (outside this screen) must show up as
+        // checked here without a re-entry. togglePeerSelection writes config
+        // first, so its own updates arrive here as no-ops.
+        viewModelScope.launch {
+            repository.configFlow.collect { config ->
+                _selectedPeers.value = config.peers.toSet()
+            }
+        }
+    }
+
     /**
      * Refresh external IP and load list for current network
      */

@@ -147,6 +147,16 @@ class DiagnosticsViewModel(
     private val _pingCount = MutableStateFlow(5)
     val pingCount: StateFlow<Int> = _pingCount.asStateFlow()
 
+    // Log verbosity selection for the Logs tab: the level lives in the
+    // config; "Disabled" is the separate logs-enabled flag.
+    private val _logsEnabled = MutableStateFlow(false)
+    val logsEnabled: StateFlow<Boolean> = _logsEnabled.asStateFlow()
+
+    // Logging settings the running node actually started with; null until
+    // the first node start. Differs from the selection → restart needed.
+    private val _appliedLogging = MutableStateFlow<Pair<String, Boolean>?>(null)
+    val appliedLogging: StateFlow<Pair<String, Boolean>?> = _appliedLogging.asStateFlow()
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? YggstackService.YggstackBinder
@@ -222,6 +232,11 @@ class DiagnosticsViewModel(
                         _pingSession.value = session
                     }
                 }
+                viewModelScope.launch {
+                    service.appliedLogging.collect { applied ->
+                        _appliedLogging.value = applied
+                    }
+                }
 
                 // Sync initial state
                 _logs.value = service.logs.value
@@ -280,6 +295,13 @@ class DiagnosticsViewModel(
         viewModelScope.launch {
             repository.pingCountFlow.collect { count ->
                 _pingCount.value = count
+            }
+        }
+
+        // Log-enabled flag (the level itself rides on the config)
+        viewModelScope.launch {
+            repository.logsEnabledFlow.collect { enabled ->
+                _logsEnabled.value = enabled
             }
         }
         
@@ -673,6 +695,31 @@ class DiagnosticsViewModel(
     fun clearPing() {
         val service = yggstackService
         if (service != null) service.clearPing() else _pingSession.value = null
+    }
+
+    /**
+     * Selects the log verbosity for the Logs tab: one of error/warn/info/debug
+     * (turning logging on), or "disabled". Applies at the next node start;
+     * while the service runs, the Logs tab offers a restart to apply now.
+     */
+    fun setLogSelection(selection: String) {
+        if (selection == "disabled") {
+            _logsEnabled.value = false
+            viewModelScope.launch { repository.saveLogsEnabled(false) }
+            return
+        }
+        val config = _yggstackConfig.value ?: return
+        _yggstackConfig.value = config.copy(logLevel = selection)
+        _logsEnabled.value = true
+        viewModelScope.launch {
+            repository.saveConfig(config.copy(logLevel = selection))
+            repository.saveLogsEnabled(true)
+        }
+    }
+
+    /** Restarts the running node to apply pending log settings. */
+    fun restartService() {
+        yggstackService?.restartNode()
     }
 
     /** Selects (and persists) the ping packet count; 0 = infinite. */

@@ -37,7 +37,7 @@ class PersistentLogger(private val context: Context) {
                 return@withContext emptyList()
             }
             
-            logFile.readLines().takeLast(1000) // Return last 1000 lines
+            logFile.readLines().takeLast(5000) // Return last 5000 lines
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()

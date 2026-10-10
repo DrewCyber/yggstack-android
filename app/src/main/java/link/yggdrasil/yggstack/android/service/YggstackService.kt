@@ -176,8 +176,17 @@ class YggstackService : Service() {
     private var crashRestartAttempts = 0
     
     // Logs enabled setting and current log level
-    private var logsEnabled: Boolean = true
+    // Read from engine callback threads too, not just serviceScope.
+    @Volatile private var logsEnabled: Boolean = true
     private var currentLogLevel: String = "error"
+
+    /**
+     * Logging settings applied at node start (level, enabled) — the Logs tab
+     * compares the repository selection against this to know whether a
+     * restart is needed to apply a change. Null until the first start.
+     */
+    private val _appliedLogging = MutableStateFlow<Pair<String, Boolean>?>(null)
+    val appliedLogging: StateFlow<Pair<String, Boolean>?> = _appliedLogging.asStateFlow()
 
     // Raw GetListenersJSON payload from the port stats poller's last tick,
     // shared with the Power Save idle monitor so the two loops don't each pay
@@ -530,6 +539,7 @@ class YggstackService : Service() {
                 // Use log level from config
                 val logLevel = config.logLevel
                 currentLogLevel = logLevel
+                _appliedLogging.value = logLevel to logsEnabled
                 yggstack?.setLogLevel(logLevel)
                 logInfo("Log level: $logLevel")
 
@@ -1101,12 +1111,16 @@ class YggstackService : Service() {
     }
 
     private fun addLog(message: String) {
+        // Gate here, not only at the logWarn/logInfo call sites: the engine
+        // callback installed at node start calls straight into this, and it
+        // must fall silent the moment logging is disabled.
+        if (!logsEnabled) return
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         val logEntry = "[$timestamp] $message"
 
         _logs.value = (_logs.value + logEntry).takeLast(MAX_LOG_ENTRIES)
-        
+
         // Also persist to file
         serviceScope.launch {
             persistentLogger.appendLog(message)
@@ -1114,6 +1128,7 @@ class YggstackService : Service() {
     }
 
     private fun addLogBatch(messages: String) {
+        if (!logsEnabled) return
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         
@@ -1585,6 +1600,22 @@ class YggstackService : Service() {
         if (session.running) return
         pingSessionTag.incrementAndGet() // drop any straggler events
         _pingSession.value = null
+    }
+
+    /**
+     * Restarts the node — applies logging changes made while the service was
+     * running (level and callback are set at start). Reads the config from
+     * the repository, NOT lastConfig: the snapshot lags behind UI edits, so
+     * it would resurrect the old log level and the restart button would
+     * never clear.
+     */
+    fun restartNode() {
+        if (lifecycle.isDestroyed) return
+        serviceScope.launch {
+            logInfo("Restart: cycling the node")
+            stopNode(false)
+            startYggstackFromRepository()
+        }
     }
 
     private fun handlePingEvent(tag: Int, result: String) {
@@ -2874,7 +2905,7 @@ class YggstackService : Service() {
         const val ACTION_STOP = "link.yggdrasil.yggstack.android.action.STOP"
         const val ACTION_WAKE_NOW = "link.yggdrasil.yggstack.android.action.WAKE_NOW"
         const val EXTRA_CONFIG = "config"
-        private const val MAX_LOG_ENTRIES = 500
+        private const val MAX_LOG_ENTRIES = 5000
         private const val MAX_CRASH_RESTART_ATTEMPTS = 3
         private const val PREFS_NAME = "yggstack_service_prefs"
         private const val PREF_LAST_CONFIG = "last_config"
