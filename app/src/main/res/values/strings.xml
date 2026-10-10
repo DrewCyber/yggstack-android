@@ -105,6 +105,13 @@
     <string name="ping_done_error">Session failed</string>
     <string name="ping_error_line">Error: %1$s</string>
     <string name="ping_copy">Copy ping log</string>
+    <string name="ping_picker_open">Browse ping targets</string>
+    <string name="ping_target_picker_title">Ping target</string>
+    <string name="ping_picker_search">Search address or label</string>
+    <string name="ping_picker_dns">DNS</string>
+    <string name="ping_picker_maps">Port maps</string>
+    <string name="ping_picker_empty">No addresses found</string>
+    <string name="close">Close</string>
     <string name="group_password_info_title">GroupPassword is configured</string>
     <string name="group_password_info_body">A group password limits direct communication with other nodes in the network. You can still act as a transit node, but ping, SSH, HTTP and other requests will only reach devices using the same group password.</string>
 

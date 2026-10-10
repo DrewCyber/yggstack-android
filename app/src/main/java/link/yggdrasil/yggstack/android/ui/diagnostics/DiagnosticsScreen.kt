@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalFocusManager
@@ -420,24 +422,23 @@ fun ExportBackupDialog(
         BackupConfig.fromYggstackConfig(yggstackConfig, includeYggdrasil).toToml()
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
+    // AlertDialog pins the confirm/dismiss buttons outside the scrollable
+    // text area, so they stay visible on short screens (fixed-height preview
+    // inside a plain Dialog Column used to push them off-screen there).
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.backup_export_title),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Text(
-                    text = stringResource(R.string.backup_export_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                Divider(modifier = Modifier.padding(bottom = 12.dp))
-
                 // Toggle: include Yggdrasil parameters
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -474,8 +475,6 @@ fun ExportBackupDialog(
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
 
-                // Scrollable preview: the dialog itself stays fixed-height so
-                // Cancel/Export remain visible regardless of preview length.
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -484,6 +483,9 @@ fun ExportBackupDialog(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
+                    // Scrolling lives on the text itself: the card is capped
+                    // at 320dp, so the outer dialog scroll can never reveal
+                    // a longer TOML — only this inner scroll can.
                     Text(
                         text = backupToml,
                         style = MaterialTheme.typography.bodySmall,
@@ -493,25 +495,19 @@ fun ExportBackupDialog(
                             .verticalScroll(rememberScrollState())
                     )
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = onConfirm) {
-                        Text(stringResource(R.string.backup_export_button))
-                    }
-                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.backup_export_button))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
             }
         }
-    }
+    )
 }
 
 @Composable
@@ -1731,24 +1727,209 @@ fun isValidYggAddress(value: String): Boolean {
 /** Packet-count choices for the Ping tab; 0 means "until stopped". */
 private val PingCountOptions = listOf(1, 3, 4, 5, 10, 0)
 
+/** One address offered by the ping target picker. */
+private data class PingTargetSuggestion(val address: String, val label: String?)
+
+/** A titled, iconized section of the ping target picker's list. */
+private data class PingTargetSection(
+    val titleRes: Int,
+    val icon: ImageVector,
+    val entries: List<PingTargetSuggestion>
+)
+
 /**
- * Yggdrasil addresses of currently connected peers, deduplicated, labeled
- * with the peer URI's host:port — offered as ping target suggestions.
+ * All pingable Yggdrasil addresses worth offering, deduplicated across
+ * sources: connected peers' addresses, the proxy DNS servers (only when
+ * inside 200::/7), and the forward port maps' remote addresses.
  */
-private fun peerAddressSuggestions(peers: List<PeerDetail>): List<IpSuggestion> {
-    val seen = LinkedHashSet<String>()
-    val suggestions = mutableListOf<IpSuggestion>()
+private fun buildPingTargetSections(
+    peers: List<PeerDetail>,
+    config: YggstackConfig?
+): List<PingTargetSection> {
+    val seen = HashSet<String>()
+
+    val peerEntries = mutableListOf<PingTargetSuggestion>()
     for (peer in peers) {
-        val address = peer.address ?: continue
         if (!peer.up) continue
+        val address = peer.address ?: continue
         if (seen.add(address)) {
-            suggestions += IpSuggestion(
-                value = address,
-                label = peer.uri.substringBefore('?').substringAfter("://")
+            peerEntries += PingTargetSuggestion(
+                address,
+                peer.uri.substringBefore('?').substringAfter("://")
             )
         }
     }
-    return suggestions
+
+    val dnsEntries = mutableListOf<PingTargetSuggestion>()
+    if (config != null) {
+        for (server in listOf(config.dnsServer, config.dnsServer2)) {
+            if (server.isBlank()) continue
+            val host = dnsHostOf(server)
+            if (!isValidYggAddress(host)) continue
+            if (seen.add(host)) dnsEntries += PingTargetSuggestion(host, "DNS")
+        }
+    }
+
+    val mapEntries = mutableListOf<PingTargetSuggestion>()
+    config?.forwardMappings?.forEach { mapping ->
+        val host = mapping.remoteIp.trim().removePrefix("[").removeSuffix("]")
+        if (!isValidYggAddress(host)) return@forEach
+        if (seen.add(host)) {
+            mapEntries += PingTargetSuggestion(
+                host,
+                mapping.shortName.ifBlank { "fwd :${mapping.remotePort}" }
+            )
+        }
+    }
+
+    return buildList {
+        if (peerEntries.isNotEmpty()) add(PingTargetSection(R.string.tab_peers, Icons.Default.Hub, peerEntries))
+        if (dnsEntries.isNotEmpty()) add(PingTargetSection(R.string.ping_picker_dns, Icons.Default.Dns, dnsEntries))
+        if (mapEntries.isNotEmpty()) add(PingTargetSection(R.string.ping_picker_maps, Icons.Default.Lan, mapEntries))
+    }
+}
+
+/** Host part of a DNS server setting — "[host]:port" (the normalized form),
+ *  bare IPv6, or host:port. */
+private fun dnsHostOf(server: String): String {
+    val s = server.trim()
+    if (s.startsWith("[")) return s.removePrefix("[").substringBefore("]")
+    val lastColon = s.lastIndexOf(':')
+    val tail = if (lastColon > 0) s.substring(lastColon + 1) else ""
+    if (tail.isNotEmpty() && tail.all { it.isDigit() }) return s.substring(0, lastColon)
+    return s
+}
+
+/**
+ * Chooser for the ping target: every address from [buildPingTargetSections]
+ * under its section header. Tapping an entry inserts it and returns. A
+ * regular themed dialog — standard width, rounded surface, ~75% of the
+ * screen height.
+ */
+@Composable
+private fun PingTargetPickerScreen(
+    sections: List<PingTargetSection>,
+    currentTarget: String,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.75f),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 12.dp)
+            ) {
+                // Header: title + close
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 4.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.ping_target_picker_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.close)
+                        )
+                    }
+                }
+                if (sections.isEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ping_picker_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        sections.forEach { section ->
+                            item(key = "header_${section.titleRes}") {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = section.icon,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "${stringResource(section.titleRes)} (${section.entries.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            items(section.entries.size, key = { "s_${section.titleRes}_$it" }) { index ->
+                                val entry = section.entries[index]
+                                val isCurrent = entry.address == currentTarget
+                                Card(
+                                    onClick = { onPick(entry.address) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = MaterialTheme.shapes.medium,
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = entry.address,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            entry.label?.let { label ->
+                                                Text(
+                                                    text = label,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        if (isCurrent) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1770,6 +1951,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     var pickedCount by remember { mutableStateOf<Int?>(null) }
     val count = pickedCount ?: savedCount
     var countExpanded by remember { mutableStateOf(false) }
+    var showTargetPicker by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     // Feed the target suggestions: collect peer details only while this tab
@@ -1797,6 +1979,12 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val nodeAvailable = isServiceRunning || (isPowerSaveIdleCapable && isPowerSaveIdle)
     val context = LocalContext.current
 
+    // Everything the target picker can offer: peers' addresses, proxy DNS
+    // servers in 200::/7, forward maps' remote addresses.
+    val targetSections = remember(peerDetails, yggstackConfig) {
+        buildPingTargetSections(peerDetails, yggstackConfig)
+    }
+
     // No outer horizontal padding: the address field is full-bleed, the log
     // and the toolbar carry their own side insets. IME handling is global:
     // the navigation bar lifts above the keyboard, which grows the Scaffold's
@@ -1810,8 +1998,8 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     .padding(start = 16.dp, end = 16.dp, top = 16.dp)
             )
         }
-        // Terminal-style results, mirroring the Logs viewer, fixed at 60% of
-        // the screen height. Tapping it
+        // Terminal-style results, mirroring the Logs viewer, filling all the
+        // space above the controls card. Tapping it
             // explicitly clears focus from the address field — closing the
             // keyboard — so the next tap on the field re-opens the
             // suggestions. Covers the empty state too.
@@ -1824,7 +2012,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         start = 16.dp, end = 16.dp,
                         top = if (groupPasswordActive(yggstackConfig)) 8.dp else 16.dp
                     )
-                    .fillMaxHeight(0.6f)
+                    .weight(1f)
                     .clickable(
                         interactionSource = logInteraction,
                         indication = null
@@ -1837,7 +2025,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "ping 200::/7",
+                            text = "ping yggdrasil network hosts",
                             style = MaterialTheme.typography.bodyMedium,
                             fontFamily = FontFamily.Monospace,
                             color = Color.Gray
@@ -1948,12 +2136,12 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             else stringResource(R.string.ping_count_value, n.toString())
 
         val canToggle = sessionRunning || (targetValid && nodeAvailable)
-        // One card under the log holds the controls row and the address
-        // field together.
+        // One card pinned to the bottom of the screen holds the controls row
+        // and the address field together; the log takes the rest.
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -2064,13 +2252,16 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             Spacer(modifier = Modifier.height(4.dp))
 
             // Address field, sharing the card with the controls above.
+            // Enabled whenever no session runs — typing a target before the
+            // service starts is fine (a disabled field also kills the
+            // trailing browse button's taps).
             LocalIpTextField(
             value = target,
             onValueChange = { if (!sessionRunning) target = it },
             label = { Text(stringResource(R.string.ping_target_label)) },
             placeholder = { Text(stringResource(R.string.ping_target_hint)) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !sessionRunning && nodeAvailable,
+            enabled = !sessionRunning,
             singleLine = true,
             isError = target.isNotBlank() && !targetValid,
             supportingText = {
@@ -2082,12 +2273,39 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                 }
                 if (hintRes != null) Text(stringResource(hintRes))
             },
-            suggestionsProvider = { peerAddressSuggestions(peerDetails) }
+            suggestionsProvider = { emptyList() }, // targets come from the picker
+            trailingIcon = {
+                IconButton(
+                    onClick = { showTargetPicker = true },
+                    enabled = nodeAvailable
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ManageSearch,
+                        contentDescription = stringResource(R.string.ping_picker_open),
+                        tint = when {
+                            !nodeAvailable -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                            sessionRunning -> MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         )
             }
         }
+    }
 
-        Spacer(modifier = Modifier.weight(1f))
+    if (showTargetPicker) {
+        PingTargetPickerScreen(
+            sections = targetSections,
+            currentTarget = target.trim(),
+            onPick = { address ->
+                showTargetPicker = false
+                if (!sessionRunning) target = address
+            },
+            onDismiss = { showTargetPicker = false }
+        )
     }
 }
 
