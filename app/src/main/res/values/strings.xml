@@ -180,6 +180,7 @@
     <string name="permission_battery_required">Disable battery optimization</string>
     <string name="permission_background_required">Allow unrestricted background activity</string>
     <string name="app_links_dialog_title">Open Links in This App</string>
+    <string name="app_links_never_show">Never show again</string>
     <string name="permission_dialog_instructions">Tap \"Open Settings\" to configure these permissions. This ensures the service stays active even when the app is not in the foreground.</string>
     <string name="permission_dialog_open_settings">Open Settings</string>
     <string name="permission_dialog_later">Later</string>

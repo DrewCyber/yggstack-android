@@ -16,6 +16,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -281,8 +283,11 @@ fun MainScreen(initialUseSystemColors: Boolean) {
         permissionsChecked = true
 
         // Link handling is unrelated to background work, so it gets its own
-        // dialog; it waits below while the permissions dialog is on screen
-        if (AppLinkHelper.getDisabledLinkDomains(context).isNotEmpty()) {
+        // dialog; it waits below while the permissions dialog is on screen.
+        // "Never" hides it until Settings → "Show all hidden dialogs again".
+        if (AppLinkHelper.getDisabledLinkDomains(context).isNotEmpty() &&
+            !repository.appLinksDialogSuppressedFlow.first()
+        ) {
             showAppLinksDialog = true
         }
         
@@ -383,9 +388,17 @@ fun MainScreen(initialUseSystemColors: Boolean) {
         if (disabledLinkDomains.isNotEmpty()) {
             AppLinksDialog(
                 disabledLinkDomains = disabledLinkDomains,
-                onDismiss = { showAppLinksDialog = false },
-                onOpenSettings = {
+                onDismiss = { suppress ->
                     showAppLinksDialog = false
+                    if (suppress) {
+                        coroutineScope.launch { repository.saveAppLinksDialogSuppressed(true) }
+                    }
+                },
+                onOpenSettings = { suppress ->
+                    showAppLinksDialog = false
+                    if (suppress) {
+                        coroutineScope.launch { repository.saveAppLinksDialogSuppressed(true) }
+                    }
                     AppLinkHelper.openOpenByDefaultSettings(context)
                 }
             )
@@ -526,32 +539,53 @@ fun BackgroundPermissionDialog(
     )
 }
 
+/**
+ * The "Never show again" tick is honoured whichever way the dialog closes
+ * (Later, Enable, or an outside tap): each callback receives the final tick
+ * state and the caller persists the suppression when it is set.
+ */
 @Composable
 fun AppLinksDialog(
     disabledLinkDomains: List<String>,
-    onDismiss: () -> Unit,
-    onOpenSettings: () -> Unit
+    onDismiss: (suppress: Boolean) -> Unit,
+    onOpenSettings: (suppress: Boolean) -> Unit
 ) {
+    var neverShowAgain by remember { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { onDismiss(neverShowAgain) },
         icon = { Icon(Icons.Default.Link, contentDescription = null) },
         title = { Text(stringResource(R.string.app_links_dialog_title)) },
         text = {
-            Text(
-                text = stringResource(
-                    R.string.app_links_not_enabled,
-                    disabledLinkDomains.joinToString()
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Column {
+                Text(
+                    text = stringResource(
+                        R.string.app_links_not_enabled,
+                        disabledLinkDomains.joinToString()
+                    ),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 12.dp)
+                ) {
+                    Checkbox(
+                        checked = neverShowAgain,
+                        onCheckedChange = { neverShowAgain = it }
+                    )
+                    Text(
+                        text = stringResource(R.string.app_links_never_show),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         },
         confirmButton = {
-            Button(onClick = onOpenSettings) {
+            Button(onClick = { onOpenSettings(neverShowAgain) }) {
                 Text(stringResource(R.string.enable_app_links))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = { onDismiss(neverShowAgain) }) {
                 Text(stringResource(R.string.permission_dialog_later))
             }
         }

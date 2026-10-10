@@ -420,7 +420,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Button(
+        OutlinedButton(
             onClick = onCheckForUpdate,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -434,6 +434,7 @@ fun SettingsScreen(
                 coroutineScope.launch {
                     VersionChecker(context).clearPostponedVersion()
                     repository.saveSuppressTransitWarning(false)
+                    repository.saveAppLinksDialogSuppressed(false)
                     Toast.makeText(
                         context,
                         context.getString(R.string.suspended_dialogs_reset),
@@ -450,7 +451,9 @@ fun SettingsScreen(
 
         // Link-handling check: warn when Android isn't set to open this app's
         // links (Settings → Open by default). Re-checked on every resume so the
-        // card disappears once the user enables the toggles.
+        // card disappears once the user enables the toggles. Its bottom
+        // spacing lives inside the if so the button rhythm stays even when
+        // the card is hidden.
         var disabledLinkDomains by remember { mutableStateOf(AppLinkHelper.getDisabledLinkDomains(context)) }
         LifecycleResumeEffect(Unit) {
             disabledLinkDomains = AppLinkHelper.getDisabledLinkDomains(context)
@@ -484,12 +487,12 @@ fun SettingsScreen(
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // System Menu Button: opens Android's per-app system settings screen
-        Button(
+        // System Menu Button: opens Android's per-app system settings screen.
+        // Outlined + gear icon: a plain utility action, not a warning.
+        OutlinedButton(
             onClick = {
                 try {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -505,13 +508,10 @@ fun SettingsScreen(
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error
-            )
+            modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
-                imageVector = Icons.Default.Warning,
+                imageVector = Icons.Default.Settings,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp)
             )

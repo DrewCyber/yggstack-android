@@ -1948,13 +1948,19 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             else stringResource(R.string.ping_count_value, n.toString())
 
         val canToggle = sessionRunning || (targetValid && nodeAvailable)
-        Row(
+        // One card under the log holds the controls row and the address
+        // field together.
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 4.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
         ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
             Spacer(modifier = Modifier.weight(1f))
             Icon(
                 imageVector = Icons.Default.Delete,
@@ -2055,10 +2061,10 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(4.dp))
 
-        // Full-bleed address field; all controls live in the row above.
-        LocalIpTextField(
+            // Address field, sharing the card with the controls above.
+            LocalIpTextField(
             value = target,
             onValueChange = { if (!sessionRunning) target = it },
             label = { Text(stringResource(R.string.ping_target_label)) },
@@ -2078,6 +2084,10 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
             },
             suggestionsProvider = { peerAddressSuggestions(peerDetails) }
         )
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 

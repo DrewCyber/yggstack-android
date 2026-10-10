@@ -140,8 +140,9 @@ fun PeerDiscoveryScreen(
 
             // Third action: manual entry — the old Add Peer dialog, for a
             // custom peer discovery can't find. Only adds to the selected
-            // peers list; no discovery involved.
-            FilledTonalButton(
+            // peers list; no discovery involved. Solid primary, matching the
+            // Get Peers / RTT buttons on this screen.
+            Button(
                 onClick = onAddPeer,
                 modifier = Modifier
                     .fillMaxWidth()

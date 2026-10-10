@@ -79,6 +79,7 @@ class ConfigRepository(private val context: Context) {
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
+        private val APP_LINKS_DIALOG_SUPPRESSED = booleanPreferencesKey("app_links_dialog_suppressed")
         private val SERVICE_ON_APP_START_KEY = stringPreferencesKey("service_on_app_start")
         private val SERVICE_WAS_RUNNING_KEY = booleanPreferencesKey("service_was_running")
         private val PORTS_COMPACT_MODE = booleanPreferencesKey("ports_compact_mode")
@@ -419,6 +420,20 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveSuppressTransitWarning(suppress: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[SUPPRESS_TRANSIT_WARNING] = suppress
+        }
+    }
+
+    /**
+     * "Never show the Open-links dialog again" preference; cleared by the
+     * Settings "Show all hidden dialogs again" action.
+     */
+    val appLinksDialogSuppressedFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[APP_LINKS_DIALOG_SUPPRESSED] ?: false
+    }
+
+    suspend fun saveAppLinksDialogSuppressed(suppressed: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_LINKS_DIALOG_SUPPRESSED] = suppressed
         }
     }
 

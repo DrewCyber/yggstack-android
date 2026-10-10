@@ -170,10 +170,18 @@ fun ConfigurationScreen(
                     }
 
                     // Peer discovery entry, where manual Add Peer used to be.
+                    // Bright green container: clearly visible, yet light enough
+                    // to read as a secondary action next to the solid
+                    // primary-green Start Service — and staying in the app's
+                    // green family.
                     if (!isServiceRunning) {
-                        FilledTonalButton(
+                        Button(
                             onClick = { showPeerDiscovery = true },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         ) {
                             Icon(
                                 Icons.Default.ManageSearch,
@@ -441,9 +449,13 @@ fun ConfigurationScreen(
                 }
 
                 if (!isServiceRunning && config.forwardEnabled) {
-                    FilledTonalButton(
+                    Button(
                         onClick = { showForwardDialog = true },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -484,9 +496,13 @@ fun ConfigurationScreen(
                 }
 
                 if (!isServiceRunning && config.exposeEnabled) {
-                    FilledTonalButton(
+                    Button(
                         onClick = { showExposeDialog = true },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
