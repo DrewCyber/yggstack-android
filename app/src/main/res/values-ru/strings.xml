@@ -10,7 +10,7 @@
     <!-- Configuration Screen -->
     <string name="peers_section">Узлы</string>
     <string name="add_peer">Добавить узел</string>
-    <string name="add_custom_peer">Добавить свой узел</string>
+    <string name="add_custom_peer">Свой узел</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
     <string name="multicast_discovery">Обнаружение узлов Multicast</string>
     <string name="multicast_discover">Подключаться к обнаруженным узлам</string>
@@ -265,6 +265,15 @@
     <string name="external_ip">Внешний IP</string>
     <string name="get_peers">Скачать список</string>
     <string name="rtt_check">Проверка RTT</string>
+    <string name="country_filter">Страна</string>
+    <string name="all_countries">Все страны</string>
+    <string name="no_peers_match_filter">Нет узлов из выбранных стран</string>
+    <plurals name="countries_count">
+        <item quantity="one">(%1$d) страна</item>
+        <item quantity="few">(%1$d) страны</item>
+        <item quantity="many">(%1$d) стран</item>
+        <item quantity="other">(%1$d) страны</item>
+    </plurals>
     <string name="max_reconnection_backoff">Макс. задержка переподключения</string>
     <string name="max_reconnection_description">Максимальное время ожидания перед повторной попыткой подключения к узлу</string>
     <string name="cancel">Отмена</string>

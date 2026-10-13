@@ -77,6 +77,7 @@ class ConfigRepository(private val context: Context) {
         private val PUBLIC_PEERS_CACHE = stringPreferencesKey("public_peers_cache")
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
+        private val COUNTRY_FILTER = stringSetPreferencesKey("country_filter")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val SUPPRESS_TRANSIT_WARNING = booleanPreferencesKey("suppress_transit_warning")
         private val APP_LINKS_DIALOG_SUPPRESSED = booleanPreferencesKey("app_links_dialog_suppressed")
@@ -276,6 +277,20 @@ class ConfigRepository(private val context: Context) {
 
     val multicastExpandedFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[MULTICAST_EXPANDED] ?: false
+    }
+
+    /**
+     * Countries picked in Peer Discovery's country filter (empty = no
+     * filtering); persisted so it survives app restarts
+     */
+    val countryFilterFlow: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        preferences[COUNTRY_FILTER] ?: emptySet()
+    }
+
+    suspend fun saveCountryFilter(countries: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[COUNTRY_FILTER] = countries
+        }
     }
 
     suspend fun saveYggdrasilConfExpanded(expanded: Boolean) {

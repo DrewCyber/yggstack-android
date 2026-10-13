@@ -69,6 +69,11 @@ class ConfigurationViewModel(
     private val _showTransitTrafficWarning = MutableStateFlow(false)
     val showTransitTrafficWarning: StateFlow<Boolean> = _showTransitTrafficWarning.asStateFlow()
 
+    // Country per configured peer URI, resolved from the public-peers cache;
+    // powers the flag shown next to each peer in the Peers card
+    private val _peerCountries = MutableStateFlow<Map<String, String>>(emptyMap())
+    val peerCountries: StateFlow<Map<String, String>> = _peerCountries.asStateFlow()
+
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
 
@@ -261,6 +266,22 @@ class ConfigurationViewModel(
             } else {
                 updateConfig(_config.value.copy(peers = currentPeers))
             }
+        }
+    }
+
+    fun reorderPeers(newOrder: List<String>) {
+        updateConfig(_config.value.copy(peers = newOrder))
+    }
+
+    /**
+     * Re-resolves configured peers' countries from the public-peers cache.
+     * Called when the peer set changes and when Peer Discovery closes (it
+     * may have re-downloaded the cache).
+     */
+    fun refreshPeerCountries() {
+        viewModelScope.launch {
+            val cache = repository.getPublicPeersCache()
+            _peerCountries.value = cache.peers.associate { it.uri to it.country }
         }
     }
 

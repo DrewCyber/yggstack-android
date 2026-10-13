@@ -31,6 +31,15 @@ class PeerDiscoveryViewModel(
     private val _selectedPeers = MutableStateFlow<Set<String>>(emptySet())
     val selectedPeers: StateFlow<Set<String>> = _selectedPeers.asStateFlow()
 
+    // Configured peers in config.peers order — the selected list above the
+    // discovery divider mirrors the Peers card's order on Configuration
+    private val _configPeers = MutableStateFlow<List<String>>(emptyList())
+    val configPeers: StateFlow<List<String>> = _configPeers.asStateFlow()
+
+    // Countries picked in the filter (empty = show all); persisted
+    private val _countryFilter = MutableStateFlow<Set<String>>(emptySet())
+    val countryFilter: StateFlow<Set<String>> = _countryFilter.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -58,9 +67,38 @@ class PeerDiscoveryViewModel(
         // first, so its own updates arrive here as no-ops.
         viewModelScope.launch {
             repository.configFlow.collect { config ->
+                _configPeers.value = config.peers
                 _selectedPeers.value = config.peers.toSet()
             }
         }
+
+        // Restore the persisted country filter
+        viewModelScope.launch {
+            repository.countryFilterFlow.collect { countries ->
+                _countryFilter.value = countries
+            }
+        }
+    }
+
+    /**
+     * Replace the country filter wholesale (empty set clears it)
+     */
+    fun setCountryFilter(countries: Set<String>) {
+        _countryFilter.value = countries
+        viewModelScope.launch {
+            repository.saveCountryFilter(countries)
+        }
+    }
+
+    /**
+     * Toggle one country in the filter, keeping the dropdown open for
+     * multi-select
+     */
+    fun toggleCountryFilter(country: String) {
+        val current = _countryFilter.value
+        setCountryFilter(
+            if (country in current) current - country else current + country
+        )
     }
 
     /**
@@ -236,24 +274,38 @@ class PeerDiscoveryViewModel(
     }
 
     /**
-     * Sort peers by RTT (protocol connect check)
+     * Sort peers by RTT (protocol connect check). With a country filter
+     * active, only the filtered peers are checked; the rest keep their
+     * existing RTT data and stay in the list behind the checked ones.
      */
     fun sortByRTT() {
         // Cancel previous sort if running
         sortJob?.cancel()
-        
+
         sortJob = viewModelScope.launch {
             val originalPeers = _peers.value  // Save original list
             try {
                 val currentPeers = _peers.value
-                if (currentPeers.isEmpty()) {
-                    _errorMessage.value = "No peers to sort. Fetch peers first."
+                val filter = _countryFilter.value
+                val peersToCheck = if (filter.isEmpty()) currentPeers
+                    else currentPeers.filter { it.country in filter }
+
+                if (peersToCheck.isEmpty()) {
+                    _errorMessage.value = if (filter.isEmpty())
+                        "No peers to sort. Fetch peers first."
+                    else
+                        "No peers to check for the selected countries."
                     return@launch
                 }
 
+                // Out-of-filter peers: untouched by the check, appended
+                // after the checked ones so clearing the filter later
+                // doesn't lose them
+                val checkedUris = peersToCheck.mapTo(mutableSetOf()) { it.uri }
+                val rest = currentPeers.filter { it.uri !in checkedUris }
+
                 // Reset RTT values to ensure full recheck
-                val peersToCheck = currentPeers.map { it.copy(rtt = null, lastChecked = null) }
-                _peers.value = peersToCheck
+                _peers.value = peersToCheck.map { it.copy(rtt = null, lastChecked = null) } + rest
 
                 _isLoading.value = true
                 _isCancellable.value = true
@@ -261,7 +313,7 @@ class PeerDiscoveryViewModel(
                 _errorMessage.value = null
                 _progress.value = 0f
 
-                // Check all peers individually with incremental updates
+                // Check the filtered peers individually with incremental updates
                 val sortedPeers = peerPinger.checkPeersByHostWithProgress(
                     peers = peersToCheck,
                     onProgress = { checked, total ->
@@ -270,11 +322,12 @@ class PeerDiscoveryViewModel(
                     },
                     onIncrementalUpdate = { updatedPeers ->
                         // Update list immediately as RTT data comes in
-                        _peers.value = updatedPeers
+                        _peers.value = updatedPeers + rest
                     }
                 )
 
-                _peers.value = sortedPeers
+                val mergedPeers = sortedPeers + rest
+                _peers.value = mergedPeers
                 _sortType.value = "connect"
 
                 // Save sorted peers with RTT data for current IP
@@ -283,7 +336,7 @@ class PeerDiscoveryViewModel(
                     repository.saveSortedListForIp(
                         ip,
                         PeerListForIp(
-                            peers = sortedPeers,  // Store full peers with RTT for this IP
+                            peers = mergedPeers,  // Store full peers with RTT for this IP
                             sortedAt = System.currentTimeMillis(),
                             sortType = "connect"
                         )

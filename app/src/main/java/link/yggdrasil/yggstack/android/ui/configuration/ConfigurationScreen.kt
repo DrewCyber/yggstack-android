@@ -38,12 +38,14 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.*
 import link.yggdrasil.yggstack.android.ui.configuration.discovery.PeerDiscoveryScreen
 import link.yggdrasil.yggstack.android.ui.configuration.discovery.PeerDiscoveryViewModel
+import link.yggdrasil.yggstack.android.utils.CountryFlags
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +58,7 @@ fun ConfigurationScreen(
     val showPrivateKey by viewModel.showPrivateKey.collectAsStateWithLifecycle()
     val pendingDeepLink by viewModel.pendingDeepLink.collectAsStateWithLifecycle()
     val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsStateWithLifecycle()
+    val peerCountries by viewModel.peerCountries.collectAsStateWithLifecycle()
 
     var editingPeer by remember { mutableStateOf<String?>(null) }
     var showPeerDialog by remember { mutableStateOf(false) }
@@ -86,6 +89,13 @@ fun ConfigurationScreen(
             }
             null -> Unit
         }
+    }
+
+    // Peer flags: resolve each configured peer's country from the
+    // public-peers cache. Refreshed when the peer set changes and when Peer
+    // Discovery closes (it may have re-downloaded the cache).
+    LaunchedEffect(showPeerDiscovery, config.peers) {
+        viewModel.refreshPeerCountries()
     }
 
     // Read the saved position once for restoration instead of collecting it:
@@ -156,12 +166,18 @@ fun ConfigurationScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
 
-                    config.peers.forEach { peer ->
+                    ReorderableColumn(
+                        items = config.peers,
+                        onReorder = { viewModel.reorderPeers(it) },
+                        enabled = !isServiceRunning
+                    ) { peer, isDragging ->
                         PeerItem(
                             peer = peer,
+                            flag = peerCountries[peer]?.let { CountryFlags.flagEmoji(it) },
                             isEnabled = peer !in config.disabledPeers,
                             onToggleEnabled = { viewModel.togglePeerEnabled(peer) },
                             enabled = !isServiceRunning,
+                            isDragging = isDragging,
                             onEdit = {
                                 editingPeer = peer
                                 showPeerDialog = true
@@ -1435,16 +1451,27 @@ fun PeerItem(
     onToggleEnabled: () -> Unit,
     enabled: Boolean,
     onEdit: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    flag: String? = null,
+    isDragging: Boolean = false
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (isDragging) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
             .then(if (enabled) Modifier.clickable(onClick = onEdit) else Modifier)
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Country flag for peers known from the public-peers list
+        if (flag != null) {
+            Text(
+                text = flag,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(end = 6.dp)
+            )
+        }
         Text(
             text = peer,
             modifier = Modifier

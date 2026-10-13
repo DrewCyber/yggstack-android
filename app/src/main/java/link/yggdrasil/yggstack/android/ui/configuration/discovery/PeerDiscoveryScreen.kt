@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -18,13 +20,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.PublicPeerInfo
+import link.yggdrasil.yggstack.android.utils.CountryFlags
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,11 +45,25 @@ fun PeerDiscoveryScreen(
     val externalIp by viewModel.externalIp.collectAsStateWithLifecycle()
     val displayPeers by viewModel.getDisplayPeers().collectAsStateWithLifecycle()
     val selectedPeers by viewModel.selectedPeers.collectAsStateWithLifecycle()
+    val configPeers by viewModel.configPeers.collectAsStateWithLifecycle()
+    val countryFilter by viewModel.countryFilter.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isCancellable by viewModel.isCancellable.collectAsStateWithLifecycle()
     val loadingMessage by viewModel.loadingMessage.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+
+    // Countries present in the downloaded list — the filter dropdown's
+    // options. Selected peers above the divider (incl. custom ones) are
+    // never filtered out.
+    val availableCountries = remember(displayPeers) {
+        displayPeers.map { it.country }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    // Main list below the divider, filtered by the picked countries
+    val filteredPeers = remember(displayPeers, countryFilter) {
+        if (countryFilter.isEmpty()) displayPeers
+        else displayPeers.filter { it.country in countryFilter }
+    }
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -96,7 +116,7 @@ fun PeerDiscoveryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Action buttons
+            // Action buttons, row 1: download + country filter
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -112,7 +132,36 @@ fun PeerDiscoveryScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.get_peers))
                 }
-                
+
+                CountryFilterButton(
+                    countries = availableCountries,
+                    selected = countryFilter,
+                    onToggle = { viewModel.toggleCountryFilter(it) },
+                    onReset = { viewModel.setCountryFilter(emptySet()) },
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Action buttons, row 2: manual entry + RTT check. Manual entry —
+            // the old Add Peer dialog, for a custom peer discovery can't find.
+            // Only adds to the selected peers list; no discovery involved.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onAddPeer,
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.add_custom_peer))
+                }
+
                 if (isCancellable) {
                     Button(
                         onClick = { viewModel.cancelSort() },
@@ -128,7 +177,8 @@ fun PeerDiscoveryScreen(
                 } else {
                     Button(
                         onClick = { viewModel.sortByRTT() },
-                        enabled = !isLoading && displayPeers.isNotEmpty(),
+                        // Only the visible (filtered) peers get checked
+                        enabled = !isLoading && filteredPeers.isNotEmpty(),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.Speed, contentDescription = null)
@@ -136,21 +186,6 @@ fun PeerDiscoveryScreen(
                         Text(stringResource(R.string.rtt_check))
                     }
                 }
-            }
-
-            // Third action: manual entry — the old Add Peer dialog, for a
-            // custom peer discovery can't find. Only adds to the selected
-            // peers list; no discovery involved. Solid primary, matching the
-            // Get Peers / RTT buttons on this screen.
-            Button(
-                onClick = onAddPeer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.add_custom_peer))
             }
 
             // Loading indicator
@@ -239,6 +274,20 @@ fun PeerDiscoveryScreen(
                         )
                     }
                 }
+            } else if (filteredPeers.isEmpty() && !isLoading) {
+                // Peers are downloaded, but none pass the country filter
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_peers_match_filter),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val listState = rememberLazyListState()
@@ -248,15 +297,14 @@ fun PeerDiscoveryScreen(
                         }
                     }
                     
-                    // Separate selected and main lists. Selected peers not in
-                    // the discovery cache — manually added through Add Peer —
-                    // are synthesized as entries so they show up checked too.
-                    val cachedUris = displayPeers.mapTo(mutableSetOf()) { it.uri }
-                    val selectedPeersList = buildList {
-                        addAll(displayPeers.filter { it.uri in selectedPeers })
-                        selectedPeers.filter { it !in cachedUris }.forEach { uri ->
-                            add(PublicPeerInfo(uri = uri, country = ""))
-                        }
+                    // Selected peers at top, in the same order as the Peers
+                    // card on the Configuration screen (config.peers order).
+                    // Peers missing from the discovery cache — manually added
+                    // through Add Peer — are synthesized as entries so they
+                    // show up checked too.
+                    val selectedPeersList = configPeers.map { uri ->
+                        displayPeers.firstOrNull { it.uri == uri }
+                            ?: PublicPeerInfo(uri = uri, country = "")
                     }
                     val hasSelectedPeers = selectedPeersList.isNotEmpty()
                     
@@ -290,8 +338,9 @@ fun PeerDiscoveryScreen(
                             }
                         }
                         
-                        // Main sorted list (all peers with checkboxes)
-                        items(displayPeers, key = { "main_${it.uri}" }) { peer ->
+                        // Main list, filtered by the picked countries
+                        // (all peers with checkboxes)
+                        items(filteredPeers, key = { "main_${it.uri}" }) { peer ->
                             PeerCard(
                                 peer = peer,
                                 isSelected = peer.uri in selectedPeers,
@@ -324,6 +373,107 @@ fun PeerDiscoveryScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The Country filter button on the Peer Discovery action row. Opens a
+ * multi-select dropdown of the countries present in the downloaded peers
+ * list; the selection persists across restarts. An empty selection means
+ * no filtering (All countries).
+ */
+@Composable
+private fun CountryFilterButton(
+    countries: List<String>,
+    selected: Set<String>,
+    onToggle: (String) -> Unit,
+    onReset: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        Button(
+            onClick = { expanded = true },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                Icons.Default.Public,
+                contentDescription = stringResource(R.string.country_filter),
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = when (selected.size) {
+                    0 -> stringResource(R.string.country_filter)
+                    1 -> selected.first().let { country ->
+                        CountryFlags.flagEmoji(country)?.let { "$it $country" } ?: country
+                    }
+                    // pluralStringResource, not stringResource: the plain
+                    // string overload wins resolution for (id, Int) and
+                    // throws Resources$NotFoundException on a plurals ID.
+                    // The count is also passed as a format arg — without it
+                    // the raw "(%1$d)" pattern is returned unsubstituted.
+                    else -> pluralStringResource(
+                        R.plurals.countries_count, selected.size, selected.size
+                    )
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // Reset entry: clears the filter and closes the menu
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.all_countries)) },
+                trailingIcon = {
+                    if (selected.isEmpty()) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                    }
+                },
+                onClick = {
+                    onReset()
+                    expanded = false
+                }
+            )
+            Divider()
+
+            // Country entries: toggling keeps the menu open for
+            // multi-select
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                countries.forEach { country ->
+                    val flag = remember(country) { CountryFlags.flagEmoji(country) }
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = flag?.let { "$it $country" } ?: country,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        trailingIcon = {
+                            Checkbox(
+                                checked = country in selected,
+                                onCheckedChange = null
+                            )
+                        },
+                        onClick = { onToggle(country) }
+                    )
                 }
             }
         }
@@ -374,21 +524,25 @@ fun PeerCard(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Place,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = peer.country,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // Country flag where known, then the country name
+                    if (peer.country.isNotBlank()) {
+                        val flag = remember(peer.country) { CountryFlags.flagEmoji(peer.country) }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (flag != null) {
+                                Text(
+                                    text = flag,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Text(
+                                text = peer.country,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     
                     peer.rtt?.let { rtt ->
