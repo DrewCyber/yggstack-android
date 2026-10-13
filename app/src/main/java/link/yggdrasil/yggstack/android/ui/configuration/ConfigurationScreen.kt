@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -456,6 +457,7 @@ fun ConfigurationScreen(
                         enabled = !isServiceRunning && config.forwardEnabled,
                         checkboxEnabled = config.forwardEnabled,
                         isDragging = isDragging,
+                        linkEnabled = isServiceRunning,
                         onEdit = {
                             editingForwardMapping = mapping
                             showForwardDialog = true
@@ -503,6 +505,7 @@ fun ConfigurationScreen(
                         enabled = !isServiceRunning && config.exposeEnabled,
                         checkboxEnabled = config.exposeEnabled,
                         isDragging = isDragging,
+                        linkEnabled = isServiceRunning,
                         onEdit = {
                             editingExposeMapping = mapping
                             showExposeDialog = true
@@ -1494,6 +1497,7 @@ fun ExposeMappingItem(
     enabled: Boolean,
     checkboxEnabled: Boolean,
     isDragging: Boolean = false,
+    linkEnabled: Boolean = false,
     onEdit: () -> Unit,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
@@ -1507,12 +1511,14 @@ fun ExposeMappingItem(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = if (mapping.shortName.isNotBlank()) mapping.shortName
-                   else "${mapping.protocol.name.lowercase()} ${mapping.localPort} ${mapping.localIp} → ${mapping.yggPort}",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (mapping.shortName.isNotBlank()) mapping.shortName
+                       else "${mapping.protocol.name.lowercase()} ${mapping.localPort} ${mapping.localIp} → ${mapping.yggPort}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            MappingNoteUrls(note = mapping.note, clickable = linkEnabled)
+        }
         Checkbox(
             checked = mapping.enabled,
             onCheckedChange = onToggle,
@@ -1527,6 +1533,7 @@ fun ForwardMappingItem(
     enabled: Boolean,
     checkboxEnabled: Boolean,
     isDragging: Boolean = false,
+    linkEnabled: Boolean = false,
     onEdit: () -> Unit,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
@@ -1540,12 +1547,14 @@ fun ForwardMappingItem(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = if (mapping.shortName.isNotBlank()) mapping.shortName
-                   else "${mapping.protocol.name.lowercase()} ${mapping.localIp}:${mapping.localPort} → [${mapping.remoteIp}]:${mapping.remotePort}",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (mapping.shortName.isNotBlank()) mapping.shortName
+                       else "${mapping.protocol.name.lowercase()} ${mapping.localIp}:${mapping.localPort} → [${mapping.remoteIp}]:${mapping.remotePort}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            MappingNoteUrls(note = mapping.note, clickable = linkEnabled)
+        }
         Checkbox(
             checked = mapping.enabled,
             onCheckedChange = onToggle,
@@ -2314,6 +2323,44 @@ internal fun NoteUrlPreview(note: String) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 2.dp)
+            )
+        }
+    }
+}
+
+// URL(s) from a mapping Note, shown on the Configuration list under the rule
+// title. Tappable only while the service runs — a stopped service forwards
+// nothing, so the link would be dead; with the service down the row tap opens
+// the rule for editing instead and the URL renders as plain dimmed text.
+@Composable
+private fun MappingNoteUrls(note: String, clickable: Boolean) {
+    val context = LocalContext.current
+    val urls = remember(note) { extractNoteUrls(note) }
+    if (urls.isEmpty()) return
+    val linkStyles = TextLinkStyles(
+        style = SpanStyle(
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline
+        )
+    )
+    Column {
+        urls.forEach { url ->
+            Text(
+                text = if (clickable) buildAnnotatedString {
+                    withLink(
+                        LinkAnnotation.Url(url, linkStyles) {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    ) {
+                        append(url)
+                    }
+                } else AnnotatedString(url),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (clickable) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
