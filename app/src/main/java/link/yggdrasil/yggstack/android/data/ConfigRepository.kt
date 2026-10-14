@@ -74,6 +74,7 @@ class ConfigRepository(private val context: Context) {
         private val DIAGNOSTICS_TAB_KEY = intPreferencesKey("diagnostics_tab")
         private val DIAGNOSTICS_TAB_MIGRATED = booleanPreferencesKey("diagnostics_tab_ports_migrated")
         private val DIAGNOSTICS_TAB_PING_MIGRATED = booleanPreferencesKey("diagnostics_tab_ping_migrated")
+        private val DIAGNOSTICS_TAB_ORDER = stringPreferencesKey("diagnostics_tab_order")
         private val PUBLIC_PEERS_CACHE = stringPreferencesKey("public_peers_cache")
         private val SORTED_PEERS_CACHE = stringPreferencesKey("sorted_peers_cache")
         private val LAST_EXTERNAL_IP = stringPreferencesKey("last_external_ip")
@@ -371,6 +372,28 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveDiagnosticsTab(tabIndex: Int) {
         context.dataStore.edit { preferences ->
             preferences[DIAGNOSTICS_TAB_KEY] = tabIndex
+        }
+    }
+
+    /**
+     * Diagnostics tab order as the tab ids used by DiagnosticsScreen (null =
+     * default order). Device-local UI preference only — deliberately not part
+     * of BackupConfig. A stored value that isn't a permutation of all five
+     * ids (e.g. after a future tab add/remove) is ignored.
+     */
+    val diagnosticsTabOrderFlow: Flow<List<Int>?> = context.dataStore.data.map { preferences ->
+        preferences[DIAGNOSTICS_TAB_ORDER]?.let { stored ->
+            val ids = stored.split(',').mapNotNull { it.trim().toIntOrNull() }
+            if (ids.size == 5 && ids.distinct().size == 5 && ids.all { it in 0..4 }) ids else null
+        }
+    }
+
+    /**
+     * Save diagnostics tab order
+     */
+    suspend fun saveDiagnosticsTabOrder(order: List<Int>) {
+        context.dataStore.edit { preferences ->
+            preferences[DIAGNOSTICS_TAB_ORDER] = order.joinToString(",")
         }
     }
 

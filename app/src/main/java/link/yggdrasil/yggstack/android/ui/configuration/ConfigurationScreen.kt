@@ -587,6 +587,12 @@ fun ConfigurationScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        // Mirror the spacer above when the hints are the card's
+                        // last element; with the toggles shown below, their own
+                        // 8.dp spacer already separates the block.
+                        if (!config.powerSaveEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
 
                     if (showHowItWorks) {

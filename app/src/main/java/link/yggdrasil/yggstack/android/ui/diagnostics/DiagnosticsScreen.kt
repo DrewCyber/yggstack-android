@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -27,17 +28,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,6 +64,27 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Stable ids for the Diagnostics tabs. Persisted in the tab order, so the
+ *  numbers must never be reused; a new tab appends the next free id. */
+private const val TAB_CONFIG = 0
+private const val TAB_PEERS = 1
+private const val TAB_PORTS = 2
+private const val TAB_PING = 3
+private const val TAB_LOGS = 4
+
+private val DEFAULT_TAB_ORDER = listOf(TAB_CONFIG, TAB_PEERS, TAB_PORTS, TAB_PING, TAB_LOGS)
+
+@Composable
+private fun tabTitle(tabId: Int): String = stringResource(
+    when (tabId) {
+        TAB_CONFIG -> R.string.tab_config
+        TAB_PEERS -> R.string.tab_peers
+        TAB_PORTS -> R.string.tab_ports
+        TAB_PING -> R.string.tab_ping
+        else -> R.string.tab_logs
+    }
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DiagnosticsScreen(modifier: Modifier = Modifier) {
@@ -68,34 +94,39 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
         factory = DiagnosticsViewModel.Factory(repository, context)
     )
 
-    val tabs = listOf(
-        stringResource(R.string.tab_config),
-        stringResource(R.string.tab_peers),
-        stringResource(R.string.tab_ports),
-        stringResource(R.string.tab_ping),
-        stringResource(R.string.tab_logs)
-    )
-
-    // Load saved tab before creating pager
-    var initialTab by remember { mutableStateOf<Int?>(null) }
+    // Load saved tab and order before creating the pager
+    var startup by remember { mutableStateOf<Pair<Int, List<Int>>?>(null) }
 
     LaunchedEffect(Unit) {
         repository.migrateDiagnosticsTabIfNeeded()
-        initialTab = repository.diagnosticsTabFlow.first().coerceIn(0, 4)
+        val order = repository.diagnosticsTabOrderFlow.first() ?: DEFAULT_TAB_ORDER
+        startup = repository.diagnosticsTabFlow.first().coerceIn(0, order.size - 1) to order
     }
-    
-    // Only show content after initial tab is loaded
-    initialTab?.let { startPage ->
+
+    // Only show content after initial tab and order are loaded
+    startup?.let { (startPage, initialOrder) ->
+        var tabOrder by remember(initialOrder) { mutableStateOf(initialOrder) }
         val pagerState = rememberPagerState(
             initialPage = startPage,
-            pageCount = { tabs.size }
+            pageCount = { tabOrder.size }
         )
         val coroutineScope = rememberCoroutineScope()
 
-        // Save tab index when user changes it
+        // Save tab index when user changes it. The index refers to a position
+        // in the current order, and the order is persisted alongside, so the
+        // two always restore to the same tab.
         LaunchedEffect(pagerState.currentPage) {
             repository.saveDiagnosticsTab(pagerState.currentPage)
         }
+
+        // Long-press drag reordering of the tab row (the same interaction as
+        // the Configuration lists): a tab dragged past half a neighbor's width
+        // swaps with it, the pager keeps showing the same tab, and the order
+        // persists on drop — device-local only, never part of backups.
+        var draggedTab by remember { mutableStateOf<Int?>(null) }
+        var dragOffsetX by remember { mutableStateOf(0f) }
+        val tabWidths = remember { mutableStateMapOf<Int, Float>() }
+        var orderBeforeDrag by remember { mutableStateOf<List<Int>?>(null) }
 
         Column(modifier = modifier.fillMaxSize()) {
             // Scrollable so a long tab title never wraps ("Confi/g"): each
@@ -105,16 +136,89 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
                 selectedTabIndex = pagerState.currentPage,
                 edgePadding = 16.dp
             ) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = pagerState.currentPage == index,
-                        onClick = {
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(index)
-                            }
-                        },
-                        text = { Text(title) }
-                    )
+                tabOrder.forEachIndexed { index, tabId ->
+                    // Keyed by tab id so the drag gesture travels with the tab
+                    // when it swaps positions instead of being cancelled. The
+                    // drag modifiers go on Tab itself, not on a wrapping Box:
+                    // a Box loosens the row's minimum-width constraint, so the
+                    // tab would shrink to its text inside the 90dp slot and
+                    // stick to its start, making the full-slot-width indicator
+                    // stick out on the right of the label.
+                    key(tabId) {
+                        Tab(
+                            selected = pagerState.currentPage == index,
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(index)
+                                }
+                            },
+                            modifier = Modifier
+                                .onGloballyPositioned { tabWidths[tabId] = it.size.width.toFloat() }
+                                .zIndex(if (tabId == draggedTab) 1f else 0f)
+                                .graphicsLayer {
+                                    translationX = if (tabId == draggedTab) dragOffsetX else 0f
+                                }
+                                .pointerInput(tabId) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            draggedTab = tabId
+                                            dragOffsetX = 0f
+                                            orderBeforeDrag = tabOrder
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragOffsetX += dragAmount.x
+                                            val order = tabOrder
+                                            val currentIndex = order.indexOf(tabId)
+                                            val tabWidth = tabWidths[tabId]
+                                                ?: return@detectDragGesturesAfterLongPress
+                                            var swappedWith = -1
+                                            when {
+                                                dragOffsetX > tabWidth * 0.5f &&
+                                                        currentIndex < order.size - 1 -> {
+                                                    dragOffsetX -= tabWidths[order[currentIndex + 1]] ?: tabWidth
+                                                    swappedWith = currentIndex + 1
+                                                }
+                                                dragOffsetX < -tabWidth * 0.5f && currentIndex > 0 -> {
+                                                    dragOffsetX += tabWidths[order[currentIndex - 1]] ?: tabWidth
+                                                    swappedWith = currentIndex - 1
+                                                }
+                                            }
+                                            if (swappedWith >= 0) {
+                                                tabOrder = order.toMutableList().apply {
+                                                    set(currentIndex, order[swappedWith])
+                                                    set(swappedWith, order[currentIndex])
+                                                }
+                                                // Keep the selected page on the same tab
+                                                // across the swap. requestScrollToPage snaps
+                                                // without animation and takes effect in the
+                                                // same frame as the reorder, so no foreign
+                                                // tab content ever flashes.
+                                                when (pagerState.currentPage) {
+                                                    currentIndex -> pagerState.requestScrollToPage(swappedWith)
+                                                    swappedWith -> pagerState.requestScrollToPage(currentIndex)
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            draggedTab = null
+                                            dragOffsetX = 0f
+                                            orderBeforeDrag = null
+                                            coroutineScope.launch {
+                                                repository.saveDiagnosticsTabOrder(tabOrder)
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            orderBeforeDrag?.let { tabOrder = it }
+                                            draggedTab = null
+                                            dragOffsetX = 0f
+                                            orderBeforeDrag = null
+                                        }
+                                    )
+                                },
+                            text = { Text(tabTitle(tabId)) }
+                        )
+                    }
                 }
             }
 
@@ -122,21 +226,21 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                when (page) {
-                    0 -> ConfigViewer(viewModel)
-                    1 -> PeerStatus(
+                when (tabOrder[page]) {
+                    TAB_CONFIG -> ConfigViewer(viewModel)
+                    TAB_PEERS -> PeerStatus(
                         viewModel = viewModel,
-                        isVisible = pagerState.currentPage == 1
+                        isVisible = pagerState.currentPage == tabOrder.indexOf(TAB_PEERS)
                     )
-                    2 -> PortsViewer(
+                    TAB_PORTS -> PortsViewer(
                         viewModel = viewModel,
-                        isVisible = pagerState.currentPage == 2
+                        isVisible = pagerState.currentPage == tabOrder.indexOf(TAB_PORTS)
                     )
-                    3 -> PingViewer(
+                    TAB_PING -> PingViewer(
                         viewModel = viewModel,
-                        isVisible = pagerState.currentPage == 3
+                        isVisible = pagerState.currentPage == tabOrder.indexOf(TAB_PING)
                     )
-                    4 -> LogsViewer(viewModel)
+                    TAB_LOGS -> LogsViewer(viewModel)
                 }
             }
         }
