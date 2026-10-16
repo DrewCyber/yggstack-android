@@ -861,8 +861,31 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     val yggdrasilIp by viewModel.yggdrasilIp.collectAsStateWithLifecycle()
     val yggdrasilPublicKey by viewModel.yggdrasilPublicKey.collectAsStateWithLifecycle()
     val serviceConnected by viewModel.serviceConnected.collectAsStateWithLifecycle()
+    val peersSortMode by viewModel.peersSortMode.collectAsStateWithLifecycle()
+    val yggstackConfig by viewModel.yggstackConfig.collectAsStateWithLifecycle()
+    var peersSortMenuExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboardManager = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
+
+    // Sorted once per data/sort change, not per recomposition. Default keeps
+    // the Configuration screen's peer order (config list first, discovered
+    // and inbound peers after in engine order); RX/TX sort by the session
+    // totals, descending. Kotlin's sort is stable, so ties keep the base order.
+    val sortedPeers = remember(peerDetails, peersSortMode, yggstackConfig) {
+        when (peersSortMode) {
+            DiagnosticsViewModel.PEERS_SORT_RX -> peerDetails.sortedByDescending { it.rxBytes }
+            DiagnosticsViewModel.PEERS_SORT_TX -> peerDetails.sortedByDescending { it.txBytes }
+            DiagnosticsViewModel.PEERS_SORT_RECONNECTS ->
+                peerDetails.sortedByDescending { it.reconnects }
+            else -> {
+                val configOrder = yggstackConfig?.peers.orEmpty()
+                peerDetails.sortedBy { details ->
+                    val index = configOrder.indexOf(details.uri)
+                    if (index >= 0) index else Int.MAX_VALUE
+                }
+            }
+        }
+    }
 
     // Read the saved position once for restoration instead of collecting it:
     // subscribing here would recompose the whole tab on every save
@@ -1030,7 +1053,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                                 color = if (peerCount > 0) MaterialTheme.colorScheme.primary else Color.Gray
                             )
                         }
-                        
+
                         Icon(
                             imageVector = if (peerCount > 0) Icons.Default.CheckCircle else Icons.Default.Cancel,
                             contentDescription = null,
@@ -1039,7 +1062,68 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                     }
 
-                    // Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Sort mode: Default mirrors the Configuration screen's
+                    // peer order; RX/TX order by the session totals, Reconn
+                    // by the session reconnect count
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.peers_sort_label),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Box {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable { peersSortMenuExpanded = true }
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        when (peersSortMode) {
+                                            DiagnosticsViewModel.PEERS_SORT_RX -> R.string.peers_sort_rx
+                                            DiagnosticsViewModel.PEERS_SORT_TX -> R.string.peers_sort_tx
+                                            DiagnosticsViewModel.PEERS_SORT_RECONNECTS -> R.string.peers_sort_reconn
+                                            else -> R.string.peers_sort_default
+                                        }
+                                    ),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = peersSortMenuExpanded,
+                                onDismissRequest = { peersSortMenuExpanded = false }
+                            ) {
+                                listOf(
+                                    DiagnosticsViewModel.PEERS_SORT_DEFAULT to R.string.peers_sort_default,
+                                    DiagnosticsViewModel.PEERS_SORT_RX to R.string.peers_sort_rx,
+                                    DiagnosticsViewModel.PEERS_SORT_TX to R.string.peers_sort_tx,
+                                    DiagnosticsViewModel.PEERS_SORT_RECONNECTS to R.string.peers_sort_reconn
+                                ).forEach { (mode, labelRes) ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(labelRes)) },
+                                        onClick = {
+                                            viewModel.setPeersSortMode(mode)
+                                            peersSortMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     }
             }
@@ -1049,7 +1133,7 @@ fun PeerStatus(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
 
         // Display each peer's details as separate cards
         if (peerCount > 0) {
-            items(peerDetails, key = { "${it.inbound}|${it.uri}" }) { peer ->
+            items(sortedPeers, key = { "${it.inbound}|${it.uri}" }) { peer ->
                 PeerCard(peer = peer)
             }
         }
@@ -1105,11 +1189,10 @@ private fun PeerCard(peer: PeerDetail) {
                         
             Spacer(modifier = Modifier.height(8.dp))
                         
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
+            // Equal thirds: the middle column stays centered regardless of
+            // how wide the left/right values render
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.uptime),
                         style = MaterialTheme.typography.labelSmall,
@@ -1120,7 +1203,10 @@ private fun PeerCard(peer: PeerDetail) {
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = stringResource(R.string.latency),
                         style = MaterialTheme.typography.labelSmall,
@@ -1131,7 +1217,42 @@ private fun PeerCard(peer: PeerDetail) {
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = stringResource(R.string.peers_rx),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = formatBytes(peer.rxBytes),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.peers_reconnects),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${peer.reconnects}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (peer.reconnects > 0) MaterialTheme.colorScheme.primary
+                        else Color.Unspecified
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = stringResource(R.string.cost),
                         style = MaterialTheme.typography.labelSmall,
@@ -1142,23 +1263,17 @@ private fun PeerCard(peer: PeerDetail) {
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-            }
-                        
-            Spacer(modifier = Modifier.height(8.dp))
-                        
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End
+                ) {
                     Text(
-                        text = stringResource(R.string.rx_label, formatBytes(peer.rxBytes)),
-                        style = MaterialTheme.typography.bodySmall
+                        text = stringResource(R.string.peers_tx),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                Column {
                     Text(
-                        text = stringResource(R.string.tx_label, formatBytes(peer.txBytes)),
+                        text = formatBytes(peer.txBytes),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

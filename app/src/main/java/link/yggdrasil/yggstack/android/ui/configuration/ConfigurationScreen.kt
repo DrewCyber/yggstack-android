@@ -167,6 +167,17 @@ fun ConfigurationScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
 
+                    // Nothing configured to dial out to: the node stays
+                    // isolated. Recommends exactly one peer — the closest —
+                    // and warns that more than one means transit traffic.
+                    // Gated on the config being loaded: its pre-load default
+                    // has no peers and would flash the card on entry.
+                    val configLoaded by viewModel.configLoaded.collectAsStateWithLifecycle()
+                    if (configLoaded && config.peers.isEmpty()) {
+                        NoPeersHintCard(modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
                     ReorderableColumn(
                         items = config.peers,
                         onReorder = { viewModel.reorderPeers(it) },
@@ -2479,6 +2490,47 @@ private fun formatMinutesSeconds(totalSeconds: Int): String {
         minutes > 0 && seconds > 0 -> "${minutes}m ${seconds}s"
         minutes > 0 -> "${minutes}m"
         else -> "${seconds}s"
+    }
+}
+
+/**
+ * Notice shown in the Peers section while no peers are configured: with
+ * nothing to dial out to, the node stays isolated. Recommends exactly one
+ * peer — the closest — and warns that more than one makes the node carry
+ * transit traffic for the network.
+ */
+@Composable
+private fun NoPeersHintCard(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.peers_none_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.peers_none_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 

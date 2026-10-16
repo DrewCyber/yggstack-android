@@ -34,6 +34,12 @@ class ConfigurationViewModel(
     private val _config = MutableStateFlow(YggstackConfig())
     val config: StateFlow<YggstackConfig> = _config.asStateFlow()
 
+    // False until the repository's config has been read at least once; the
+    // pre-load default has no peers, so UI that reacts to "no peers" must
+    // wait for this or it flashes on entry
+    private val _configLoaded = MutableStateFlow(false)
+    val configLoaded: StateFlow<Boolean> = _configLoaded.asStateFlow()
+
     private val _serviceState = MutableStateFlow<ServiceState>(ServiceState.Stopped)
     val serviceState: StateFlow<ServiceState> = _serviceState.asStateFlow()
 
@@ -234,6 +240,7 @@ class ConfigurationViewModel(
         viewModelScope.launch {
             repository.configFlow.collect { config ->
                 _config.value = config
+                _configLoaded.value = true
             }
         }
     }

@@ -277,6 +277,23 @@ class YggstackService : Service() {
     private val rawPortCounters = java.util.concurrent.ConcurrentHashMap<String, ListenerCounters>()
     private val cumulativePortCounters = java.util.concurrent.ConcurrentHashMap<String, ListenerCounters>()
 
+    /** RX/TX pair used for the per-URI peer session accumulation. */
+    private data class PeerCounters(val rxBytes: Long, val txBytes: Long)
+
+    // Peer session accounting, keyed by peer URI. Same delta scheme as the
+    // port counters: within one engine connection the counters grow
+    // monotonically, so a counter that drops means the connection was
+    // replaced (reconnect, Power Save wake) and the new baseline is counted
+    // on top of the totals accumulated before it.
+    private val rawPeerCounters = java.util.concurrent.ConcurrentHashMap<String, PeerCounters>()
+    private val cumulativePeerCounters = java.util.concurrent.ConcurrentHashMap<String, PeerCounters>()
+    private val peerReconnectCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    // Last observed Up state and "was ever connected" per URI, to detect a
+    // down -> up return of a previously connected peer even when the engine
+    // keeps (or zeroes) its counters while down.
+    private val peerWasUp = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private val everConnectedPeers = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
     private val _generatedPrivateKey = MutableStateFlow<String?>(null)
     val generatedPrivateKey: StateFlow<String?> = _generatedPrivateKey.asStateFlow()
 
@@ -648,6 +665,7 @@ class YggstackService : Service() {
                     _powerSaveUpMillis.value = 0
                     _powerSaveIdleMillis.value = 0
                     clearSessionPortCounters()
+                    clearSessionPeerCounters()
                 }
                 _powerSaveStateSince.value = stateChangedAt
                 logInfo("Service state updated: isRunning=true")
@@ -752,6 +770,8 @@ class YggstackService : Service() {
                 clearSessionPortCounters()
                 lastRawListenersJSON = null
                 _portStatsJSON.resetReplayCache()
+                clearSessionPeerCounters()
+                _peerDetailsJSON.resetReplayCache()
                 persistServiceWasRunning(false)
                 if (!destroying && !lifecycle.isDestroyed) {
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -1205,7 +1225,9 @@ class YggstackService : Service() {
                     
                     val peersJson = yggstack?.getPeersJson()
                     if (peersJson != null) {
-                        _peerDetailsJSON.emit(peersJson)
+                        // Session-cumulative RX/TX plus reconnect counts; the
+                        // raw Up flags below are unaffected by the rewrite
+                        _peerDetailsJSON.emit(accumulatePeerStats(peersJson))
                         // Update peer count from actual connected peers
                         try {
                             val jsonArray = JSONArray(peersJson)
@@ -1383,6 +1405,77 @@ class YggstackService : Service() {
     private fun clearSessionPortCounters() {
         rawPortCounters.clear()
         cumulativePortCounters.clear()
+    }
+
+    /**
+     * Rewrites a raw GetPeersJSON payload into session-cumulative RX/TX totals
+     * and adds a "Reconnects" count per peer. Within one engine connection a
+     * peer's counters grow monotonically, so the delta against the last raw
+     * snapshot is added to the running total. A counter drop, or a down -> up
+     * return of a previously connected URI, marks a reconnection: the count
+     * increments and the fresh baseline is counted on top of what was
+     * accumulated before. Cleared when the service session ends.
+     */
+    private fun accumulatePeerStats(json: String): String {
+        return try {
+            val arr = JSONArray(json)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val uri = obj.optString("URI", "")
+                if (uri.isEmpty()) continue
+                val up = obj.optBoolean("Up", false)
+                val raw = PeerCounters(
+                    rxBytes = obj.optLong("RXBytes", 0),
+                    txBytes = obj.optLong("TXBytes", 0)
+                )
+                val prevRaw = rawPeerCounters[uri]
+                var reconnected = false
+                val delta: PeerCounters
+                if (prevRaw == null) {
+                    // First time this URI is seen in the session
+                    delta = raw
+                } else {
+                    // Zeroed or restarted counters — the connection was replaced
+                    val countersDropped = raw.rxBytes < prevRaw.rxBytes || raw.txBytes < prevRaw.txBytes
+                    // Observed downtime followed by a return, even if the
+                    // counters happen not to have dropped
+                    val backAfterDowntime =
+                        up && peerWasUp[uri] == false && everConnectedPeers.contains(uri)
+                    if (up && (countersDropped || backAfterDowntime)) reconnected = true
+                    delta = if (countersDropped) raw else PeerCounters(
+                        rxBytes = raw.rxBytes - prevRaw.rxBytes,
+                        txBytes = raw.txBytes - prevRaw.txBytes
+                    )
+                }
+                if (reconnected) {
+                    peerReconnectCounts[uri] = (peerReconnectCounts[uri] ?: 0) + 1
+                }
+                rawPeerCounters[uri] = raw
+                peerWasUp[uri] = up
+                if (up) everConnectedPeers.add(uri)
+                val prevCum = cumulativePeerCounters[uri] ?: PeerCounters(0, 0)
+                val cum = PeerCounters(
+                    rxBytes = prevCum.rxBytes + delta.rxBytes,
+                    txBytes = prevCum.txBytes + delta.txBytes
+                )
+                cumulativePeerCounters[uri] = cum
+                obj.put("RXBytes", cum.rxBytes)
+                obj.put("TXBytes", cum.txBytes)
+                obj.put("Reconnects", peerReconnectCounts[uri] ?: 0)
+            }
+            arr.toString()
+        } catch (e: Exception) {
+            logError("Error accumulating peer stats: ${e.message}")
+            json
+        }
+    }
+
+    private fun clearSessionPeerCounters() {
+        rawPeerCounters.clear()
+        cumulativePeerCounters.clear()
+        peerReconnectCounts.clear()
+        peerWasUp.clear()
+        everConnectedPeers.clear()
     }
 
     /**

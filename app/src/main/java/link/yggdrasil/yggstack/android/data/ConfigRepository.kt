@@ -85,6 +85,7 @@ class ConfigRepository(private val context: Context) {
         private val SERVICE_ON_APP_START_KEY = stringPreferencesKey("service_on_app_start")
         private val SERVICE_WAS_RUNNING_KEY = booleanPreferencesKey("service_was_running")
         private val PORTS_COMPACT_MODE = booleanPreferencesKey("ports_compact_mode")
+        private val PEERS_SORT_MODE = stringPreferencesKey("peers_sort_mode")
         private val POWER_SAVE_ENABLED = booleanPreferencesKey("power_save_enabled")
         private val POWER_SAVE_IDLE_TIMEOUT = intPreferencesKey("power_save_idle_timeout")
         private val PING_TARGET_KEY = stringPreferencesKey("ping_target")
@@ -335,6 +336,23 @@ class ConfigRepository(private val context: Context) {
     suspend fun savePortsCompactMode(compact: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PORTS_COMPACT_MODE] = compact
+        }
+    }
+
+    /**
+     * Peers tab sort mode (DiagnosticsViewModel.PEERS_SORT_* constants).
+     * Device-local UI preference only — not part of BackupConfig.
+     */
+    val peersSortModeFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PEERS_SORT_MODE] ?: "default"
+    }
+
+    /**
+     * Save Peers tab sort mode preference
+     */
+    suspend fun savePeersSortMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PEERS_SORT_MODE] = mode
         }
     }
 

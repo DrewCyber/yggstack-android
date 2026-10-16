@@ -220,6 +220,16 @@
     <string name="start_service_view_peers">Запустите сервис для просмотра статуса узлов</string>
     <string name="peers_power_save_idle">Включён режим энергосбережения — узел выключен. Разбудите его, чтобы увидеть статус пиров.</string>
     <string name="connected_peers">Подключенные узлы</string>
+    <string name="peers_sort_label">Сортировка</string>
+    <string name="peers_sort_default">По умолчанию</string>
+    <string name="peers_sort_rx">RX</string>
+    <string name="peers_sort_tx">TX</string>
+    <string name="peers_sort_reconn">Повт.</string>
+    <string name="peers_reconnects">Повт.</string>
+    <string name="peers_none_title">Выберите узел для подключения</string>
+    <string name="peers_none_body">Выберите ближайший к вам узел для лучшего соединения. Если вы выберете более одного узла, ваш узел будет передавать транзитный трафик для других узлов Yggdrasil.</string>
+    <string name="peers_rx">RX</string>
+    <string name="peers_tx">TX</string>
     <string name="inbound">Входящий</string>
     <string name="outbound">Исходящий</string>
     <string name="backup_configuration">Резервная копия</string>
@@ -307,7 +317,7 @@
 
     <!-- Transit Traffic Warning Dialog -->
     <string name="transit_warning_title">Включено несколько узлов</string>
-    <string name="transit_warning_message">У вас включено более одного узла. Узлы с несколькими активными пирами могут передавать транзитный трафик других участников сети Yggdrasil, что может существенно увеличить потребление трафика.\n\nЕсли у вас ограниченный тарифный план или медленное соединение, рекомендуется держать включённым только один узел.</string>
+    <string name="transit_warning_message">Если у вас ограниченный тарифный план или медленное соединение, рекомендуется держать включённым только один узел.\n\nУ вас включено более одного узла. Узлы с несколькими активными пирами могут передавать транзитный трафик других участников сети Yggdrasil, что может существенно увеличить потребление трафика.</string>
     <string name="transit_warning_suppress">Больше не показывать это предупреждение</string>
     <string name="transit_warning_start_anyway">Запустить всё равно</string>
 

@@ -57,6 +57,14 @@ class DiagnosticsViewModel(
     private val context: Context
 ) : ViewModel() {
 
+    companion object {
+        // Peers tab sort modes, persisted as strings in DataStore
+        const val PEERS_SORT_DEFAULT = "default"
+        const val PEERS_SORT_RX = "rx"
+        const val PEERS_SORT_TX = "tx"
+        const val PEERS_SORT_RECONNECTS = "reconnects"
+    }
+
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
 
@@ -100,6 +108,10 @@ class DiagnosticsViewModel(
 
     private val _portsCompactMode = MutableStateFlow(false)
     val portsCompactMode: StateFlow<Boolean> = _portsCompactMode.asStateFlow()
+
+    // Peers tab sort mode: Default (Configuration screen order), RX or TX
+    private val _peersSortMode = MutableStateFlow(PEERS_SORT_DEFAULT)
+    val peersSortMode: StateFlow<String> = _peersSortMode.asStateFlow()
 
     private val _portSections = MutableStateFlow<List<PortSection>>(emptyList())
     val portSections: StateFlow<List<PortSection>> = _portSections.asStateFlow()
@@ -284,6 +296,13 @@ class DiagnosticsViewModel(
             }
         }
 
+        // Restore the Peers sort mode across app restarts
+        viewModelScope.launch {
+            repository.peersSortModeFlow.collect { mode ->
+                _peersSortMode.value = mode
+            }
+        }
+
         // Restore the last ping target
         viewModelScope.launch {
             repository.pingTargetFlow.collect { target ->
@@ -378,6 +397,13 @@ class DiagnosticsViewModel(
         }
     }
 
+    fun setPeersSortMode(mode: String) {
+        _peersSortMode.value = mode
+        viewModelScope.launch {
+            repository.savePeersSortMode(mode)
+        }
+    }
+
     fun clearLogs() {
         // Clear logs in the service, not just the UI
         yggstackService?.clearLogs()
@@ -467,6 +493,7 @@ class DiagnosticsViewModel(
                     cost = peerObj.optLong("Cost", 0),
                     rxBytes = peerObj.optLong("RXBytes", 0),
                     txBytes = peerObj.optLong("TXBytes", 0),
+                    reconnects = peerObj.optInt("Reconnects", 0),
                     uptime = peerObj.optDouble("Uptime", 0.0) / 1_000_000_000.0, // nanoseconds to seconds
                     latency = peerObj.optLong("Latency", 0) / 1_000_000 // nanoseconds to milliseconds
                 )

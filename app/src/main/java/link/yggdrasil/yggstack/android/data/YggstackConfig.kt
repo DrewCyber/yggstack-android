@@ -180,8 +180,14 @@ data class PeerDetail(
     val port: Long,
     val priority: Int,
     val cost: Long,
+    /** Session-cumulative totals: every byte this peer carried since the
+     *  service session started, summed across reconnects. Uptime and latency
+     *  still describe the current connection only. */
     val rxBytes: Long,
     val txBytes: Long,
+    /** How often this peer reconnected (dropped and came back) within the
+     *  current service session. */
+    val reconnects: Int = 0,
     val uptime: Double,
     val latency: Long
 )
