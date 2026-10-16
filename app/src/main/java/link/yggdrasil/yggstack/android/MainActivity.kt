@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import link.yggdrasil.yggstack.android.automation.ConfigExtra
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
@@ -147,41 +148,46 @@ class MainActivity : ComponentActivity() {
         val initialUseSystemColors = runBlocking { repository.useSystemColorsFlow.first() }
 
         // Apply the service-on-app-start policy once per process (not on
-        // activity recreations like rotation or theme changes)
-        if (!startPolicyApplied) {
+        // activity recreations like rotation or theme changes). A `config`
+        // extra from `am start` is applied first, inside the same coroutine,
+        // so the policy reads the freshly imported config — no race between
+        // the apply write and the policy's config read.
+        lifecycleScope.launch {
+            if (savedInstanceState == null) {
+                applyConfigExtraIfPresent(repository, intent)
+            }
+            if (startPolicyApplied) return@launch
             startPolicyApplied = true
-            lifecycleScope.launch {
-                suspend fun startServiceWithConfig() {
-                    val config = repository.configFlow.first()
-                    val serviceIntent = Intent(this@MainActivity, YggstackService::class.java).apply {
-                        action = YggstackService.ACTION_START
-                        putExtra(
-                            YggstackService.EXTRA_CONFIG,
-                            YggstackConfigParcelable.fromYggstackConfig(config)
-                        )
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
-                    }
+            suspend fun startServiceWithConfig() {
+                val config = repository.configFlow.first()
+                val serviceIntent = Intent(this@MainActivity, YggstackService::class.java).apply {
+                    action = YggstackService.ACTION_START
+                    putExtra(
+                        YggstackService.EXTRA_CONFIG,
+                        YggstackConfigParcelable.fromYggstackConfig(config)
+                    )
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+            }
 
-                when (repository.serviceOnAppStartFlow.first()) {
-                    ServiceStartMode.ALWAYS -> startServiceWithConfig()
-                    ServiceStartMode.DO_NOTHING -> {
-                        // Opening the app must never stop a running service:
-                        // leave it exactly as it is
-                    }
-                    ServiceStartMode.KEEP_STATE -> {
-                        // A service alive in this process (running or Power Save
-                        // idle) already IS the last state - leave it untouched.
-                        // But if the process was killed without a clean stop
-                        // (app update/install, force kill, system kill), the
-                        // persisted state says whether to restore the service.
-                        if (!YggstackService.serviceAlive && repository.serviceWasRunningFlow.first()) {
-                            startServiceWithConfig()
-                        }
+            when (repository.serviceOnAppStartFlow.first()) {
+                ServiceStartMode.ALWAYS -> startServiceWithConfig()
+                ServiceStartMode.DO_NOTHING -> {
+                    // Opening the app must never stop a running service:
+                    // leave it exactly as it is
+                }
+                ServiceStartMode.KEEP_STATE -> {
+                    // A service alive in this process (running or Power Save
+                    // idle) already IS the last state - leave it untouched.
+                    // But if the process was killed without a clean stop
+                    // (app update/install, force kill, system kill), the
+                    // persisted state says whether to restore the service.
+                    if (!YggstackService.serviceAlive && repository.serviceWasRunningFlow.first()) {
+                        startServiceWithConfig()
                     }
                 }
             }
@@ -210,6 +216,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         parseDeepLink(intent.data)?.let { pendingDeepLinkFlow.value = it }
+        // A config extra on an already-running app applies right away; a
+        // running service keeps the old config until its next (re)start,
+        // matching the in-app Restore behavior
+        lifecycleScope.launch {
+            applyConfigExtraIfPresent(ConfigRepository(this@MainActivity), intent)
+        }
+    }
+
+    /**
+     * Applies the `config` string extra — an exported backup (TOML, or the
+     * legacy JSON), given as the content itself or an absolute file path —
+     * when the app is launched as `am start --es config <content-or-path>
+     * [...]`. Behavior matches the in-app Restore flow; see [ConfigExtra].
+     * No-op without the extra.
+     */
+    private suspend fun applyConfigExtraIfPresent(repository: ConfigRepository, intent: Intent?) {
+        val raw = intent?.getStringExtra(ConfigExtra.EXTRA)?.takeIf { it.isNotBlank() } ?: return
+        ConfigExtra.toast(this, ConfigExtra.apply(repository, raw))
     }
 }
 

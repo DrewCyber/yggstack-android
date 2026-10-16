@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.service.YggstackConfigParcelable
 import link.yggdrasil.yggstack.android.service.YggstackService
@@ -17,6 +18,12 @@ import link.yggdrasil.yggstack.android.service.YggstackService
 /**
  * Transparent activity that starts the Yggstack service.
  * Uses a detached coroutine scope so finish() does not race with the IO work.
+ *
+ * Optional `config` string extra — an exported backup, as the content
+ * itself or an absolute file path: applied first, so the service starts
+ * with that config — a one-shot `am start --es config ...` for automation.
+ * A failed apply aborts the start rather than launching with a stale
+ * config.
  */
 class AutomationStartActivity : Activity() {
 
@@ -28,6 +35,14 @@ class AutomationStartActivity : Activity() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val configRepository = ConfigRepository(applicationContext)
+                intent?.getStringExtra(ConfigExtra.EXTRA)?.takeIf { it.isNotBlank() }?.let { raw ->
+                    val result = ConfigExtra.apply(configRepository, raw)
+                    Log.d(TAG, "AutomationStartActivity: config extra -> $result")
+                    withContext(Dispatchers.Main) {
+                        ConfigExtra.toast(applicationContext, result)
+                    }
+                    if (result is ConfigExtra.Result.Error) return@launch
+                }
                 val config = configRepository.configFlow.first()
                 val serviceIntent = Intent(applicationContext, YggstackService::class.java).apply {
                     action = YggstackService.ACTION_START
