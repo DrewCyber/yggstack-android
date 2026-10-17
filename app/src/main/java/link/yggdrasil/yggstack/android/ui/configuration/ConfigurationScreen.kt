@@ -30,8 +30,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.R
@@ -68,7 +72,10 @@ fun ConfigurationScreen(
     var deepLinkExposePrefill by remember { mutableStateOf<ExposeMapping?>(null) }
     var showForwardDialog by remember { mutableStateOf(false) }
     var editingForwardMapping by remember { mutableStateOf<ForwardMapping?>(null) }
-    var deepLinkForwardPrefill by remember { mutableStateOf<ForwardMapping?>(null) }
+    // Prefill for the next Add Forward Mapping dialog: set by deep links and
+    // by the Add Mapping preset picker.
+    var forwardPrefill by remember { mutableStateOf<ForwardMapping?>(null) }
+    var showForwardPresetPicker by remember { mutableStateOf(false) }
     var showPeerDiscovery by remember { mutableStateOf(false) }
     var showListenScreen by remember { mutableStateOf(false) }
     var showGroupPassword by remember { mutableStateOf(false) }
@@ -84,7 +91,7 @@ fun ConfigurationScreen(
             }
             is PendingDeepLink.ForwardLink -> {
                 editingForwardMapping = null
-                deepLinkForwardPrefill = link.mapping
+                forwardPrefill = link.mapping
                 showForwardDialog = true
                 viewModel.consumePendingDeepLink()
             }
@@ -479,7 +486,7 @@ fun ConfigurationScreen(
 
                 if (!isServiceRunning && config.forwardEnabled) {
                     Button(
-                        onClick = { showForwardDialog = true },
+                        onClick = { showForwardPresetPicker = true },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -945,17 +952,32 @@ fun ConfigurationScreen(
         }
     }
 
+    if (showForwardPresetPicker) {
+        ForwardPresetPickerDialog(
+            existingForwardMappings = config.forwardMappings,
+            onDismiss = { showForwardPresetPicker = false },
+            // null prefill = Custom Mapping: the dialog opens as before the
+            // picker existed.
+            onSelect = { prefill ->
+                showForwardPresetPicker = false
+                editingForwardMapping = null
+                forwardPrefill = prefill
+                showForwardDialog = true
+            }
+        )
+    }
+
     if (showForwardDialog) {
-        key(showForwardDialog, editingForwardMapping, deepLinkForwardPrefill) {
+        key(showForwardDialog, editingForwardMapping, forwardPrefill) {
             ForwardMappingDialog(
                 initialMapping = editingForwardMapping,
-                prefillMapping = deepLinkForwardPrefill,
+                prefillMapping = forwardPrefill,
                 existingExposeMappings = config.exposeMappings,
                 existingForwardMappings = config.forwardMappings,
                 onDismiss = {
                     showForwardDialog = false
                     editingForwardMapping = null
-                    deepLinkForwardPrefill = null
+                    forwardPrefill = null
                 },
                 onConfirm = { mapping ->
                     if (editingForwardMapping != null) {
@@ -964,7 +986,7 @@ fun ConfigurationScreen(
                     } else {
                         viewModel.addForwardMapping(mapping)
                     }
-                    deepLinkForwardPrefill = null
+                    forwardPrefill = null
                     showForwardDialog = false
                 },
                 onDelete = editingForwardMapping?.let { mapping ->
@@ -1827,6 +1849,166 @@ fun ExposeMappingDialog(
             }
         }
     )
+}
+
+/**
+ * Picker shown by the Forward section's Add Mapping button: the built-in
+ * preset library plus a Custom Mapping escape hatch. A preset whose remote
+ * endpoint (protocol + remote IP + remote port) already exists in the config
+ * is listed disabled with an "Added" tag — the local side may have been
+ * changed, so it doesn't count as a match.
+ */
+@Composable
+fun ForwardPresetPickerDialog(
+    existingForwardMappings: List<ForwardMapping>,
+    onDismiss: () -> Unit,
+    onSelect: (ForwardMapping?) -> Unit
+) {
+    // Plain Dialog + Surface instead of AlertDialog (same shape as the ping
+    // target picker): no empty button slots, so no dead space is reserved
+    // under Custom Mapping.
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                Text(
+                    text = "Add Forward Mapping",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp)
+                )
+                // Presets scroll on their own; Custom Mapping stays pinned
+                // below the divider, always visible without scrolling.
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp)
+                ) {
+                    ForwardPresets.all.forEach { preset ->
+                        val added = ForwardPresets.isAdded(preset, existingForwardMappings)
+                        // Fixed 3-line shape (name / protocol+port / IP on its own
+                        // full-width line) so every preset row has the same height
+                        // and a long IPv6 never wraps mid-address.
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (added) Modifier
+                                    else Modifier.clickable { onSelect(preset) }
+                                )
+                                .padding(vertical = 10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = preset.shortName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = if (added) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (added) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Added",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${preset.protocol.name} · Remote port ${preset.remotePort}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (added) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            MiddleEllipsisIpText(
+                                text = preset.remoteIp,
+                                color = if (added) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(null) }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Custom Mapping",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Single-line monospace text that, when too wide for its row, drops middle
+ * characters ("head…tail") so both ends of a long IPv6 stay visible.
+ */
+@Composable
+private fun MiddleEllipsisIpText(text: String, color: Color) {
+    val style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+    val textMeasurer = rememberTextMeasurer()
+    BoxWithConstraints {
+        val displayed = remember(text, constraints.maxWidth, style) {
+            middleEllipsize(textMeasurer, text, style, constraints.maxWidth)
+        }
+        Text(text = displayed, style = style, color = color, maxLines = 1)
+    }
+}
+
+/** Longest "head…tail" form of [text] that fits [maxWidthPx], or [text] itself when it fits. */
+private fun middleEllipsize(
+    textMeasurer: TextMeasurer,
+    text: String,
+    style: TextStyle,
+    maxWidthPx: Int
+): String {
+    fun width(s: String) = textMeasurer.measure(AnnotatedString(s), style).size.width
+    if (width(text) <= maxWidthPx) return text
+    // Binary search the total number of kept characters, split evenly-ish
+    // between head and tail; keep at least one char on each side.
+    var lo = 2
+    var hi = text.length - 1
+    var best = ""
+    while (lo <= hi) {
+        val keep = (lo + hi) / 2
+        val head = (keep + 1) / 2
+        val tail = keep - head
+        val candidate = text.take(head) + "…" + text.takeLast(tail)
+        if (width(candidate) <= maxWidthPx) {
+            best = candidate
+            lo = keep + 1
+        } else {
+            hi = keep - 1
+        }
+    }
+    return best
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

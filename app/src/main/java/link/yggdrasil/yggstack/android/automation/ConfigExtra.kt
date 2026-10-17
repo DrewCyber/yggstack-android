@@ -16,12 +16,12 @@ import java.io.File
  *     am start -n .../.MainActivity --es config "$(cat backup.toml)"
  *     am start -n .../.automation.AutomationStartActivity --es config /data/local/tmp/backup.toml
  *
- * The value is either the backup content itself (TOML, or the legacy JSON)
- * or an absolute path to a file containing it. World-readable locations the
- * app can actually open include /data/local/tmp (adb push, chmod 644);
- * arbitrary /sdcard paths are blocked by scoped storage — for those, pass
- * the content inline instead. Parsing, validation and application are
- * identical to the in-app Restore flow.
+ * The value is either the backup content itself (TOML) or an absolute path
+ * to a file containing it. World-readable locations the app can actually
+ * open include /data/local/tmp (adb push, chmod 644); arbitrary /sdcard
+ * paths are blocked by scoped storage — for those, pass the content inline
+ * instead. Parsing, validation and application are identical to the in-app
+ * Restore flow.
  */
 object ConfigExtra {
     const val EXTRA = "config"
@@ -46,7 +46,7 @@ object ConfigExtra {
         } else {
             raw
         }
-        val backup = BackupConfig.fromString(content).getOrElse { error ->
+        val backup = BackupConfig.fromToml(content).getOrElse { error ->
             return Result.Error("Failed to parse backup: ${error.message}")
         }
         return backup.validate().fold(

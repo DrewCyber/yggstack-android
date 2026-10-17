@@ -285,7 +285,8 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
         }
     }
 
-    // Import launcher – accepts both TOML (new) and JSON (legacy)
+    // Import launcher – TOML backups; files with no yggstack sections
+    // (PDFs, spreadsheets, random text) are rejected by the parser.
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -297,7 +298,7 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     }
 
                     if (fileContent != null) {
-                        val result = BackupConfig.fromString(fileContent)
+                        val result = BackupConfig.fromToml(fileContent)
                         result.fold(
                             onSuccess = { backup ->
                                 val validation = backup.validate()
@@ -2238,7 +2239,7 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                     ) { focusManager.clearFocus() },
                 colors = CardDefaults.cardColors(containerColor = Color.Black)
             ) {
-                if (probes.isEmpty() && session?.error == null) {
+                if (session == null) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -2251,9 +2252,10 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         )
                     }
                 } else {
-                    // Auto-scroll to the latest probe unless the user scrolled up
+                    // Auto-scroll to the latest probe unless the user scrolled
+                    // up; +1 skips the PING header item.
                     LaunchedEffect(probes.size) {
-                        if (probes.isNotEmpty()) listState.animateScrollToItem(probes.lastIndex)
+                        if (probes.isNotEmpty()) listState.animateScrollToItem(probes.lastIndex + 1)
                     }
                     // Selectable: any part of the log can be marked and copied
                     // with the native text-selection menu.
@@ -2263,12 +2265,23 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(12.dp)
                     ) {
+                        // ping(1)-style header: names the target even while no
+                        // probe has answered yet (or all timed out).
+                        item(key = "header") {
+                            Text(
+                                text = "PING ${session.target}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
                         items(probes.size) { index ->
                             val probe = probes[index]
                             val line = if (probe.rttMs != null) {
-                                "reply from ${session?.target}: seq=${probe.seq} time=%.2f ms".format(probe.rttMs)
+                                "reply from ${session.target}: seq=${probe.seq} time=%.2f ms".format(probe.rttMs)
                             } else {
-                                "request timeout for seq ${probe.seq}"
+                                "no reply from ${session.target}: seq=${probe.seq}"
                             }
                             Text(
                                 text = line,
@@ -2537,13 +2550,16 @@ private fun groupPasswordActive(config: YggstackConfig?): Boolean =
  * statistics — as shown in the terminal card, for the copy button.
  */
 private fun buildPingLogText(context: Context, session: PingSessionState): String {
-    val lines = session.probes.map { probe ->
-        if (probe.rttMs != null) {
+    // ping(1)-style header first, so the target is identifiable even when
+    // every probe timed out.
+    val lines = mutableListOf("PING ${session.target}")
+    session.probes.forEach { probe ->
+        lines += if (probe.rttMs != null) {
             "reply from ${session.target}: seq=${probe.seq} time=%.2f ms".format(probe.rttMs)
         } else {
-            "request timeout for seq ${probe.seq}"
+            "no reply from ${session.target}: seq=${probe.seq}"
         }
-    }.toMutableList()
+    }
     session.error?.let { lines += context.getString(R.string.ping_error_line, it) }
     session.doneReason?.let { reason ->
         lines += context.getString(

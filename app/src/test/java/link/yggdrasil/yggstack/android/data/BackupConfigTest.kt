@@ -39,20 +39,46 @@ class BackupConfigTest {
         assertEquals(30, high.applyTo(YggstackConfig(privateKey = key)).maxBackoff)
     }
 
-    @Test fun legacyJsonBackupWithoutMaxBackoffDecodesWithDefaults() {
-        val json = """{"yggdrasil":{"privateKey":"abc","peers":[],"multicastBeacon":false,"multicastListen":false},
+    @Test fun fromTomlRejectsContentWithNoYggstackSections() {
+        // A non-backup file picked by mistake (PDF, spreadsheet, random text):
+        // the lenient parser would otherwise yield an all-defaults backup that
+        // wipes the config on confirm.
+        val garbage = listOf(
+            "%PDF-1.7\n%âãÏÓ\n2 0 obj\n<< /Type /Catalog >>",
+            "Quarterly report\n================\nrevenue = 1234567\nlosses = high",
+            "just some words without structure",
+            ""   // empty file
+        )
+        garbage.forEach { content ->
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                BackupConfig.fromToml(content).getOrThrow()
+            }
+            assertEquals("Not a yggstack backup file", error.message)
+        }
+    }
+
+    @Test fun fromTomlRejectsLegacyJsonBackup() {
+        // JSON support was removed — all backups are TOML now; the old format
+        // must fail parsing, not silently import as an empty config.
+        val legacyJson = """{"yggdrasil":{"privateKey":"abc","peers":[]},
             "proxy":{"enabled":false,"socksAddress":"","dnsServer":""},
             "expose":{"enabled":false},"forward":{"enabled":false}}"""
-        val backup = BackupConfig.fromJson(json).getOrThrow()
-        assertTrue(backup.yggdrasil!!.maxBackoffEnabled)
-        assertEquals(5, backup.yggdrasil!!.maxBackoff)
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            BackupConfig.fromToml(legacyJson).getOrThrow()
+        }
+        assertEquals("Not a yggstack backup file", error.message)
+    }
+
+    @Test fun minimalBackupWithSingleKnownSectionParses() {
+        val backup = BackupConfig.fromToml("[forward]\nenabled = true").getOrThrow()
+        assertTrue(backup.forward.enabled)
     }
 
     @Test fun httpProxyRoundTripsThroughToml() {
         val backup = BackupConfig.fromYggstackConfig(
             YggstackConfig(socksProxy = "127.0.0.1:1080", httpProxy = "127.0.0.1:8080", proxyEnabled = true)
         )
-        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
         assertEquals("127.0.0.1:8080", restored.proxy.httpAddress)
         val applied = restored.applyTo(YggstackConfig())
         assertEquals("127.0.0.1:8080", applied.httpProxy)
@@ -67,7 +93,7 @@ class BackupConfigTest {
                     ListenEntry(ListenScheme.QUIC, "192.168.1.5", 4321))),
             includeYggdrasil = true
         )
-        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
         assertEquals(listOf("tcp://0.0.0.0:1234", "quic://192.168.1.5:4321"),
             restored.yggdrasil!!.listenEntries.map { it.toUri() })
         assertTrue(restored.yggdrasil!!.listenEnabled)
@@ -89,7 +115,7 @@ class BackupConfigTest {
         val backup = BackupConfig.fromYggstackConfig(
             YggstackConfig(dnsServer = "[308:1::]:53", dnsServer2 = "[308:2::]:53", proxyEnabled = true)
         )
-        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
         assertEquals("[308:2::]:53", restored.proxy.dnsServer2)
         val applied = restored.applyTo(YggstackConfig())
         assertEquals("[308:1::]:53", applied.dnsServer)
@@ -97,26 +123,15 @@ class BackupConfigTest {
     }
 
     @Test fun legacyBackupWithoutDnsServer2ImportsAsEmpty() {
-        // Legacy TOML without a dnsServer2 line…
         val fromToml = BackupConfig.fromToml(toml("")).getOrThrow()
         assertEquals("", fromToml.proxy.dnsServer2)
         assertEquals("", fromToml.applyTo(YggstackConfig()).dnsServer2)
-        // …and legacy JSON without the key.
-        val json = """{"proxy":{"enabled":true,"socksAddress":"127.0.0.1:1080","dnsServer":""},
-            "expose":{"enabled":false},"forward":{"enabled":false}}"""
-        assertEquals("", BackupConfig.fromJson(json).getOrThrow().proxy.dnsServer2)
     }
 
     @Test fun legacyBackupWithoutHttpAddressImportsAsEmpty() {
-        // TOML without an httpAddress line…
         val fromToml = BackupConfig.fromToml(toml("")).getOrThrow()
         assertEquals("", fromToml.proxy.httpAddress)
         assertEquals("", fromToml.applyTo(YggstackConfig()).httpProxy)
-        // …and legacy JSON without an httpAddress key.
-        val json = """{"proxy":{"enabled":true,"socksAddress":"127.0.0.1:1080","dnsServer":""},
-            "expose":{"enabled":false},"forward":{"enabled":false}}"""
-        val fromJson = BackupConfig.fromJson(json).getOrThrow()
-        assertEquals("", fromJson.proxy.httpAddress)
     }
 
     @Test fun pacSettingsRoundTripThroughTomlAndLegacyImportsDefault() {
@@ -126,7 +141,7 @@ class BackupConfigTest {
                 pacEnabled = true, pacIp = "192.168.1.5", pacPort = 9911, pacAllTraffic = true
             )
         )
-        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
         assertTrue(restored.proxy.pacEnabled)
         assertEquals("192.168.1.5", restored.proxy.pacIp)
         assertEquals(9911, restored.proxy.pacPort)
@@ -152,7 +167,7 @@ class BackupConfigTest {
                 proxyEnabled = true, socksEnabled = false, httpEnabled = true
             )
         )
-        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
         assertFalse(restored.proxy.socksEnabled)
         assertTrue(restored.proxy.httpEnabled)
         val applied = restored.applyTo(YggstackConfig())
@@ -163,17 +178,10 @@ class BackupConfigTest {
     }
 
     @Test fun legacyBackupWithoutEnableTicksEnablesOnlySocks() {
-        // Legacy TOML without socksEnabled/httpEnabled lines…
         val fromToml = BackupConfig.fromToml(toml("")).getOrThrow()
         assertTrue(fromToml.proxy.socksEnabled)
         assertFalse(fromToml.proxy.httpEnabled)
         assertTrue(fromToml.applyTo(YggstackConfig()).socksEnabled)
-        // …and legacy JSON without the keys.
-        val json = """{"proxy":{"enabled":true,"socksAddress":"127.0.0.1:1080","dnsServer":""},
-            "expose":{"enabled":false},"forward":{"enabled":false}}"""
-        val fromJson = BackupConfig.fromJson(json).getOrThrow()
-        assertTrue(fromJson.proxy.socksEnabled)
-        assertFalse(fromJson.proxy.httpEnabled)
     }
 
     @Test fun mappingNotesRoundTripThroughToml() {
@@ -191,7 +199,7 @@ class BackupConfigTest {
                 )
             )
         )
-        val restored = BackupConfig.fromString(backup.toToml()).getOrThrow()
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
         assertEquals(tricky, restored.expose.mappings.single().note)
         assertEquals("secret: qwerty123", restored.forward.mappings.single().note)
         val applied = restored.applyTo(YggstackConfig())

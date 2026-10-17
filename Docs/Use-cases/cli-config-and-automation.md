@@ -4,8 +4,7 @@ Provision the app from a shell (`adb`, Tasker, Termux, CI) using the backup
 file exported from the app (Diagnostics → Config → backup button). The
 `config` intent extra accepts either:
 
-- **inline content** — the backup text itself (TOML; the legacy JSON export
-  also parses), or
+- **inline content** — the backup text itself (TOML), or
 - **an absolute path to a file** containing it. The app runs unprivileged,
   so it can only open paths it has access to: `/data/local/tmp` works
   (adb push + chmod 644); arbitrary `/sdcard` paths — including

@@ -1,8 +1,6 @@
 package link.yggdrasil.yggstack.android.data
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 
 /**
  * Yggdrasil-specific settings included in a full backup
@@ -35,12 +33,6 @@ data class BackupConfig(
     val forward: ForwardSettings
 ) {
     companion object {
-        private val json = Json {
-            prettyPrint = true
-            prettyPrintIndent = "    "
-            ignoreUnknownKeys = true
-        }
-
         /**
          * Create backup from YggstackConfig.
          * @param includeYggdrasil when true, also backs up private key, peers, multicast and maxBackoff.
@@ -84,13 +76,20 @@ data class BackupConfig(
         }
 
         /**
-         * Parse backup from TOML string (new format).
+         * Parse backup from TOML string.
          * Uses a custom line-by-line parser that handles IPv6 addresses and
-         * arbitrary string values without relying on ktoml.
+         * arbitrary string values without relying on ktoml. The parser is
+         * lenient about unknown keys and sections, so as a guard against
+         * accidentally imported non-backup files (PDF, spreadsheet, random
+         * text) it rejects content with no recognized yggstack section.
          */
         fun fromToml(tomlString: String): Result<BackupConfig> = runCatching {
             // ---------- mutable accumulators ----------
             var section = ""  // "", "yggdrasil", "proxy", "expose", "forward", "expose.mappings", "forward.mappings"
+            // Set once any known section header is seen; the file is rejected
+            // without one. Every backup written by toToml() has at least
+            // [proxy]/[expose]/[forward].
+            var recognizedSection = false
 
             // yggdrasil
             var ygPrivateKey = ""
@@ -176,8 +175,8 @@ data class BackupConfig(
                     val headerInner = line.removePrefix("[[").removeSuffix("]]").trim()
                     section = headerInner
                     when (headerInner) {
-                        "expose.mappings"  -> { inExposeMappingEntry  = true }
-                        "forward.mappings" -> { inForwardMappingEntry = true }
+                        "expose.mappings"  -> { inExposeMappingEntry  = true; recognizedSection = true }
+                        "forward.mappings" -> { inForwardMappingEntry = true; recognizedSection = true }
                     }
                     continue
                 }
@@ -187,7 +186,8 @@ data class BackupConfig(
                     flushMapping()
                     section = line.removePrefix("[").removeSuffix("]").trim()
                     when (section) {
-                        "yggdrasil" -> hasYggdrasil = true
+                        "yggdrasil" -> { hasYggdrasil = true; recognizedSection = true }
+                        "proxy", "expose", "forward" -> recognizedSection = true
                     }
                     continue
                 }
@@ -257,6 +257,7 @@ data class BackupConfig(
                 }
             }
             flushMapping()
+            require(recognizedSection) { "Not a yggstack backup file" }
 
             BackupConfig(
                 yggdrasil = if (hasYggdrasil) YggdrasilSettings(
@@ -296,30 +297,6 @@ data class BackupConfig(
                 }
             }
             return result
-        }
-
-        /**
-         * Parse backup from JSON string (legacy format – backward compatibility).
-         */
-        fun fromJson(jsonString: String): Result<BackupConfig> {
-            return try {
-                val backup = json.decodeFromString<BackupConfig>(jsonString)
-                Result.success(backup)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-        }
-
-        /**
-         * Parse backup from a string, auto-detecting TOML or JSON format.
-         * JSON is detected by a leading '{'. Everything else is treated as TOML.
-         */
-        fun fromString(content: String): Result<BackupConfig> {
-            return if (content.trimStart().startsWith("{")) {
-                fromJson(content)
-            } else {
-                fromToml(content)
-            }
         }
     }
 
