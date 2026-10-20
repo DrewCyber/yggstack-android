@@ -9,6 +9,26 @@ package link.yggdrasil.yggstack.android.data
  */
 object ForwardPresets {
 
+    private val telegramMtproto8443 = ForwardMapping(
+        protocol = Protocol.TCP,
+        localIp = "127.0.0.1",
+        localPort = 8443,
+        remoteIp = "321:c99a:91a1:cd2c::1",
+        remotePort = 8443,
+        shortName = "Telegram MTProto 8443",
+        note = "https://t.me/proxy?server=127.0.0.1&port=8443&secret=1b3e58008e4a2838505ea99838db21df"
+    )
+
+    private val telegramMtproto8843 = ForwardMapping(
+        protocol = Protocol.TCP,
+        localIp = "127.0.0.1",
+        localPort = 8843,
+        remoteIp = "208:84:68:55:2f91:8484:8d60:2fca",
+        remotePort = 8843,
+        shortName = "Telegram MTProto 8843",
+        note = "by Revertron\nhttps://t.me/proxy?server=127.0.0.1&port=8843&secret=dd208e184d06275b7e07b56459d1efd409"
+    )
+
     val all: List<ForwardMapping> = listOf(
         ForwardMapping(
             protocol = Protocol.TCP,
@@ -28,24 +48,8 @@ object ForwardPresets {
             shortName = "SOCKS5 proxy 1082",
             note = "Outproxy by Makcim"
         ),
-        ForwardMapping(
-            protocol = Protocol.TCP,
-            localIp = "127.0.0.1",
-            localPort = 8443,
-            remoteIp = "321:c99a:91a1:cd2c::1",
-            remotePort = 8443,
-            shortName = "Telegram MTProto 8443",
-            note = "https://t.me/proxy?server=127.0.0.1&port=8443&secret=1b3e58008e4a2838505ea99838db21df"
-        ),
-        ForwardMapping(
-            protocol = Protocol.TCP,
-            localIp = "127.0.0.1",
-            localPort = 8843,
-            remoteIp = "208:84:68:55:2f91:8484:8d60:2fca",
-            remotePort = 8843,
-            shortName = "Telegram MTProto 8843",
-            note = "by Revertron\nhttps://t.me/proxy?server=127.0.0.1&port=8843&secret=dd208e184d06275b7e07b56459d1efd409"
-        ),
+        telegramMtproto8443,
+        telegramMtproto8843,
         ForwardMapping(
             protocol = Protocol.TCP,
             localIp = "127.0.0.1",
@@ -65,6 +69,9 @@ object ForwardPresets {
             note = "by Makcim"
         )
     )
+
+    /** Mappings a fresh install starts with (Forward Remote Port enabled). */
+    val defaults: List<ForwardMapping> = listOf(telegramMtproto8443, telegramMtproto8843)
 
     /** True when an existing mapping matches the preset's remote endpoint. */
     fun isAdded(preset: ForwardMapping, existing: List<ForwardMapping>): Boolean =

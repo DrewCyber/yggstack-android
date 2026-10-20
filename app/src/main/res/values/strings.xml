@@ -7,6 +7,10 @@
     <string name="nav_diagnostics">Diagnostics</string>
     <string name="nav_info">System</string>
 
+    <!-- Light/PRO UI mode toggle on the Configuration header; shows the active mode -->
+    <string name="ui_mode_pro" translatable="false">PRO</string>
+    <string name="ui_mode_light" translatable="false">LIGHT</string>
+
     <!-- Configuration Screen -->
     <string name="peers_section">Peers</string>
     <string name="add_peer">Add Peer</string>

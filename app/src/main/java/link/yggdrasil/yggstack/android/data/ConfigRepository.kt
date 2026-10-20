@@ -32,6 +32,20 @@ enum class ServiceStartMode(val value: String) {
 }
 
 /**
+ * How much of the UI is shown. Light hides the advanced Configuration cards
+ * (Expose Local Port, Yggdrasil.conf), Power Save's screen-state options and
+ * the Diagnostics tab; PRO shows everything.
+ */
+enum class UiMode(val value: String) {
+    LIGHT("light"),
+    PRO("pro");
+
+    companion object {
+        fun fromValue(value: String?): UiMode? = entries.firstOrNull { it.value == value }
+    }
+}
+
+/**
  * Repository for managing Yggstack configuration persistence
  */
 class ConfigRepository(private val context: Context) {
@@ -90,6 +104,7 @@ class ConfigRepository(private val context: Context) {
         private val POWER_SAVE_IDLE_TIMEOUT = intPreferencesKey("power_save_idle_timeout")
         private val PING_TARGET_KEY = stringPreferencesKey("ping_target")
         private val PING_COUNT_KEY = intPreferencesKey("ping_count")
+        private val UI_MODE_KEY = stringPreferencesKey("ui_mode")
 
         fun normalizeDnsServer(value: String): String {
             val trimmed = value.trim()
@@ -127,6 +142,11 @@ class ConfigRepository(private val context: Context) {
      */
     val configFlow: Flow<YggstackConfig> = context.dataStore.data.map { preferences ->
         preferences[CONFIG_SNAPSHOT]?.let { return@map ConfigSerializer.decode(it) }
+        // Fresh-install defaults. Where these differ from YggstackConfig's own
+        // defaults (forward, Power Save) they must stay here: the data-class
+        // defaults also fill fields missing from snapshots saved by older
+        // versions, and changing them there would switch those features on
+        // for existing users.
         YggstackConfig(
             peers = preferences[PEERS_KEY]?.let {
                 json.decodeFromString<List<String>>(it)
@@ -141,8 +161,8 @@ class ConfigRepository(private val context: Context) {
             exposeEnabled = preferences[EXPOSE_ENABLED] ?: false,
             forwardMappings = preferences[FORWARD_MAPPINGS]?.let {
                 json.decodeFromString<List<ForwardMapping>>(it)
-            } ?: emptyList(),
-            forwardEnabled = preferences[FORWARD_ENABLED] ?: false,
+            } ?: ForwardPresets.defaults,
+            forwardEnabled = preferences[FORWARD_ENABLED] ?: true,
             multicastBeacon = preferences[MULTICAST_BEACON] ?: false,
             multicastListen = preferences[MULTICAST_LISTEN] ?: false,
             groupPasswordEnabled = preferences[GROUP_PASSWORD_ENABLED] ?: false,
@@ -156,7 +176,7 @@ class ConfigRepository(private val context: Context) {
             disabledPeers = preferences[DISABLED_PEERS]?.let {
                 json.decodeFromString<List<String>>(it)
             } ?: emptyList(),
-            powerSaveEnabled = preferences[POWER_SAVE_ENABLED] ?: false,
+            powerSaveEnabled = preferences[POWER_SAVE_ENABLED] ?: true,
             powerSaveIdleTimeoutSeconds = preferences[POWER_SAVE_IDLE_TIMEOUT] ?: 60
         )
     }
@@ -201,6 +221,42 @@ class ConfigRepository(private val context: Context) {
             preferences[USE_SYSTEM_COLORS_KEY] = enabled
         }
     }
+
+    /**
+     * Light/PRO UI mode (see [UiMode]). Device-local UI preference only — not
+     * part of BackupConfig. Before [resolveUiMode] has stored a choice this
+     * falls back to the same first-run heuristic.
+     */
+    val uiModeFlow: Flow<UiMode> = context.dataStore.data.map { preferences ->
+        UiMode.fromValue(preferences[UI_MODE_KEY]) ?: defaultUiMode(preferences)
+    }
+
+    /**
+     * Stores the initial UI mode once per install and returns the effective
+     * mode. A fresh install starts in Light so a new user meets fewer options;
+     * an install that already has a config (upgrade from a version without
+     * this toggle) keeps the full PRO UI it had. The decision is persisted
+     * right away, since a Light user's very first saved config would
+     * otherwise flip the heuristic to PRO.
+     */
+    suspend fun resolveUiMode(): UiMode {
+        val preferences = context.dataStore.data.first()
+        UiMode.fromValue(preferences[UI_MODE_KEY])?.let { return it }
+        val mode = defaultUiMode(preferences)
+        context.dataStore.edit { it[UI_MODE_KEY] = mode.value }
+        return mode
+    }
+
+    suspend fun saveUiMode(mode: UiMode) {
+        context.dataStore.edit { preferences ->
+            preferences[UI_MODE_KEY] = mode.value
+        }
+    }
+
+    // PEERS_KEY covers installs from before the config snapshot existed
+    private fun defaultUiMode(preferences: Preferences): UiMode =
+        if (preferences.contains(CONFIG_SNAPSHOT) || preferences.contains(PEERS_KEY)) UiMode.PRO
+        else UiMode.LIGHT
 
     /**
      * Get autostart preference

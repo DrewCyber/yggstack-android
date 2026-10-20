@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -56,8 +57,11 @@ import link.yggdrasil.yggstack.android.utils.CountryFlags
 @Composable
 fun ConfigurationScreen(
     viewModel: ConfigurationViewModel,
+    uiMode: UiMode,
+    onUiModeChange: (UiMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isPro = uiMode == UiMode.PRO
     val config by viewModel.config.collectAsStateWithLifecycle()
     val serviceState by viewModel.serviceState.collectAsStateWithLifecycle()
     val showPrivateKey by viewModel.showPrivateKey.collectAsStateWithLifecycle()
@@ -84,6 +88,9 @@ fun ConfigurationScreen(
     LaunchedEffect(pendingDeepLink) {
         when (val link = pendingDeepLink) {
             is PendingDeepLink.ExposeLink -> {
+                // The Expose card only exists in PRO; without this the mapping
+                // would land in a card the user cannot see
+                onUiModeChange(UiMode.PRO)
                 editingExposeMapping = null
                 deepLinkExposePrefill = link.mapping
                 showExposeDialog = true
@@ -155,13 +162,43 @@ fun ConfigurationScreen(
             contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 62.dp) // Space for button at bottom
         ) {
             item(key = "title") {
-            // App title as part of scrollable content
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            // App title as part of scrollable content, with the Light/PRO
+            // toggle at the far right of the same line
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                Row(
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .toggleable(
+                            value = isPro,
+                            onValueChange = { onUiModeChange(if (it) UiMode.PRO else UiMode.LIGHT) },
+                            role = Role.Switch
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(if (isPro) R.string.ui_mode_pro else R.string.ui_mode_light),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isPro) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = isPro,
+                        onCheckedChange = null,
+                        modifier = Modifier.scale(0.8f)
+                    )
+                }
+            }
             }
             item(key = "peers") {
             // Peers Section with clickable header
@@ -505,8 +542,8 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
             }
-            item(key = "expose") {
-            // Expose Local Port Section
+            if (isPro) item(key = "expose") {
+            // Expose Local Port Section (PRO only)
             ConfigSectionWithToggle(
                 title = stringResource(R.string.expose_local_port_section),
                 enabled = config.exposeEnabled,
@@ -646,18 +683,20 @@ fun ConfigurationScreen(
                                 onCheckedChange = { viewModel.setPowerSaveWakeOnPortsActive(it) },
                                 enabled = !isServiceRunning
                             )
-                            PowerSaveToggleRow(
-                                label = stringResource(R.string.power_save_sleep_screen_off),
-                                checked = config.powerSaveSleepDuringScreenOff,
-                                onCheckedChange = { viewModel.setPowerSaveSleepDuringScreenOff(it) },
-                                enabled = !isServiceRunning
-                            )
-                            PowerSaveToggleRow(
-                                label = stringResource(R.string.power_save_wake_screen_on),
-                                checked = config.powerSaveWakeOnScreenOn,
-                                onCheckedChange = { viewModel.setPowerSaveWakeOnScreenOn(it) },
-                                enabled = !isServiceRunning
-                            )
+                            if (isPro) {
+                                PowerSaveToggleRow(
+                                    label = stringResource(R.string.power_save_sleep_screen_off),
+                                    checked = config.powerSaveSleepDuringScreenOff,
+                                    onCheckedChange = { viewModel.setPowerSaveSleepDuringScreenOff(it) },
+                                    enabled = !isServiceRunning
+                                )
+                                PowerSaveToggleRow(
+                                    label = stringResource(R.string.power_save_wake_screen_on),
+                                    checked = config.powerSaveWakeOnScreenOn,
+                                    onCheckedChange = { viewModel.setPowerSaveWakeOnScreenOn(it) },
+                                    enabled = !isServiceRunning
+                                )
+                            }
                         }
                         if (showIdleTimeoutDialog) {
                             PowerSaveIdleTimeoutDialog(
@@ -677,9 +716,9 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
             }
-            item(key = "yggdrasilConf") {
-            // Yggdrasil.conf card: private key, group password and MaxBackoff,
-            // collapsed by default; expansion state is persisted
+            if (isPro) item(key = "yggdrasilConf") {
+            // Yggdrasil.conf card (PRO only): private key, group password and
+            // MaxBackoff, collapsed by default; expansion state is persisted
             val yggdrasilConfExpanded by viewModel.yggdrasilConfExpanded.collectAsStateWithLifecycle()
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {

@@ -43,6 +43,7 @@ import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
 import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.ServiceStartMode
+import link.yggdrasil.yggstack.android.data.UiMode
 import link.yggdrasil.yggstack.android.data.VersionChecker
 import link.yggdrasil.yggstack.android.data.VersionInfo
 import link.yggdrasil.yggstack.android.service.PeerFetcherService
@@ -146,6 +147,10 @@ class MainActivity : ComponentActivity() {
         // is rendered with the correct scheme (avoids a visible flash on launch).
         val initialTheme = runBlocking { repository.themeFlow.first() }
         val initialUseSystemColors = runBlocking { repository.useSystemColorsFlow.first() }
+        // Same reason for the UI mode: it decides whether the Diagnostics tab
+        // exists, and resolving it here also fixes a fresh install's Light/PRO
+        // choice before any config write could change the answer.
+        val initialUiMode = runBlocking { repository.resolveUiMode() }
 
         // Apply the service-on-app-start policy once per process (not on
         // activity recreations like rotation or theme changes). A `config`
@@ -208,7 +213,10 @@ class MainActivity : ComponentActivity() {
                 darkTheme = darkTheme,
                 dynamicColor = useSystemColors
             ) {
-                MainScreen(initialUseSystemColors = initialUseSystemColors)
+                MainScreen(
+                    initialUseSystemColors = initialUseSystemColors,
+                    initialUiMode = initialUiMode
+                )
             }
         }
     }
@@ -239,7 +247,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(initialUseSystemColors: Boolean) {
+fun MainScreen(initialUseSystemColors: Boolean, initialUiMode: UiMode) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val applicationContext = context.applicationContext
     val repository = remember { ConfigRepository(applicationContext) }
@@ -249,6 +257,9 @@ fun MainScreen(initialUseSystemColors: Boolean) {
     // Preserves each tab's saveable state (scroll positions, list state)
     // across bottom-nav switches instead of fully disposing the screens
     val saveableStateHolder = rememberSaveableStateHolder()
+
+    val uiMode by repository.uiModeFlow.collectAsStateWithLifecycle(initialValue = initialUiMode)
+    val isPro = uiMode == UiMode.PRO
 
     // Use temp screen from companion object if available (after recreation), otherwise default to 0
     var selectedScreen by remember { mutableStateOf(MainActivity.tempSelectedScreen ?: 0) }
@@ -267,6 +278,11 @@ fun MainScreen(initialUseSystemColors: Boolean) {
     // Clear temp screen after using it
     LaunchedEffect(Unit) {
         MainActivity.tempSelectedScreen = null
+    }
+
+    // Light mode has no Diagnostics tab; never leave that screen selected
+    LaunchedEffect(isPro) {
+        if (!isPro && selectedScreen == 1) selectedScreen = 0
     }
 
     // Consume any pending deep link and forward it to the ViewModel
@@ -457,12 +473,14 @@ fun MainScreen(initialUseSystemColors: Boolean) {
                     selected = selectedScreen == 0,
                     onClick = { selectedScreen = 0 }
                 )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.BarChart, contentDescription = null) },
-                    label = { Text(stringResource(R.string.nav_diagnostics)) },
-                    selected = selectedScreen == 1,
-                    onClick = { selectedScreen = 1 }
-                )
+                if (isPro) {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.BarChart, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_diagnostics)) },
+                        selected = selectedScreen == 1,
+                        onClick = { selectedScreen = 1 }
+                    )
+                }
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Info, contentDescription = null) },
                     label = { Text(stringResource(R.string.nav_info)) },
@@ -482,7 +500,13 @@ fun MainScreen(initialUseSystemColors: Boolean) {
             // pager page) survives switching away and back
             saveableStateHolder.SaveableStateProvider(key = "screen_$selectedScreen") {
                 when (selectedScreen) {
-                    0 -> ConfigurationScreen(viewModel = configViewModel)
+                    0 -> ConfigurationScreen(
+                        viewModel = configViewModel,
+                        uiMode = uiMode,
+                        onUiModeChange = { mode ->
+                            coroutineScope.launch { repository.saveUiMode(mode) }
+                        }
+                    )
                     1 -> DiagnosticsScreen()
                     2 -> SettingsScreen(
                         initialUseSystemColors = initialUseSystemColors,
