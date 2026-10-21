@@ -105,6 +105,7 @@ class ConfigRepository(private val context: Context) {
         private val PING_TARGET_KEY = stringPreferencesKey("ping_target")
         private val PING_COUNT_KEY = intPreferencesKey("ping_count")
         private val UI_MODE_KEY = stringPreferencesKey("ui_mode")
+        private val RTT_AUTO_CHECK_DONE = booleanPreferencesKey("rtt_auto_check_done")
 
         fun normalizeDnsServer(value: String): String {
             val trimmed = value.trim()
@@ -143,10 +144,10 @@ class ConfigRepository(private val context: Context) {
     val configFlow: Flow<YggstackConfig> = context.dataStore.data.map { preferences ->
         preferences[CONFIG_SNAPSHOT]?.let { return@map ConfigSerializer.decode(it) }
         // Fresh-install defaults. Where these differ from YggstackConfig's own
-        // defaults (forward, Power Save) they must stay here: the data-class
-        // defaults also fill fields missing from snapshots saved by older
-        // versions, and changing them there would switch those features on
-        // for existing users.
+        // defaults (forward, multicast listen, Power Save) they must stay
+        // here: the data-class defaults also fill fields missing from
+        // snapshots saved by older versions, and changing them there would
+        // switch those features on for existing users.
         YggstackConfig(
             peers = preferences[PEERS_KEY]?.let {
                 json.decodeFromString<List<String>>(it)
@@ -164,7 +165,7 @@ class ConfigRepository(private val context: Context) {
             } ?: ForwardPresets.defaults,
             forwardEnabled = preferences[FORWARD_ENABLED] ?: true,
             multicastBeacon = preferences[MULTICAST_BEACON] ?: false,
-            multicastListen = preferences[MULTICAST_LISTEN] ?: false,
+            multicastListen = preferences[MULTICAST_LISTEN] ?: true,
             groupPasswordEnabled = preferences[GROUP_PASSWORD_ENABLED] ?: false,
             groupPassword = preferences[GROUP_PASSWORD] ?: "",
             logLevel = preferences[LOG_LEVEL] ?: "error",
@@ -251,6 +252,23 @@ class ConfigRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[UI_MODE_KEY] = mode.value
         }
+    }
+
+    /**
+     * One-shot gate for the automatic first-launch RTT check: atomically
+     * returns true and marks itself consumed the first time it is called per
+     * install. The check must fire on the first app start only — never again,
+     * even if that first attempt ended up not running the check.
+     */
+    suspend fun consumeFirstLaunchRttCheck(): Boolean {
+        var shouldRun = false
+        context.dataStore.edit { preferences ->
+            if (preferences[RTT_AUTO_CHECK_DONE] != true) {
+                preferences[RTT_AUTO_CHECK_DONE] = true
+                shouldRun = true
+            }
+        }
+        return shouldRun
     }
 
     // PEERS_KEY covers installs from before the config snapshot existed

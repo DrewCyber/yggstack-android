@@ -3,6 +3,8 @@ package link.yggdrasil.yggstack.android.ui.configuration.discovery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import link.yggdrasil.yggstack.android.data.ConfigRepository
@@ -104,8 +106,7 @@ class PeerDiscoveryViewModel(
     /**
      * Refresh external IP and load list for current network
      */
-    fun refreshExternalIp() {
-        viewModelScope.launch {
+    fun refreshExternalIp(): Job = viewModelScope.launch {
             try {
                 // Sync isCancellable state with actual Job state
                 val isRttCheckRunning = sortJob?.isActive == true
@@ -174,8 +175,7 @@ class PeerDiscoveryViewModel(
                 loadPeersForCurrentIp("unknown")
             }
         }
-    }
-    
+
     /**
      * Load peers for current IP from cache or create unsorted list
      */
@@ -365,6 +365,40 @@ class PeerDiscoveryViewModel(
     fun cancelSort() {
         sortJob?.cancel()
         sortJob = null
+    }
+
+    // In-memory guard for autoRttCheckOnFirstLaunch: the composable trigger
+    // re-fires on every Configuration tab re-entry; only the first one runs
+    private var firstLaunchAutoCheckStarted = false
+
+    /**
+     * Automatic RTT check for the very first app start: the Discover Peers
+     * button on the Configuration screen then already fills with check
+     * progress while the user works through the startup permission dialogs.
+     * Gated by a persisted one-shot flag — later app starts never auto-check.
+     */
+    fun autoRttCheckOnFirstLaunch() {
+        if (firstLaunchAutoCheckStarted) return
+        firstLaunchAutoCheckStarted = true
+        viewModelScope.launch {
+            // Consumed even when the check below ends up not running:
+            // "first app start" is one-shot, not "first successful start"
+            if (!repository.consumeFirstLaunchRttCheck()) return@launch
+
+            // The bundled public-peers seed is saved to the cache during app
+            // startup (MainActivity); wait briefly for it instead of racing
+            // an empty peer list
+            val deadline = System.currentTimeMillis() + 10_000
+            while (!repository.hasPublicPeersCache() && System.currentTimeMillis() < deadline) {
+                delay(250)
+            }
+            if (!repository.hasPublicPeersCache()) return@launch
+
+            refreshExternalIp().join()
+            // Empty list would just set "No peers to sort" as an error
+            if (_peers.value.isEmpty()) return@launch
+            sortByRTT()
+        }
     }
 
     /**

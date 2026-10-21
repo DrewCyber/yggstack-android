@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,7 +24,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -68,6 +73,26 @@ fun ConfigurationScreen(
     val pendingDeepLink by viewModel.pendingDeepLink.collectAsStateWithLifecycle()
     val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsStateWithLifecycle()
     val peerCountries by viewModel.peerCountries.collectAsStateWithLifecycle()
+
+    // Peer Discovery's ViewModel is created here instead of inside the screen
+    // so the Discover Peers button can mirror the RTT check progress — and so
+    // the check keeps running (and its progress stays observable) while the
+    // discovery screen is closed. Activity-scoped: the same instance is handed
+    // to PeerDiscoveryScreen below.
+    val discoveryContext = LocalContext.current
+    val discoveryRepository = remember { ConfigRepository(discoveryContext) }
+    val discoveryViewModel: PeerDiscoveryViewModel = viewModel(
+        factory = remember { PeerDiscoveryViewModel.Factory(discoveryRepository) }
+    )
+
+    // On the very first app start this composes (under the startup permission
+    // dialogs) within the first frames, so the RTT check is up and the
+    // Discover Peers button already fills while the user handles the dialogs.
+    // No-op on every later start: the ViewModel gates on a persisted one-shot
+    // flag.
+    LaunchedEffect(Unit) {
+        discoveryViewModel.autoRttCheckOnFirstLaunch()
+    }
 
     var editingPeer by remember { mutableStateOf<String?>(null) }
     var showPeerDialog by remember { mutableStateOf(false) }
@@ -247,9 +272,38 @@ fun ConfigurationScreen(
                     // primary-green Start Service — and staying in the app's
                     // green family.
                     if (!isServiceRunning) {
+                        // Mirror of the discovery screen's RTT check: the
+                        // button fills left to right with the check's progress,
+                        // so a check left running behind the closed screen stays
+                        // visible. State is read here, inside this item, so the
+                        // per-peer progress steps recompose only the Peers card.
+                        val rttCheckRunning by discoveryViewModel.isCancellable.collectAsStateWithLifecycle()
+                        val rttProgress by discoveryViewModel.progress.collectAsStateWithLifecycle()
+                        // Small floor while running so the fill reads as
+                        // started before the first checked peer reports back
+                        val fillFraction by animateFloatAsState(
+                            targetValue = if (rttCheckRunning) rttProgress.coerceAtLeast(0.04f) else 0f,
+                            animationSpec = tween(durationMillis = 300),
+                            label = "rttCheckFill"
+                        )
+                        val fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                         Button(
                             onClick = { showPeerDiscovery = true },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // Clip the fill to the pill shape; it is drawn
+                                // over the content, translucent so the label
+                                // stays readable
+                                .clip(ButtonDefaults.shape)
+                                .drawWithContent {
+                                    drawContent()
+                                    if (fillFraction > 0f) {
+                                        drawRect(
+                                            color = fillColor,
+                                            size = Size(size.width * fillFraction, size.height)
+                                        )
+                                    }
+                                },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -932,12 +986,6 @@ fun ConfigurationScreen(
     }
 
     if (showPeerDiscovery) {
-        val context = LocalContext.current
-        val repository = remember { ConfigRepository(context) }
-        val discoveryViewModel: PeerDiscoveryViewModel = viewModel(
-            factory = PeerDiscoveryViewModel.Factory(repository)
-        )
-        
         PeerDiscoveryScreen(
             viewModel = discoveryViewModel,
             onDismiss = { showPeerDiscovery = false },
