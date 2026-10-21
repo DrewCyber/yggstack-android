@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -711,8 +713,18 @@ private fun BackupTickRow(
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    // The whole row toggles (label taps included); the checkbox routes its
+    // own clicks through the row so both share one ripple and one
+    // accessibility action.
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Checkbox,
+                onValueChange = onCheckedChange
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -724,7 +736,7 @@ private fun BackupTickRow(
         )
         Checkbox(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             enabled = enabled
         )
     }
@@ -1774,7 +1786,8 @@ fun LogsViewer(viewModel: DiagnosticsViewModel) {
                     Text(
                         text = stringResource(R.string.no_logs_yet),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.Gray
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {

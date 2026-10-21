@@ -69,7 +69,7 @@
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
     <string name="expose_local_port_section">Expose Local Port</string>
     <string name="add_mapping">Add Mapping</string>
-    <string name="forward_remote_port_section">Forward Remote Port</string>
+    <string name="forward_remote_port_section">Forward Local Port</string>
     <string name="start_service">Start Service</string>
     <string name="stop_service">Stop Service</string>
     <string name="delete_peer">Delete peer</string>

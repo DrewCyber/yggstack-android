@@ -12,7 +12,7 @@
     <string name="add_peer">Добавить узел</string>
     <string name="add_custom_peer">Свой узел</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
-    <string name="multicast_discovery">Обнаружение узлов Multicast</string>
+    <string name="multicast_discovery">Широковещательное обнаружение</string>
     <string name="multicast_discover">Подключаться к обнаруженным узлам</string>
     <string name="multicast_advertise">Анонсировать для входящих подключений</string>
     <string name="listen_title">Listen</string>
@@ -63,9 +63,9 @@
     <string name="dns_server">DNS сервер</string>
     <string name="dns_server_2">DNS сервер 2 (резервный, необязательно)</string>
     <string name="dns_server_hint">[324:71e:281a:9ed3::53]:53</string>
-    <string name="expose_local_port_section">Открыть локальный порт</string>
+    <string name="expose_local_port_section">Выставить порт в сеть</string>
     <string name="add_mapping">Добавить маппинг</string>
-    <string name="forward_remote_port_section">Пробросить удалённый порт</string>
+    <string name="forward_remote_port_section">Пробросить локальный порт</string>
     <string name="start_service">Запустить сервис</string>
     <string name="stop_service">Остановить сервис</string>
     <string name="delete_peer">Удалить узел</string>
