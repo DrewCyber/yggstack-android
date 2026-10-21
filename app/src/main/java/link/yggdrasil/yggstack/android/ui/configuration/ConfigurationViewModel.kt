@@ -16,11 +16,12 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 /**
- * Represents a mapping pre-filled from a deep link, waiting to be shown in the Add dialog.
+ * Represents a mapping or peer pre-filled from a deep link, waiting to be shown in the Add dialog.
  */
 sealed class PendingDeepLink {
     data class ExposeLink(val mapping: ExposeMapping) : PendingDeepLink()
     data class ForwardLink(val mapping: ForwardMapping) : PendingDeepLink()
+    data class PeerLink(val peerUri: String) : PendingDeepLink()
 }
 
 /**

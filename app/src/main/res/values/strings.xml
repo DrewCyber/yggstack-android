@@ -261,8 +261,8 @@
     <string name="peer_discovery">Peer Discovery</string>
     <string name="discover_peers">Discover peers</string>
     <string name="external_ip">External IP</string>
-    <string name="get_peers">Get Peers</string>
-    <string name="rtt_check">RTT Check</string>
+    <string name="get_peers">Refresh</string>
+    <string name="rtt_check">Ping</string>
     <string name="country_filter">Country</string>
     <string name="all_countries">All countries</string>
     <string name="no_peers_match_filter">No peers from the selected countries</string>

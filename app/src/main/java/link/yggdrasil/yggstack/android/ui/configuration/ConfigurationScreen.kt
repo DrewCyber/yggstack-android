@@ -96,6 +96,8 @@ fun ConfigurationScreen(
 
     var editingPeer by remember { mutableStateOf<String?>(null) }
     var showPeerDialog by remember { mutableStateOf(false) }
+    // Prefill for the next Add Peer dialog: set by peer deep links
+    var peerPrefill by remember { mutableStateOf<String?>(null) }
     var showExposeDialog by remember { mutableStateOf(false) }
     var editingExposeMapping by remember { mutableStateOf<ExposeMapping?>(null) }
     var deepLinkExposePrefill by remember { mutableStateOf<ExposeMapping?>(null) }
@@ -125,6 +127,13 @@ fun ConfigurationScreen(
                 editingForwardMapping = null
                 forwardPrefill = link.mapping
                 showForwardDialog = true
+                viewModel.consumePendingDeepLink()
+            }
+            // The Peers card exists in both UI modes, so no mode switch here
+            is PendingDeepLink.PeerLink -> {
+                editingPeer = null
+                peerPrefill = link.peerUri
+                showPeerDialog = true
                 viewModel.consumePendingDeepLink()
             }
             null -> Unit
@@ -498,50 +507,54 @@ fun ConfigurationScreen(
                     onClick = { showDnsDialog = true }
                 )
 
-                ProxySettingRow(
-                    label = stringResource(R.string.http_proxy_title),
-                    value = config.httpProxy.ifBlank { stringResource(R.string.http_proxy_hint) },
-                    checked = config.httpEnabled,
-                    onCheckedChange = { viewModel.toggleHttpEnabled() },
-                    enabled = rowEnabled,
-                    onClick = { showHttpDialog = true },
-                    trailing = {
-                        if (config.httpProxy.isNotBlank()) {
-                            CopyAddressButton(context, config.httpProxy)
+                // HTTP proxy and PAC server are PRO-only rows; in Light mode
+                // the card is just SOCKS5 + DNS
+                if (isPro) {
+                    ProxySettingRow(
+                        label = stringResource(R.string.http_proxy_title),
+                        value = config.httpProxy.ifBlank { stringResource(R.string.http_proxy_hint) },
+                        checked = config.httpEnabled,
+                        onCheckedChange = { viewModel.toggleHttpEnabled() },
+                        enabled = rowEnabled,
+                        onClick = { showHttpDialog = true },
+                        trailing = {
+                            if (config.httpProxy.isNotBlank()) {
+                                CopyAddressButton(context, config.httpProxy)
+                            }
                         }
-                    }
-                )
+                    )
 
-                ProxySettingRow(
-                    label = stringResource(R.string.pac_server),
-                    value = PacGenerator.pacUrl(config.pacIp, config.pacPort),
-                    checked = config.pacEnabled,
-                    onCheckedChange = { viewModel.togglePacEnabled() },
-                    enabled = rowEnabled,
-                    onClick = { showPacDialog = true },
-                    trailing = {
-                        // The URL is static while configured — copyable even with
-                        // the service running, since it never changes on the fly.
-                        IconButton(onClick = {
-                            val clipboard =
-                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(
-                                ClipData.newPlainText("PAC URL", PacGenerator.pacUrl(config.pacIp, config.pacPort))
-                            )
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.pac_url_copied),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = stringResource(R.string.copy_pac_url),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                    ProxySettingRow(
+                        label = stringResource(R.string.pac_server),
+                        value = PacGenerator.pacUrl(config.pacIp, config.pacPort),
+                        checked = config.pacEnabled,
+                        onCheckedChange = { viewModel.togglePacEnabled() },
+                        enabled = rowEnabled,
+                        onClick = { showPacDialog = true },
+                        trailing = {
+                            // The URL is static while configured — copyable even with
+                            // the service running, since it never changes on the fly.
+                            IconButton(onClick = {
+                                val clipboard =
+                                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText("PAC URL", PacGenerator.pacUrl(config.pacIp, config.pacPort))
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.pac_url_copied),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = stringResource(R.string.copy_pac_url),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
-                    }
-                )
+                    )
+                }
 
             }
 
@@ -1088,12 +1101,14 @@ fun ConfigurationScreen(
     }
 
     if (showPeerDialog) {
-        key(showPeerDialog, editingPeer) {
+        key(showPeerDialog, editingPeer, peerPrefill) {
             PeerDialog(
                 initialPeer = editingPeer,
+                prefillPeer = peerPrefill,
                 onDismiss = {
                     showPeerDialog = false
                     editingPeer = null
+                    peerPrefill = null
                 },
                 onConfirm = { newPeer ->
                     if (editingPeer != null) {
@@ -1101,6 +1116,7 @@ fun ConfigurationScreen(
                     } else {
                         viewModel.addPeer(newPeer)
                     }
+                    peerPrefill = null
                     showPeerDialog = false
                     editingPeer = null
                 },
@@ -2333,11 +2349,12 @@ fun ForwardMappingDialog(
 @Composable
 fun PeerDialog(
     initialPeer: String? = null,
+    prefillPeer: String? = null,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
-    var peerUri by remember { mutableStateOf(initialPeer ?: "") }
+    var peerUri by remember { mutableStateOf(prefillPeer ?: initialPeer ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2381,9 +2398,13 @@ fun PeerDialog(
             Row {
                 TextButton(
                     onClick = {
+                        // Same deep-link form as the mapping dialogs; the peer
+                        // URI is encoded whole so its own query tail survives
+                        val url = "https://DrewCyber.github.io/mapping/peer?uri=" +
+                            Uri.encode(peerUri.trim())
                         val sendIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, peerUri.trim())
+                            putExtra(Intent.EXTRA_TEXT, url)
                         }
                         context.startActivity(Intent.createChooser(sendIntent, null))
                     },

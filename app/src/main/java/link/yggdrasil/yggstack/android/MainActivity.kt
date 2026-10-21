@@ -105,6 +105,14 @@ class MainActivity : ComponentActivity() {
                     val note = uri.getQueryParameter("note") ?: ""
                     PendingDeepLink.ForwardLink(ForwardMapping(proto, localIp, localPort, remoteIp, remotePort, shortName, note))
                 }
+                // The peer URI travels percent-encoded in a single query
+                // parameter: it carries its own "?key=…&password=…" tail,
+                // which would otherwise be split as parameters of this link
+                "/mapping/peer" -> {
+                    val peerUri = uri.getQueryParameter("uri")?.trim()
+                        ?.takeIf { it.isNotEmpty() } ?: return null
+                    PendingDeepLink.PeerLink(peerUri)
+                }
                 else -> null
             }
         }

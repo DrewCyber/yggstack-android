@@ -255,8 +255,8 @@
     <string name="peer_discovery">Обнаружение узлов</string>
     <string name="discover_peers">Найти узлы</string>
     <string name="external_ip">Внешний IP</string>
-    <string name="get_peers">Скачать список</string>
-    <string name="rtt_check">Проверка RTT</string>
+    <string name="get_peers">Обновить</string>
+    <string name="rtt_check">Ping</string>
     <string name="country_filter">Страна</string>
     <string name="all_countries">Все страны</string>
     <string name="no_peers_match_filter">Нет узлов из выбранных стран</string>
