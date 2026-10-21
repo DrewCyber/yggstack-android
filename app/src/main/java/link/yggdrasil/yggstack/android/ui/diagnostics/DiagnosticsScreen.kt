@@ -3,11 +3,17 @@ package link.yggdrasil.yggstack.android.ui.diagnostics
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -26,6 +33,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -36,33 +45,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.PeerDetail
 import link.yggdrasil.yggstack.android.data.PingSessionState
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
-import link.yggdrasil.yggstack.android.data.PacGenerator
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.ui.configuration.IpSuggestion
 import link.yggdrasil.yggstack.android.ui.configuration.LocalIpTextField
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** Stable ids for the Diagnostics tabs. Persisted in the tab order, so the
  *  numbers must never be reused; a new tab appends the next free id. */
@@ -260,11 +276,19 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     var showImportPreview by remember { mutableStateOf(false) }
     var importedBackup by remember { mutableStateOf<BackupConfig?>(null) }
     var showExportDialog by remember { mutableStateOf(false) }
+    // Which card button opened the dialog: confirm saves a file (false) or
+    // hands the backup to the share sheet (true)
+    var exportForShare by remember { mutableStateOf(false) }
     var includeYggdrasil by remember { mutableStateOf(false) }
+    var includePrivateKey by remember { mutableStateOf(false) }
 
-    // Recompute backup TOML whenever config or toggle changes (used by export launcher)
-    val backupToml = remember(yggstackConfig, includeYggdrasil) {
-        yggstackConfig?.let { BackupConfig.fromYggstackConfig(it, includeYggdrasil).toToml() } ?: ""
+    // Recompute backup TOML whenever config or ticks change (used by export
+    // launcher and share). The private key only applies with Yggdrasil
+    // parameters ticked — it is one of them.
+    val backupToml = remember(yggstackConfig, includeYggdrasil, includePrivateKey) {
+        yggstackConfig?.let {
+            BackupConfig.fromYggstackConfig(it, includeYggdrasil, includePrivateKey && includeYggdrasil).toToml()
+        } ?: ""
     }
 
     // Export launcher – saves .toml file
@@ -324,14 +348,15 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
         }
     }
 
-    // Import preview dialog
+    // Import preview dialog; applies the backup as previewed (the dialog
+    // blanks the key when "Ignore private key" is ticked)
     if (showImportPreview && importedBackup != null) {
         ImportPreviewDialog(
             backup = importedBackup!!,
-            onConfirm = {
+            onConfirm = { backup ->
                 scope.launch {
                     try {
-                        viewModel.importBackup(importedBackup!!)
+                        viewModel.importBackup(backup)
                         Toast.makeText(context, "Configuration imported successfully", Toast.LENGTH_SHORT).show()
                         showImportPreview = false
                         importedBackup = null
@@ -347,16 +372,41 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
         )
     }
 
-    // Export dialog
+    // Export/share dialog — the same "Backup Configuration" screen; the
+    // confirm action depends on which card button opened it
     if (showExportDialog && yggstackConfig != null) {
         ExportBackupDialog(
             yggstackConfig = yggstackConfig!!,
             includeYggdrasil = includeYggdrasil,
-            onToggle = { includeYggdrasil = it },
+            includePrivateKey = includePrivateKey,
+            onToggleYggdrasil = {
+                includeYggdrasil = it
+                // Turning the parent tick off resets the nested one, so
+                // re-enabling never silently re-includes the private key
+                if (!it) includePrivateKey = false
+            },
+            onTogglePrivateKey = { includePrivateKey = it },
+            forShare = exportForShare,
             onConfirm = {
                 showExportDialog = false
                 val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                exportLauncher.launch("yggstack_backup_$timestamp.toml")
+                if (exportForShare) {
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { writeBackupShareFile(context, backupToml, timestamp) }
+                            .onSuccess { uri ->
+                                withContext(Dispatchers.Main) {
+                                    context.startActivity(backupShareIntent(context, uri))
+                                }
+                            }
+                            .onFailure { e ->
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                    }
+                } else {
+                    exportLauncher.launch("yggstack_backup_$timestamp.toml")
+                }
             },
             onDismiss = { showExportDialog = false }
         )
@@ -488,13 +538,16 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Backup (export) button – opens export dialog.
-                    // Icons: "output" for backup, "input" for restore.
+                    // Icons: "save" for backup, "backup restore" for restore.
                     IconButton(
-                        onClick = { showExportDialog = true },
+                        onClick = {
+                            exportForShare = false
+                            showExportDialog = true
+                        },
                         enabled = yggstackConfig != null
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_output),
+                            painter = painterResource(R.drawable.ic_save),
                             contentDescription = "Backup configuration",
                             tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
                         )
@@ -504,351 +557,308 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                         importLauncher.launch(arrayOf("*/*"))
                     }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_input),
+                            painter = painterResource(R.drawable.ic_backup_restore),
                             contentDescription = "Restore configuration",
                             tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // Share button – the same dialog in share mode; confirm
+                    // hands the backup file to other apps via the share sheet
+                    IconButton(
+                        onClick = {
+                            exportForShare = true
+                            showExportDialog = true
+                        },
+                        enabled = yggstackConfig != null
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share configuration",
+                            tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
                         )
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Writes [toml] to a fresh cache file and returns its FileProvider URI.
+ * Previous share copies are removed so repeated shares don't pile up in cache.
+ * Must run on a worker thread.
+ */
+private fun writeBackupShareFile(context: Context, toml: String, timestamp: String): Uri {
+    context.cacheDir.listFiles { f -> f.name.startsWith("yggstack_backup_") }?.forEach { it.delete() }
+    val shareFile = File(context.cacheDir, "yggstack_backup_$timestamp.toml")
+    shareFile.writeText(toml)
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", shareFile)
+}
+
+/**
+ * ACTION_SEND intent handing the backup file to the share sheet. clipData
+ * mirrors EXTRA_STREAM so the read grant is honored on all Android versions.
+ */
+private fun backupShareIntent(context: Context, uri: Uri): Intent =
+    Intent.createChooser(
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        },
+        context.getString(R.string.backup_share_chooser_title)
+    )
+
+/**
+ * Shared chrome of the backup export/share and import dialogs: title, a
+ * full-bleed TOML preview that takes the leftover height, [ticks] pinned
+ * below it, then Cancel + confirm.
+ *
+ * Plain Dialog rather than AlertDialog so the preview can run edge to edge
+ * of the dialog surface (AlertDialog insets its content slot by 24dp), and
+ * without the platform's dialog width cap so it can use nearly the full
+ * screen width. The column is capped at 95% of the available height and the
+ * preview takes the leftover with weight, so it grows with the TOML and
+ * scrolls past the cap while the ticks and buttons stay pinned below it —
+ * they never get pushed off-screen on short displays.
+ */
+@Composable
+private fun BackupTomlDialog(
+    title: String,
+    toml: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    ticks: @Composable ColumnScope.() -> Unit
+) {
+    // The window still wraps the content, so the card stays centered; the
+    // horizontal padding is its margin from the screen edges
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        BoxWithConstraints {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = maxHeight * 0.95f)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 12.dp)
+                    )
+                    // Full-bleed preview: same left/right borders as the
+                    // dialog. Scrolling lives on the text itself; the thumb
+                    // on its end edge marks it as scrollable (Compose draws
+                    // no scrollbars of its own).
+                    val previewScrollState = rememberScrollState()
+                    var viewportPx by remember { mutableStateOf(0) }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clipToBounds()
+                            .onGloballyPositioned { viewportPx = it.size.height }
+                    ) {
+                        Text(
+                            text = toml,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .verticalScroll(previewScrollState)
+                        )
+                        TomlScrollIndicator(
+                            state = previewScrollState,
+                            viewportPx = viewportPx
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.padding(start = 24.dp, top = 8.dp, end = 24.dp),
+                        content = ticks
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = onConfirm) {
+                            Text(confirmLabel)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One tick row of the backup dialogs: label on the left, box on the right. */
+@Composable
+private fun BackupTickRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
+}
+
+/**
+ * Thin position thumb on the end (right) edge of the TOML preview. Compose's
+ * verticalScroll draws no scrollbar (there is nothing to re-enable), so this
+ * marks the preview as scrollable: the thumb flashes once when a dialog opens
+ * with overflowing content, follows the position while scrolling and fades
+ * out when idle. Indicator only — not draggable.
+ */
+@Composable
+private fun BoxScope.TomlScrollIndicator(state: ScrollState, viewportPx: Int) {
+    if (state.maxValue <= 0 || viewportPx <= 0) return
+
+    val alpha = remember { Animatable(0f) }
+    // Discoverability flash on open; the fade is skipped if the user is
+    // already scrolling by then (the scroll-driven effect owns it)
+    LaunchedEffect(Unit) {
+        alpha.animateTo(1f, tween(150))
+        delay(800)
+        if (!state.isScrollInProgress) alpha.animateTo(0f, tween(400))
+    }
+    LaunchedEffect(state.isScrollInProgress) {
+        if (state.isScrollInProgress) {
+            alpha.animateTo(1f, tween(80))
+        } else {
+            delay(800)
+            alpha.animateTo(0f, tween(400))
+        }
+    }
+
+    // The thumb covers the fraction of the content that is visible and
+    // travels the rest of the track in proportion to the scroll position
+    val contentPx = viewportPx + state.maxValue
+    val thumbFraction = viewportPx.toFloat() / contentPx
+    val travelPx = viewportPx * (1f - thumbFraction)
+    val offsetPx = (state.value.toFloat() / state.maxValue) * travelPx
+
+    // Anchored to the top of the track: the offset below is the distance
+    // travelled from there
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(end = 3.dp)
+            .width(3.dp)
+            .fillMaxHeight(thumbFraction)
+            .offset { IntOffset(0, offsetPx.roundToInt()) }
+            .alpha(alpha.value)
+            .background(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(2.dp)
+            )
+    )
 }
 
 @Composable
 fun ExportBackupDialog(
     yggstackConfig: YggstackConfig,
     includeYggdrasil: Boolean,
-    onToggle: (Boolean) -> Unit,
+    includePrivateKey: Boolean,
+    onToggleYggdrasil: (Boolean) -> Unit,
+    onTogglePrivateKey: (Boolean) -> Unit,
+    forShare: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val backupToml = remember(yggstackConfig, includeYggdrasil) {
-        BackupConfig.fromYggstackConfig(yggstackConfig, includeYggdrasil).toToml()
+    val backupToml = remember(yggstackConfig, includeYggdrasil, includePrivateKey) {
+        BackupConfig.fromYggstackConfig(yggstackConfig, includeYggdrasil, includePrivateKey && includeYggdrasil).toToml()
     }
 
-    // AlertDialog pins the confirm/dismiss buttons outside the scrollable
-    // text area, so they stay visible on short screens (fixed-height preview
-    // inside a plain Dialog Column used to push them off-screen there).
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = stringResource(R.string.backup_export_title),
-                style = MaterialTheme.typography.titleLarge
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                // Toggle: include Yggdrasil parameters
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.backup_include_yggdrasil),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = includeYggdrasil,
-                        onCheckedChange = onToggle
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = if (includeYggdrasil)
-                        stringResource(R.string.backup_desc_full)
-                    else
-                        stringResource(R.string.backup_desc_yggstack_only),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = stringResource(R.string.backup_preview_label),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    // Scrolling lives on the text itself: the card is capped
-                    // at 320dp, so the outer dialog scroll can never reveal
-                    // a longer TOML — only this inner scroll can.
-                    Text(
-                        text = backupToml,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) {
-                Text(stringResource(R.string.backup_export_button))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        }
-    )
+    BackupTomlDialog(
+        title = stringResource(R.string.backup_export_title),
+        toml = backupToml,
+        confirmLabel = stringResource(if (forShare) R.string.backup_share_button else R.string.backup_export_button),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss
+    ) {
+        BackupTickRow(
+            label = stringResource(R.string.backup_include_yggdrasil),
+            checked = includeYggdrasil,
+            enabled = true,
+            onCheckedChange = onToggleYggdrasil
+        )
+        // Only selectable with Yggdrasil parameters on, and off by default so
+        // a shared backup doesn't carry the node identity unless explicitly
+        // ticked
+        BackupTickRow(
+            label = stringResource(R.string.backup_include_private_key),
+            checked = includeYggdrasil && includePrivateKey,
+            enabled = includeYggdrasil,
+            onCheckedChange = onTogglePrivateKey
+        )
+    }
 }
 
+/**
+ * Import preview: the TOML exactly as it will be applied. [onConfirm]
+ * receives that effective backup — with the private key blanked when
+ * "Ignore private key" is ticked, which [BackupConfig.applyTo] treats as
+ * "keep the device's own key".
+ */
 @Composable
 fun ImportPreviewDialog(
     backup: BackupConfig,
-    onConfirm: () -> Unit,
+    onConfirm: (BackupConfig) -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Text(
-                    text = stringResource(R.string.import_config_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                Text(
-                    text = stringResource(R.string.import_config_description),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-                // Yggdrasil settings (only present in full backups)
-                backup.yggdrasil?.let { ygd ->
-                    Text(
-                        text = stringResource(R.string.backup_yggdrasil_settings),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                    val truncatedKey = if (ygd.privateKey.length > 20)
-                        "${ygd.privateKey.take(8)}...${ygd.privateKey.takeLast(8)}"
-                    else "●●●"
-                    Text(
-                        text = stringResource(R.string.backup_private_key_label, truncatedKey),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = stringResource(R.string.backup_peers_count, ygd.peers.size),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    ygd.peers.forEach { peer ->
-                        Text(
-                            text = "  - $peer",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.backup_multicast_beacon, ygd.multicastBeacon),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = stringResource(R.string.backup_multicast_listen, ygd.multicastListen),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    if (ygd.listenEntries.isNotEmpty()) {
-                        Text(
-                            text = stringResource(
-                                R.string.backup_listen_entries,
-                                ygd.listenEntries.joinToString(", ") { it.toUri() }
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.backup_group_password_enabled, ygd.groupPasswordEnabled),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    if (ygd.groupPassword.isNotBlank()) {
-                        val maskedGroupPassword = if (ygd.groupPassword.length > 12) {
-                            "${ygd.groupPassword.take(4)}...${ygd.groupPassword.takeLast(4)}"
-                        } else {
-                            "●●●●"
-                        }
-                        Text(
-                            text = stringResource(R.string.backup_group_password_value, maskedGroupPassword),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.backup_max_backoff, ygd.maxBackoff),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                // Proxy settings
-                Text(
-                    text = stringResource(R.string.proxy_settings),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Text(
-                    text = stringResource(R.string.enabled_label, backup.proxy.enabled),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-                if (backup.proxy.socksAddress.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.socks_label, backup.proxy.socksAddress),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                if (backup.proxy.httpAddress.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.http_label, backup.proxy.httpAddress),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                if (backup.proxy.dnsServer.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.dns_label, backup.proxy.dnsServer),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                if (backup.proxy.dnsServer2.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.dns_label, backup.proxy.dnsServer2),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                if (backup.proxy.pacEnabled) {
-                    Text(
-                        text = stringResource(
-                            R.string.pac_label,
-                            PacGenerator.pacUrl(backup.proxy.pacIp, backup.proxy.pacPort),
-                            if (backup.proxy.pacAllTraffic) "all traffic" else "ygg only"
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Expose mappings
-                Text(
-                    text = stringResource(R.string.expose_mappings),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Text(
-                    text = stringResource(R.string.enabled_label, backup.expose.enabled),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = stringResource(R.string.mappings_count, backup.expose.mappings.size),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-                backup.expose.mappings.forEach { mapping ->
-                    Text(
-                        text = "  - ${mapping.protocol} ${mapping.localPort} → ${mapping.yggPort}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Forward mappings
-                Text(
-                    text = stringResource(R.string.forward_mappings),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Text(
-                    text = stringResource(R.string.enabled_label, backup.forward.enabled),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = stringResource(R.string.mappings_count, backup.forward.mappings.size),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
-                )
-                backup.forward.mappings.forEach { mapping ->
-                    Text(
-                        text = "  - ${mapping.protocol} ${mapping.remoteIp}:${mapping.remotePort} → ${mapping.localPort}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = if (backup.yggdrasil != null)
-                        stringResource(R.string.import_note_full)
-                    else
-                        stringResource(R.string.import_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = onConfirm) {
-                        Text(stringResource(R.string.import_button))
-                    }
-                }
-            }
+    // The tick only means something when the backup carries a key
+    val hasPrivateKey = backup.yggdrasil?.privateKey?.isNotBlank() == true
+    var ignorePrivateKey by remember { mutableStateOf(false) }
+    val effectiveBackup = remember(backup, ignorePrivateKey) {
+        if (ignorePrivateKey && hasPrivateKey) {
+            backup.copy(yggdrasil = backup.yggdrasil?.copy(privateKey = ""))
+        } else {
+            backup
         }
+    }
+    val toml = remember(effectiveBackup) { effectiveBackup.toToml() }
+
+    BackupTomlDialog(
+        title = stringResource(R.string.import_config_title),
+        toml = toml,
+        confirmLabel = stringResource(R.string.import_button),
+        onConfirm = { onConfirm(effectiveBackup) },
+        onDismiss = onDismiss
+    ) {
+        BackupTickRow(
+            label = stringResource(R.string.import_ignore_private_key),
+            checked = hasPrivateKey && ignorePrivateKey,
+            enabled = hasPrivateKey,
+            onCheckedChange = { ignorePrivateKey = it }
+        )
     }
 }
 

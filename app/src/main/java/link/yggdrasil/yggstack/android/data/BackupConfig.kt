@@ -35,12 +35,18 @@ data class BackupConfig(
     companion object {
         /**
          * Create backup from YggstackConfig.
-         * @param includeYggdrasil when true, also backs up private key, peers, multicast and maxBackoff.
+         * @param includeYggdrasil when true, also backs up peers, listen, multicast, group password and maxBackoff.
+         * @param includePrivateKey when false (with [includeYggdrasil]), the private key is left out:
+         * nothing is serialised for it, and an import keeps the receiving device's own key.
          */
-        fun fromYggstackConfig(config: YggstackConfig, includeYggdrasil: Boolean = false): BackupConfig {
+        fun fromYggstackConfig(
+            config: YggstackConfig,
+            includeYggdrasil: Boolean = false,
+            includePrivateKey: Boolean = true
+        ): BackupConfig {
             return BackupConfig(
                 yggdrasil = if (includeYggdrasil) YggdrasilSettings(
-                    privateKey = config.privateKey,
+                    privateKey = if (includePrivateKey) config.privateKey else "",
                     peers = config.peers,
                     multicastBeacon = config.multicastBeacon,
                     multicastListen = config.multicastListen,
@@ -306,7 +312,12 @@ data class BackupConfig(
     fun toToml(): String = buildString {
         if (yggdrasil != null) {
             appendLine("[yggdrasil]")
-            appendLine("privateKey = \"${yggdrasil.privateKey.tomlEscape()}\"")
+            // Blank key = deliberately excluded from the backup; the line is
+            // omitted so the parser leaves ygPrivateKey empty and applyTo
+            // keeps the importing device's key
+            if (yggdrasil.privateKey.isNotBlank()) {
+                appendLine("privateKey = \"${yggdrasil.privateKey.tomlEscape()}\"")
+            }
             val peersToml = yggdrasil.peers.joinToString(", ") { "\"${it.tomlEscape()}\"" }
             appendLine("peers = [$peersToml]")
             appendLine("multicastBeacon = ${yggdrasil.multicastBeacon}")
@@ -390,7 +401,9 @@ data class BackupConfig(
         )
         return yggdrasil?.let {
             base.copy(
-                privateKey = it.privateKey,
+                // A blank key means the backup was made without it — never
+                // blank the device's key on import
+                privateKey = it.privateKey.ifBlank { config.privateKey },
                 peers = it.peers,
                 multicastBeacon = it.multicastBeacon,
                 multicastListen = it.multicastListen,

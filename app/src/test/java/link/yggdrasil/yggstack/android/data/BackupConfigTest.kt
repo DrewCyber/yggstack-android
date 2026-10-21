@@ -224,4 +224,37 @@ class BackupConfigTest {
         """.trimIndent()).getOrThrow()
         assertEquals("", backup.expose.mappings.single().note)
     }
+
+    @Test fun privateKeyTickOmittedBackupKeepsDeviceKeyOnImport() {
+        // Backup made with "Include private key" unticked: nothing is
+        // serialised for the key, and an import must never blank the
+        // receiving device's key — only the other Yggdrasil params apply.
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(privateKey = key, peers = listOf("tcp://peer:1234")),
+            includeYggdrasil = true,
+            includePrivateKey = false
+        )
+        val toml = backup.toToml()
+        assertFalse(toml.contains("privateKey"))
+
+        val restored = BackupConfig.fromToml(toml).getOrThrow()
+        assertTrue(restored.yggdrasil!!.privateKey.isBlank())
+        assertEquals(listOf("tcp://peer:1234"), restored.yggdrasil!!.peers)
+
+        val deviceKey = "cd".repeat(64)
+        val applied = restored.applyTo(YggstackConfig(privateKey = deviceKey))
+        assertEquals(deviceKey, applied.privateKey)
+        assertEquals(listOf("tcp://peer:1234"), applied.peers)
+    }
+
+    @Test fun privateKeyStillRoundTripsWhenTickDefault() {
+        // Default includePrivateKey=true keeps the pre-tick behavior: the key
+        // is serialised and overwrites on import.
+        val backup = BackupConfig.fromYggstackConfig(
+            YggstackConfig(privateKey = key), includeYggdrasil = true
+        )
+        val restored = BackupConfig.fromToml(backup.toToml()).getOrThrow()
+        assertEquals(key, restored.yggdrasil!!.privateKey)
+        assertEquals(key, restored.applyTo(YggstackConfig(privateKey = "ef".repeat(64))).privateKey)
+    }
 }

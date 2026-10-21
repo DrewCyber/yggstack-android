@@ -413,8 +413,9 @@ class DiagnosticsViewModel(
     
     fun importBackup(backup: BackupConfig) {
         viewModelScope.launch {
-            // Get current config
-            val currentConfig = _yggstackConfig.value ?: return@launch
+            // Get current config; fall back to the repository for the rare
+            // case of applying before the in-memory state has loaded
+            val currentConfig = _yggstackConfig.value ?: repository.configFlow.first()
             
             // Apply backup to current config
             val updatedConfig = backup.applyTo(currentConfig)

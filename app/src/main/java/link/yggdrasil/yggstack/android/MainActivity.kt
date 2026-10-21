@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import link.yggdrasil.yggstack.android.automation.ConfigExtra
+import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
@@ -53,6 +54,7 @@ import link.yggdrasil.yggstack.android.ui.configuration.ConfigurationScreen
 import link.yggdrasil.yggstack.android.ui.configuration.ConfigurationViewModel
 import link.yggdrasil.yggstack.android.ui.configuration.PendingDeepLink
 import link.yggdrasil.yggstack.android.ui.diagnostics.DiagnosticsScreen
+import link.yggdrasil.yggstack.android.ui.diagnostics.ImportPreviewDialog
 import link.yggdrasil.yggstack.android.ui.settings.SettingsScreen
 import link.yggdrasil.yggstack.android.ui.theme.YggstackAndroidTheme
 import link.yggdrasil.yggstack.android.utils.AppLinkHelper
@@ -70,6 +72,10 @@ class MainActivity : ComponentActivity() {
         var tempSelectedScreen: Int? = null
         // Pending deep link as a StateFlow so Compose reacts every time it is set
         val pendingDeepLinkFlow = MutableStateFlow<PendingDeepLink?>(null)
+        // Raw TOML of a backup shared to the app (ACTION_SEND share target),
+        // as a StateFlow so Compose reacts every time it is set. Published by
+        // ShareReceiveActivity; consumed by MainScreen's import overlay
+        val pendingSharedBackupFlow = MutableStateFlow<String?>(null)
         // Guards applying the service-on-app-start policy to real app launches
         // only (not activity recreations)
         @Volatile private var startPolicyApplied = false
@@ -268,6 +274,10 @@ fun MainScreen(initialUseSystemColors: Boolean, initialUiMode: UiMode) {
     var permissionsChecked by remember { mutableStateOf(false) }
     var versionInfo by remember { mutableStateOf<VersionInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    // Backup shared into the app (share target): previewed and applied right
+    // here, over whatever screen is open
+    var sharedBackup by remember { mutableStateOf<BackupConfig?>(null) }
+    var showSharedImport by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     fun showAvailableUpdate(update: VersionInfo) {
@@ -292,6 +302,35 @@ fun MainScreen(initialUseSystemColors: Boolean, initialUiMode: UiMode) {
                 MainActivity.pendingDeepLinkFlow.value = null
                 selectedScreen = 0 // switch to Configuration tab
                 configViewModel.setPendingDeepLink(link)
+            }
+        }
+    }
+
+    // Backup shared into the app (share target): parse and show the same
+    // import-preview dialog the in-app Restore uses, right over whatever
+    // screen is open. Handled here rather than in the Diagnostics Config tab
+    // because the tab may not be composed at all (the pager only composes the
+    // selected tab, and in Light mode Diagnostics does not exist).
+    LaunchedEffect(Unit) {
+        MainActivity.pendingSharedBackupFlow.collect { raw ->
+            if (raw != null) {
+                MainActivity.pendingSharedBackupFlow.value = null
+                BackupConfig.fromToml(raw).fold(
+                    onSuccess = { backup ->
+                        backup.validate().fold(
+                            onSuccess = {
+                                sharedBackup = backup
+                                showSharedImport = true
+                            },
+                            onFailure = { error ->
+                                Toast.makeText(context, "Invalid backup: ${error.message}", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    },
+                    onFailure = { error ->
+                        Toast.makeText(context, "Failed to parse backup: ${error.message}", Toast.LENGTH_LONG).show()
+                    }
+                )
             }
         }
     }
@@ -459,6 +498,33 @@ fun MainScreen(initialUseSystemColors: Boolean, initialUiMode: UiMode) {
                 showUpdateDialog = false
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(versionInfo!!.downloadUrl))
                 context.startActivity(intent)
+            }
+        )
+    }
+
+    // Import of a backup shared into the app; the confirm applies it exactly
+    // like the in-app Restore and the automation `config` extra. The
+    // Diagnostics ViewModel follows repository.configFlow, so its state
+    // stays in sync without routing the import through its tab.
+    if (showSharedImport && sharedBackup != null) {
+        ImportPreviewDialog(
+            backup = sharedBackup!!,
+            onConfirm = { backup ->
+                showSharedImport = false
+                sharedBackup = null
+                coroutineScope.launch {
+                    try {
+                        val current = repository.configFlow.first()
+                        repository.saveConfig(backup.applyTo(current))
+                        Toast.makeText(context, "Configuration imported successfully", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to apply backup: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = {
+                showSharedImport = false
+                sharedBackup = null
             }
         )
     }
