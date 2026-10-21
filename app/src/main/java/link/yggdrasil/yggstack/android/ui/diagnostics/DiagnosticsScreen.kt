@@ -680,8 +680,11 @@ private fun BackupTomlDialog(
                             viewportPx = viewportPx
                         )
                     }
+                    // spacedBy keeps a dead gutter between the full-row tap
+                    // bands so a near-miss tap can't roll onto the other tick
                     Column(
                         modifier = Modifier.padding(start = 24.dp, top = 8.dp, end = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         content = ticks
                     )
                     Row(
@@ -715,10 +718,13 @@ private fun BackupTickRow(
 ) {
     // The whole row toggles (label taps included); the checkbox routes its
     // own clicks through the row so both share one ripple and one
-    // accessibility action.
+    // accessibility action. Recent Material3 checkboxes reserve their extra
+    // touch area out-of-bounds instead of in layout, so the row enforces the
+    // 48dp touch-target height itself.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .toggleable(
                 value = checked,
                 enabled = enabled,
