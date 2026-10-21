@@ -1967,77 +1967,98 @@ fun ForwardPresetPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (ForwardMapping?) -> Unit
 ) {
-    // Plain Dialog + Surface instead of AlertDialog (same shape as the ping
-    // target picker): no empty button slots, so no dead space is reserved
-    // under Custom Mapping.
+    // Same look as the ping target picker: plain Dialog + Surface (no
+    // AlertDialog button slots, so no dead space is reserved under Custom
+    // Mapping) with one themed Card per entry.
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh
+            color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                Text(
-                    text = "Add Forward Mapping",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp)
-                )
+            Column(modifier = Modifier.padding(bottom = 4.dp)) {
+                // Header: title + close
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 4.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Add Forward Mapping",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.close)
+                        )
+                    }
+                }
                 // Presets scroll on their own; Custom Mapping stays pinned
                 // below the divider, always visible without scrolling.
                 Column(
                     modifier = Modifier
                         .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     ForwardPresets.all.forEach { preset ->
                         val added = ForwardPresets.isAdded(preset, existingForwardMappings)
-                        // Fixed 3-line shape (name / protocol+port / IP on its own
-                        // full-width line) so every preset row has the same height
-                        // and a long IPv6 never wraps mid-address.
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (added) Modifier
-                                    else Modifier.clickable { onSelect(preset) }
-                                )
-                                .padding(vertical = 10.dp)
+                        // An added preset is not tappable and gets the same
+                        // "current" look as the ping picker's selected target.
+                        Card(
+                            onClick = { onSelect(preset) },
+                            enabled = !added,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                disabledContainerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = preset.shortName,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = if (added) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                    else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                if (added) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                            // Fixed 3-line shape (name / protocol+port / IP on its
+                            // own full-width line) so every card has the same
+                            // height and a long IPv6 never wraps mid-address.
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "Added",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        text = preset.shortName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
                                     )
+                                    if (added) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Added",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
+                                Text(
+                                    text = "${preset.protocol.name} · Remote port ${preset.remotePort}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                MiddleEllipsisIpText(
+                                    text = preset.remoteIp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            Text(
-                                text = "${preset.protocol.name} · Remote port ${preset.remotePort}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (added) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            MiddleEllipsisIpText(
-                                text = preset.remoteIp,
-                                color = if (added) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }
@@ -2061,7 +2082,7 @@ fun ForwardPresetPickerDialog(
                     Text(
                         text = "Custom Mapping",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
