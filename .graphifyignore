@@ -1,0 +1,25 @@
+# Graphify exclusions — keep the indexer off build artifacts and binaries.
+# (graphify also respects .gitignore; this adds the submodule-local dirs it
+# may miss and makes intent explicit.)
+
+# Rust / Go engine build outputs
+lib/yggstack-ng/target/
+lib/yggstack-ng/android-build/
+lib/yggstack/android-build/
+
+# Gradle / Android build output
+app/build/
+.gradle/
+.cxx/
+.externalNativeBuild/
+
+# Binaries
+*.aar
+*.so
+*.apk
+*.dex
+
+# Local tooling
+.git/
+.zcode/
+graphify-out/

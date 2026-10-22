@@ -95,3 +95,4 @@ Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universa
 - `lib/yggstack` and `lib/yggstack-ng` are separate git submodules with their own histories/remotes — don't assume root-repo git commands apply there.
 - Prefer editing existing Kotlin files under `app/src/main/java/...` over creating new top-level packages.
 - Shared behavior belongs in `src/main`; anything touching the native engine goes through `NativeEngine` and lives in the matching flavor source set.
+- The repo is Graphify-indexed (`graphify-out/`, local-only build) — for code-structure questions prefer `graphify explain <symbol>` / `graphify query "..."` over broad greps, refreshing with `graphify update .` after edits (install: `uv tool install graphifyy`).

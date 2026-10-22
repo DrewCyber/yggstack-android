@@ -107,3 +107,7 @@ keystore.properties
 
 # Native shared libraries (compiled per-ABI — build locally or via CI, never commit)
 *.so
+
+# Graphify code-graph output — local-only; rebuild via `graphify extract . --code-only`
+graphify-out/
+graph.json
