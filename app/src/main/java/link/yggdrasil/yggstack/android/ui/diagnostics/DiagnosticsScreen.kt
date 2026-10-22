@@ -293,9 +293,13 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
         } ?: ""
     }
 
-    // Export launcher – saves .toml file
+    // Export launcher – saves .toml file. Picker type is application/toml,
+    // not text/plain: pickers map known types to an extension and append it
+    // when the name doesn't end in one (Samsung saves a text/plain
+    // "….toml" as ".toml.txt"); nothing maps application/toml, so the
+    // suggested .toml name is kept verbatim.
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/plain")
+        contract = ActivityResultContracts.CreateDocument("application/toml")
     ) { uri ->
         uri?.let {
             scope.launch {
@@ -604,7 +608,7 @@ private fun writeBackupShareFile(context: Context, toml: String, timestamp: Stri
 private fun backupShareIntent(context: Context, uri: Uri): Intent =
     Intent.createChooser(
         Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
+            type = "application/toml"
             putExtra(Intent.EXTRA_STREAM, uri)
             clipData = ClipData.newRawUri("", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

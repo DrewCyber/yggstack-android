@@ -41,15 +41,21 @@
             </intent-filter>
         </activity>
 
-        <!-- Backup import receiver: share target (ACTION_SEND) and "open
-             with" target (ACTION_VIEW), a separate no-display activity so
+        <!-- Backup import receiver, run by a separate no-display activity so
              delivery never depends on MainActivity's task state (warm or
              cold); it publishes the raw TOML to
              MainActivity.pendingSharedBackupFlow and brings the app forward.
-             Generic mime types cover .toml backups (text/plain), files that
-             crossed a messenger/cloud (octet-stream) and file managers that
-             cannot resolve the .toml extension (wildcard, e.g. Samsung My
-             Files); content is validated by the backup parser on receipt. -->
+             - Share target (ACTION_SEND): generic mime types, because a
+               backup's type is whatever the sender derived — .toml is
+               text/plain or application/toml, files that crossed a
+               messenger/cloud arrive as octet-stream, and file managers that
+               cannot resolve .toml send a wildcard (e.g. Samsung My Files).
+             - "Open with" (ACTION_VIEW): restricted to backup-shaped files
+               by extension (.toml; .txt covers Samsung's ".toml.txt" saves).
+               Extension matching works on the URI path, so it needs the
+               filename there — true for file managers' own providers, not
+               for MediaStore's numeric URIs (the share target covers those).
+             Content is validated by the backup parser on receipt. -->
         <activity
             android:name=".ShareReceiveActivity"
             android:theme="@android:style/Theme.NoDisplay"
@@ -59,21 +65,32 @@
             android:excludeFromRecents="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- VIEW intents that carry a mime type -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="*/*" android:pathPattern=".*\\.toml" />
+                <data android:scheme="content" android:mimeType="*/*" android:pathPattern=".*\\.txt" />
+            </intent-filter>
+            <!-- VIEW intents that carry no mime type -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:pathPattern=".*\\.toml" />
+                <data android:scheme="content" android:pathPattern=".*\\.txt" />
             </intent-filter>
         </activity>
 
