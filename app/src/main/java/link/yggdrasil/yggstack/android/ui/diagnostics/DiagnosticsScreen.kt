@@ -4,10 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -53,20 +49,16 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import link.yggdrasil.yggstack.android.R
 import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
@@ -76,10 +68,6 @@ import link.yggdrasil.yggstack.android.data.PortStatsDetail
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.android.ui.configuration.IpSuggestion
 import link.yggdrasil.yggstack.android.ui.configuration.LocalIpTextField
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Stable ids for the Diagnostics tabs. Persisted in the tab order, so the
@@ -265,7 +253,6 @@ fun DiagnosticsScreen(modifier: Modifier = Modifier) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val currentConfig by viewModel.currentConfig.collectAsStateWithLifecycle()
@@ -273,161 +260,13 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
     val isServiceRunning by viewModel.isServiceRunning.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboardManager = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
-    val scope = rememberCoroutineScope()
-
-    var showImportPreview by remember { mutableStateOf(false) }
-    var importedBackup by remember { mutableStateOf<BackupConfig?>(null) }
-    var showExportDialog by remember { mutableStateOf(false) }
-    // Which card button opened the dialog: confirm saves a file (false) or
-    // hands the backup to the share sheet (true)
-    var exportForShare by remember { mutableStateOf(false) }
-    var includeYggdrasil by remember { mutableStateOf(false) }
-    var includePrivateKey by remember { mutableStateOf(false) }
-
-    // Recompute backup TOML whenever config or ticks change (used by export
-    // launcher and share). The private key only applies with Yggdrasil
-    // parameters ticked — it is one of them.
-    val backupToml = remember(yggstackConfig, includeYggdrasil, includePrivateKey) {
-        yggstackConfig?.let {
-            BackupConfig.fromYggstackConfig(it, includeYggdrasil, includePrivateKey && includeYggdrasil).toToml()
-        } ?: ""
-    }
-
-    // Export launcher – saves .toml file. Picker type is application/toml,
-    // not text/plain: pickers map known types to an extension and append it
-    // when the name doesn't end in one (Samsung saves a text/plain
-    // "….toml" as ".toml.txt"); nothing maps application/toml, so the
-    // suggested .toml name is kept verbatim.
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/toml")
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                try {
-                    context.contentResolver.openOutputStream(it)?.use { output ->
-                        output.write(backupToml.toByteArray())
-                    }
-                    Toast.makeText(context, "Configuration exported successfully", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    // Import launcher – TOML backups; files with no yggstack sections
-    // (PDFs, spreadsheets, random text) are rejected by the parser.
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                try {
-                    val fileContent = context.contentResolver.openInputStream(it)?.use { input ->
-                        input.bufferedReader().readText()
-                    }
-
-                    if (fileContent != null) {
-                        val result = BackupConfig.fromToml(fileContent)
-                        result.fold(
-                            onSuccess = { backup ->
-                                val validation = backup.validate()
-                                validation.fold(
-                                    onSuccess = {
-                                        importedBackup = backup
-                                        showImportPreview = true
-                                    },
-                                    onFailure = { error ->
-                                        Toast.makeText(context, "Invalid backup: ${error.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                )
-                            },
-                            onFailure = { error ->
-                                Toast.makeText(context, "Failed to parse backup: ${error.message}", Toast.LENGTH_LONG).show()
-                            }
-                        )
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    // Import preview dialog; applies the backup as previewed (the dialog
-    // blanks the key when "Ignore private key" is ticked)
-    if (showImportPreview && importedBackup != null) {
-        ImportPreviewDialog(
-            backup = importedBackup!!,
-            onConfirm = { backup ->
-                scope.launch {
-                    try {
-                        viewModel.importBackup(backup)
-                        Toast.makeText(context, "Configuration imported successfully", Toast.LENGTH_SHORT).show()
-                        showImportPreview = false
-                        importedBackup = null
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Failed to apply backup: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            },
-            onDismiss = {
-                showImportPreview = false
-                importedBackup = null
-            }
-        )
-    }
-
-    // Export/share dialog — the same "Backup Configuration" screen; the
-    // confirm action depends on which card button opened it
-    if (showExportDialog && yggstackConfig != null) {
-        ExportBackupDialog(
-            yggstackConfig = yggstackConfig!!,
-            includeYggdrasil = includeYggdrasil,
-            includePrivateKey = includePrivateKey,
-            onToggleYggdrasil = {
-                includeYggdrasil = it
-                // Turning the parent tick off resets the nested one, so
-                // re-enabling never silently re-includes the private key
-                if (!it) includePrivateKey = false
-            },
-            onTogglePrivateKey = { includePrivateKey = it },
-            forShare = exportForShare,
-            onConfirm = {
-                showExportDialog = false
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                if (exportForShare) {
-                    scope.launch(Dispatchers.IO) {
-                        runCatching { writeBackupShareFile(context, backupToml, timestamp) }
-                            .onSuccess { uri ->
-                                withContext(Dispatchers.Main) {
-                                    context.startActivity(backupShareIntent(context, uri))
-                                }
-                            }
-                            .onFailure { e ->
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                    }
-                } else {
-                    exportLauncher.launch("yggstack_backup_$timestamp.toml")
-                }
-            },
-            onDismiss = { showExportDialog = false }
-        )
-    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
         // GroupPassword notice — a group password limits direct reachability
         // to peers sharing it (see GroupPasswordInfoCard).
         if (groupPasswordActive(yggstackConfig)) {
@@ -515,106 +354,8 @@ fun ConfigViewer(viewModel: DiagnosticsViewModel) {
                 }
             }
         }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Backup Configuration Card (pinned to the bottom; scrolls never move it)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.backup_configuration),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Backup (export) button – opens export dialog.
-                    // Icons: "save" for backup, "backup restore" for restore.
-                    IconButton(
-                        onClick = {
-                            exportForShare = false
-                            showExportDialog = true
-                        },
-                        enabled = yggstackConfig != null
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_save),
-                            contentDescription = "Backup configuration",
-                            tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
-                        )
-                    }
-                    // Restore (import) button
-                    IconButton(onClick = {
-                        importLauncher.launch(arrayOf("*/*"))
-                    }) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_backup_restore),
-                            contentDescription = "Restore configuration",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    // Share button – the same dialog in share mode; confirm
-                    // hands the backup file to other apps via the share sheet
-                    IconButton(
-                        onClick = {
-                            exportForShare = true
-                            showExportDialog = true
-                        },
-                        enabled = yggstackConfig != null
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Share configuration",
-                            tint = if (yggstackConfig != null) MaterialTheme.colorScheme.primary else Color.Gray
-                        )
-                    }
-                }
-            }
-        }
     }
 }
-
-/**
- * Writes [toml] to a fresh cache file and returns its FileProvider URI.
- * Previous share copies are removed so repeated shares don't pile up in cache.
- * Must run on a worker thread.
- */
-private fun writeBackupShareFile(context: Context, toml: String, timestamp: String): Uri {
-    context.cacheDir.listFiles { f -> f.name.startsWith("yggstack_backup_") }?.forEach { it.delete() }
-    val shareFile = File(context.cacheDir, "yggstack_backup_$timestamp.toml")
-    shareFile.writeText(toml)
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", shareFile)
-}
-
-/**
- * ACTION_SEND intent handing the backup file to the share sheet. clipData
- * mirrors EXTRA_STREAM so the read grant is honored on all Android versions.
- */
-private fun backupShareIntent(context: Context, uri: Uri): Intent =
-    Intent.createChooser(
-        Intent(Intent.ACTION_SEND).apply {
-            type = "application/toml"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            clipData = ClipData.newRawUri("", uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        },
-        context.getString(R.string.backup_share_chooser_title)
-    )
 
 /**
  * Shared chrome of the backup export/share and import dialogs: title, a

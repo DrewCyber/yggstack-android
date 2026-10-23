@@ -134,6 +134,7 @@
     <string name="ports_view_extended">Extended</string>
 
     <!-- Settings Screen -->
+    <string name="ui_section">UI</string>
     <string name="theme_section">Theme</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
@@ -141,7 +142,6 @@
     <string name="theme_colors_section">Colors</string>
     <string name="theme_colors_app">App colors</string>
     <string name="theme_colors_system">System colors</string>
-    <string name="theme_colors_system_description">Uses Android system colors while keeping the selected light, dark, or system mode.</string>
     <string name="theme_colors_system_unsupported">System colors require Android 12 or newer.</string>
     <string name="autostart_section">Autostart</string>
     <string name="autostart_enabled">Start app on boot</string>
@@ -150,7 +150,7 @@
     <string name="service_on_app_start_keep_state">Keep last state</string>
     <string name="service_on_app_start_do_nothing">Do nothing</string>
     <string name="autostart_description">Note: Xiaomi, Huawei, Oppo may require additional autostart permission in their system settings.</string>
-    <string name="system_section">System</string>
+    <string name="general_section">General</string>
     <string name="auto_update_section">Check for updates</string>
     <string name="auto_update_enabled">Check for updates</string>
     <string name="auto_update_description">Automatically check for new versions on startup</string>

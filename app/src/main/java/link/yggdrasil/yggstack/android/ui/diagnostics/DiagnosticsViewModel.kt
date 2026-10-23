@@ -12,7 +12,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import link.yggdrasil.yggstack.android.R
-import link.yggdrasil.yggstack.android.data.BackupConfig
 import link.yggdrasil.yggstack.android.data.ConfigRepository
 import link.yggdrasil.yggstack.android.data.PingSessionState
 import link.yggdrasil.yggstack.android.data.PortStatsDetail
@@ -410,24 +409,7 @@ class DiagnosticsViewModel(
         // Also clear local state immediately for responsive UI
         _logs.value = emptyList()
     }
-    
-    fun importBackup(backup: BackupConfig) {
-        viewModelScope.launch {
-            // Get current config; fall back to the repository for the rare
-            // case of applying before the in-memory state has loaded
-            val currentConfig = _yggstackConfig.value ?: repository.configFlow.first()
-            
-            // Apply backup to current config
-            val updatedConfig = backup.applyTo(currentConfig)
-            
-            // Save updated config
-            repository.saveConfig(updatedConfig)
-            
-            // Update local state
-            _yggstackConfig.value = updatedConfig
-        }
-    }
-    
+
     fun downloadLogs(context: Context) {
         viewModelScope.launch {
             try {

@@ -129,6 +129,7 @@
     <string name="ports_view_extended">Расширенный</string>
 
     <!-- Settings Screen -->
+    <string name="ui_section">Интерфейс</string>
     <string name="theme_section">Тема</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
@@ -136,7 +137,6 @@
     <string name="theme_colors_section">Цвета</string>
     <string name="theme_colors_app">Цвета приложения</string>
     <string name="theme_colors_system">Системные цвета</string>
-    <string name="theme_colors_system_description">Использует системные цвета Android, сохраняя выбранный светлый, тёмный или системный режим.</string>
     <string name="theme_colors_system_unsupported">Системные цвета доступны только на Android 12 и новее.</string>
     <string name="autostart_section">Автозапуск</string>
     <string name="autostart_enabled">Запускать приложение при загрузке</string>
@@ -145,7 +145,7 @@
     <string name="service_on_app_start_keep_state">Сохранять последнее состояние</string>
     <string name="service_on_app_start_do_nothing">Ничего не делать</string>
     <string name="autostart_description">Примечание: Xiaomi, Huawei, Oppo могут требовать дополнительные разрешения на автозапуск в настройках системы.</string>
-    <string name="system_section">Система</string>
+    <string name="general_section">Общие</string>
     <string name="auto_update_section">Проверка обновлений</string>
     <string name="auto_update_enabled">Проверять обновления</string>
     <string name="auto_update_description">Автоматически проверять новые версии при запуске</string>
