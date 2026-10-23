@@ -189,6 +189,59 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Language
+                var languageExpanded by remember { mutableStateOf(false) }
+                val languages = listOf(
+                    "system" to stringResource(R.string.language_system),
+                    "en" to stringResource(R.string.language_english),
+                    "ru" to stringResource(R.string.language_russian)
+                )
+                val selectedLanguageLabel = languages.find { it.first == selectedLanguage }?.second
+                    ?: stringResource(R.string.language_system)
+
+                ExposedDropdownMenuBox(
+                    expanded = languageExpanded,
+                    onExpandedChange = { languageExpanded = !languageExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedLanguageLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.language_section)) },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = languageExpanded,
+                        onDismissRequest = { languageExpanded = false }
+                    ) {
+                        languages.forEach { (code, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    languageExpanded = false
+                                    coroutineScope.launch {
+                                        repository.saveLanguage(code)
+                                        // Recreate activity to apply new locale immediately
+                                        activity?.recreate()
+                                    }
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -363,59 +416,6 @@ fun SettingsScreen(
                                     serviceStartExpanded = false
                                     coroutineScope.launch {
                                         repository.saveServiceOnAppStart(mode)
-                                    }
-                                },
-                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Language
-                var expanded by remember { mutableStateOf(false) }
-                val languages = listOf(
-                    "system" to stringResource(R.string.language_system),
-                    "en" to stringResource(R.string.language_english),
-                    "ru" to stringResource(R.string.language_russian)
-                )
-                val selectedLanguageLabel = languages.find { it.first == selectedLanguage }?.second
-                    ?: stringResource(R.string.language_system)
-
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = selectedLanguageLabel,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(R.string.language_section)) },
-                        trailingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        languages.forEach { (code, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    expanded = false
-                                    coroutineScope.launch {
-                                        repository.saveLanguage(code)
-                                        // Recreate activity to apply new locale immediately
-                                        activity?.recreate()
                                     }
                                 },
                                 contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
