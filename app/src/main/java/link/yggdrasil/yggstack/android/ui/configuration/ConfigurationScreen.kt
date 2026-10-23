@@ -57,6 +57,7 @@ import link.yggdrasil.yggstack.android.data.*
 import link.yggdrasil.yggstack.android.ui.configuration.discovery.PeerDiscoveryScreen
 import link.yggdrasil.yggstack.android.ui.configuration.discovery.PeerDiscoveryViewModel
 import link.yggdrasil.yggstack.android.utils.CountryFlags
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2471,9 +2472,14 @@ fun MaxBackoffDialog(
                         .padding(bottom = 8.dp)
                 )
                 
+                // M3 snaps the thumb to tick pixels, but the value it
+                // reports is that pixel mapped back to user space, which
+                // can be a hair off the exact tick (e.g. 5.9999995 for the
+                // 6s position). Truncating then shows 5s while the thumb
+                // sits on 6s, so round to the nearest second instead.
                 Slider(
                     value = sliderValue,
-                    onValueChange = { sliderValue = it },
+                    onValueChange = { sliderValue = it.roundToInt().toFloat() },
                     valueRange = 5f..30f,
                     steps = 24, // 25 total values (5-30)
                     modifier = Modifier.fillMaxWidth()
