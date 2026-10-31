@@ -657,6 +657,9 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 internal interface UniffiCallbackInterfaceLogCallbackMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`message`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfacePeerStatusCallbackMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`peersJson`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfacePingCallbackMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -672,6 +675,22 @@ internal open class UniffiVTableCallbackInterfaceLogCallback(
 
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceLogCallback) {
         `onLog` = other.`onLog`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
+@Structure.FieldOrder("onPeersChanged", "uniffiFree")
+internal open class UniffiVTableCallbackInterfacePeerStatusCallback(
+    @JvmField internal var `onPeersChanged`: UniffiCallbackInterfacePeerStatusCallbackMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onPeersChanged`: UniffiCallbackInterfacePeerStatusCallbackMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfacePeerStatusCallback(`onPeersChanged`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfacePeerStatusCallback) {
+        `onPeersChanged` = other.`onPeersChanged`
         `uniffiFree` = other.`uniffiFree`
     }
 
@@ -692,6 +711,10 @@ internal open class UniffiVTableCallbackInterfacePingCallback(
     }
 
 }
+
+
+
+
 
 
 
@@ -895,6 +918,8 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_log_level(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_nameserver(
 ): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_peer_status_callback(
+): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_socks(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_start(
@@ -908,6 +933,8 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop_ping(
 fun uniffi_yggstack_mobile_checksum_constructor_yggstackmobile_new(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_logcallback_on_log(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_peerstatuscallback_on_peers_changed(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_pingcallback_on_result(
 ): Short
@@ -950,6 +977,7 @@ internal interface UniffiLib : Library {
             // No need to check the contract version and checksums, since 
             // we already did that with `IntegrityCheckingUniffiLib` above.
             uniffiCallbackInterfaceLogCallback.register(lib)
+            uniffiCallbackInterfacePeerStatusCallback.register(lib)
             uniffiCallbackInterfacePingCallback.register(lib)
             // Loading of library with integrity check done.
             lib
@@ -1018,6 +1046,8 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_log_level(`ptr`: Pointer
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_nameserver(`ptr`: Pointer,`addr`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_peer_status_callback(`ptr`: Pointer,`callback`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_set_socks(`ptr`: Pointer,`addr`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_start(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1029,6 +1059,8 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_stop(`ptr`: Pointer,uniffi_o
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_stop_ping(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_init_callback_vtable_logcallback(`vtable`: UniffiVTableCallbackInterfaceLogCallback,
+): Unit
+fun uniffi_yggstack_mobile_fn_init_callback_vtable_peerstatuscallback(`vtable`: UniffiVTableCallbackInterfacePeerStatusCallback,
 ): Unit
 fun uniffi_yggstack_mobile_fn_init_callback_vtable_pingcallback(`vtable`: UniffiVTableCallbackInterfacePingCallback,
 ): Unit
@@ -1248,6 +1280,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_nameserver() != 20400.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_peer_status_callback() != 31246.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_set_socks() != 48066.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1267,6 +1302,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_logcallback_on_log() != 55898.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_peerstatuscallback_on_peers_changed() != 50161.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_pingcallback_on_result() != 46389.toShort()) {
@@ -1805,6 +1843,14 @@ public interface YggstackMobileInterface {
     fun `setNameserver`(`addr`: kotlin.String)
     
     /**
+     * Set a peer status callback receiving the full peer snapshot (same
+     * JSON as get_peers_json()) on every peer connect/disconnect change,
+     * plus a baseline right after start(). Takes effect at the next
+     * start().
+     */
+    fun `setPeerStatusCallback`(`callback`: PeerStatusCallback)
+    
+    /**
      * Configure the SOCKS5 proxy address (call before start()).
      */
     fun `setSocks`(`addr`: kotlin.String)
@@ -2311,6 +2357,23 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
 
     
     /**
+     * Set a peer status callback receiving the full peer snapshot (same
+     * JSON as get_peers_json()) on every peer connect/disconnect change,
+     * plus a baseline right after start(). Takes effect at the next
+     * start().
+     */override fun `setPeerStatusCallback`(`callback`: PeerStatusCallback)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_set_peer_status_callback(
+        it, FfiConverterTypePeerStatusCallback.lower(`callback`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Configure the SOCKS5 proxy address (call before start()).
      */override fun `setSocks`(`addr`: kotlin.String)
         = 
@@ -2549,6 +2612,64 @@ internal object uniffiCallbackInterfaceLogCallback {
  * @suppress
  */
 public object FfiConverterTypeLogCallback: FfiConverterCallbackInterface<LogCallback>()
+
+
+
+
+
+public interface PeerStatusCallback {
+    
+    /**
+     * Full peer snapshot, same JSON schema as get_peers_json(), delivered
+     * on every change of the connected-peer set plus once right after
+     * start() as a baseline.
+     */
+    fun `onPeersChanged`(`peersJson`: kotlin.String)
+    
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfacePeerStatusCallback {
+    internal object `onPeersChanged`: UniffiCallbackInterfacePeerStatusCallbackMethod0 {
+        override fun callback(`uniffiHandle`: Long,`peersJson`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypePeerStatusCallback.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onPeersChanged`(
+                    FfiConverterString.lift(`peersJson`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypePeerStatusCallback.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfacePeerStatusCallback.UniffiByValue(
+        `onPeersChanged`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_yggstack_mobile_fn_init_callback_vtable_peerstatuscallback(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypePeerStatusCallback: FfiConverterCallbackInterface<PeerStatusCallback>()
 
 
 

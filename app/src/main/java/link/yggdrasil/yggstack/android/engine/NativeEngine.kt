@@ -10,6 +10,13 @@ fun interface NativePingCallback {
     fun onResult(result: String)
 }
 
+fun interface NativePeersCallback {
+    /** Full peer snapshot JSON (same schema as [NativeEngine.getPeersJson]),
+     *  delivered on every change of the connected-peer set plus once as a
+     *  baseline right after the engine starts. */
+    fun onPeersChanged(peersJson: String)
+}
+
 /**
  * Abstraction over the native yggstack engine. Two builds exist:
  * the Go flavor (gomobile AAR) and the ng flavor (Rust UniFFI bindings),
@@ -21,6 +28,10 @@ fun interface NativePingCallback {
 interface NativeEngine {
     fun setLogCallback(callback: NativeLogCallback)
     fun setLogLevel(level: String)
+
+    /** Register the peer-change callback. Call before [start]; the callback
+     *  fires on an engine thread — hop before touching UI state. */
+    fun setPeersCallback(callback: NativePeersCallback)
 
     /** Generate a fresh native config text (engine-specific format). */
     fun generateConfigText(): String

@@ -3,6 +3,7 @@ package link.yggdrasil.yggstack.android.engine
 import link.yggdrasil.yggstack.android.data.NativeConfigToml
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import uniffi.yggstack_mobile.LogCallback
+import uniffi.yggstack_mobile.PeerStatusCallback
 import uniffi.yggstack_mobile.PingCallback
 import uniffi.yggstack_mobile.YggstackException
 import uniffi.yggstack_mobile.YggstackMobile
@@ -26,6 +27,14 @@ internal class RustEngine : NativeEngine {
     }
 
     override fun setLogLevel(level: String) = yggstack.setLogLevel(level)
+
+    override fun setPeersCallback(callback: NativePeersCallback) {
+        yggstack.setPeerStatusCallback(object : PeerStatusCallback {
+            override fun onPeersChanged(peersJson: String) {
+                callback.onPeersChanged(peersJson)
+            }
+        })
+    }
 
     override fun generateConfigText(): String = uniffi.yggstack_mobile.generateConfig()
 

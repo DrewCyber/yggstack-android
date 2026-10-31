@@ -56,6 +56,7 @@ import link.yggdrasil.yggstack.android.data.PingSessionState
 import link.yggdrasil.yggstack.android.engine.EngineFactory
 import link.yggdrasil.yggstack.android.engine.NativeEngine
 import link.yggdrasil.yggstack.android.engine.NativeLogCallback
+import link.yggdrasil.yggstack.android.engine.NativePeersCallback
 import link.yggdrasil.yggstack.android.engine.NativePingCallback
 import org.json.JSONArray
 import org.json.JSONObject
@@ -110,6 +111,11 @@ class YggstackService : Service() {
     // bind would leave the port permanently unable to wake the node.
     private val PLACEHOLDER_BIND_ATTEMPTS = 10
     private val PLACEHOLDER_BIND_RETRY_DELAY_MS = 500L
+
+    // Status-bar blink cadence while the service runs without peers:
+    // alternates the Y-only and empty small icons. The service holds a
+    // partial wake lock while running, so this timer costs nothing extra.
+    private val BLINK_INTERVAL_MS = 1000L
 
     // Connections held between a placeholder wake trigger and the node's real
     // listener coming up, relayed by the splice proxy (spliceHeldConnection).
@@ -200,6 +206,21 @@ class YggstackService : Service() {
     private var lastNotificationPeerCount = -1
     private var lastNotificationTotalPeerCount = -1
     private var lastNotificationYggdrasilIp: String? = null
+    private var lastNotificationIcon = 0
+
+    // Notification connectivity state, derived solely from peer snapshots
+    // (never from individual events): WAITING means the service is up but
+    // no peer is connected — the small icon blinks Y-only/empty — while
+    // CONNECTED shows the steady Y/S icon.
+    private enum class ConnectivityState { WAITING, CONNECTED }
+    @Volatile private var connectivityState = ConnectivityState.WAITING
+    @Volatile private var blinkShowIcon = true
+    private var blinkJob: Job? = null
+
+    // Last peer snapshot applied from the engine callback. Re-applied after
+    // the start sequence settles so a baseline delivered mid-start cannot
+    // be clobbered by the start path's zeroed counts.
+    @Volatile private var lastPeersSnapshot: String? = null
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -523,8 +544,19 @@ class YggstackService : Service() {
     private fun announceStarting() {
         lifecycle.publish {
             if (!_isSessionActive.value) {
-                startForeground(NOTIFICATION_ID, createNotification("Starting...", 0, 0))
+                // Starting == waiting for peers: the blink begins as soon
+                // as the foreground notification exists.
+                connectivityState = ConnectivityState.WAITING
+                blinkShowIcon = true
                 invalidateNotificationDedupe()
+                startForeground(
+                    NOTIFICATION_ID,
+                    createNotification(
+                        getString(R.string.notification_waiting_for_peers), 0, 0,
+                        smallIcon = R.drawable.ic_qs_tile_y
+                    )
+                )
+                startBlink()
             }
         }
     }
@@ -552,6 +584,13 @@ class YggstackService : Service() {
                         addLog(message.trim())
                     })
                 }
+
+                // Peer snapshots drive the notification's connectivity state
+                // (and the Peers tab) without any polling. The callback fires
+                // on an engine thread; hop to serviceScope before touching state.
+                yggstack?.setPeersCallback(NativePeersCallback { json ->
+                    serviceScope.launch { applyPeersSnapshot(json) }
+                })
                 
                 // Use log level from config
                 val logLevel = config.logLevel
@@ -653,6 +692,10 @@ class YggstackService : Service() {
                 if (lifecycle.isDestroyed) return
                 persistServiceWasRunning(true)
                 _peerCount.value = 0
+                // A fresh run starts with no snapshot; the callback's
+                // baseline is applied when it arrives (or right below if it
+                // already raced past the start sequence).
+                lastPeersSnapshot = null
                 stopPlaceholderListeners()
                 _isPowerSaveIdle.value = false
                 _powerSaveIdleSince.value = null
@@ -683,7 +726,16 @@ class YggstackService : Service() {
                 cleanupPeerCache()
 
                 logInfo("Yggstack started successfully")
-                updateNotification("Connected", 0, 0)
+                // The engine already delivered its baseline snapshot if a
+                // peer came up fast; re-apply it instead of zeroing it into
+                // a blink state we'd never leave (no event fires without a
+                // change). Otherwise: waiting for peers, blink on.
+                val baseline = lastPeersSnapshot
+                if (baseline != null) {
+                    applyPeersSnapshot(baseline)
+                } else {
+                    enterWaitingForPeers()
+                }
 
                 // Start monitoring for peer details / port stats subscriptions (lazy-load, independent cadences)
                 startPeerDetailsSubscriptionMonitor()
@@ -719,6 +771,7 @@ class YggstackService : Service() {
         _isTransitioning.value = true
         try {
             stopNodeObservers()
+            stopBlink()
             stopPlaceholderListeners()
             if (!enterPowerSaveIdle) abortSplices()
             try {
@@ -1225,36 +1278,7 @@ class YggstackService : Service() {
                     
                     val peersJson = yggstack?.getPeersJson()
                     if (peersJson != null) {
-                        // Session-cumulative RX/TX plus reconnect counts; the
-                        // raw Up flags below are unaffected by the rewrite
-                        _peerDetailsJSON.emit(accumulatePeerStats(peersJson))
-                        // Update peer count from actual connected peers
-                        try {
-                            val jsonArray = JSONArray(peersJson)
-                            val totalCount = jsonArray.length()
-                            // Count only peers that are Up (connected)
-                            var connectedCount = 0
-                            for (i in 0 until jsonArray.length()) {
-                                val peerObj = jsonArray.getJSONObject(i)
-                                if (peerObj.optBoolean("Up", false)) {
-                                    connectedCount++
-                                }
-                            }
-                            _peerCount.value = connectedCount
-                            _totalPeerCount.value = totalCount
-                            
-                            // Only update notification if still running
-                            if (_isRunning.value) {
-                                updateNotification("Connected", connectedCount, totalCount)
-                            }
-                        } catch (e: Exception) {
-                            logError("Error parsing peer JSON: ${e.message}")
-                            _peerCount.value = 0
-                            _totalPeerCount.value = 0
-                            if (_isRunning.value) {
-                                updateNotification("Connected", 0, 0)
-                            }
-                        }
+                        applyPeersSnapshot(peersJson)
                     } else {
                         val failedInstance = yggstack
                         lifecycle.submit {
@@ -2223,7 +2247,13 @@ class YggstackService : Service() {
         }
     }
 
-    private fun createNotification(status: String, peerCount: Int, totalPeerCount: Int, showStopButton: Boolean = true): Notification {
+    private fun createNotification(
+        status: String,
+        peerCount: Int,
+        totalPeerCount: Int,
+        showStopButton: Boolean = true,
+        smallIcon: Int = currentSmallIcon()
+    ): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PendingIntent.FLAG_IMMUTABLE
@@ -2251,7 +2281,7 @@ class YggstackService : Service() {
             .setContentTitle(getString(R.string.app_name))
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setSmallIcon(R.drawable.ic_qs_tile)
+            .setSmallIcon(smallIcon)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -2282,7 +2312,7 @@ class YggstackService : Service() {
     }
 
     /**
-     * Forces the next updateNotification to post. Called whenever the
+     * Forces the next postNotification to post. Called whenever the
      * notification is replaced through another path (startForeground,
      * idle Power Save) so the dedupe cache can't suppress it.
      */
@@ -2291,27 +2321,128 @@ class YggstackService : Service() {
         lastNotificationPeerCount = -1
         lastNotificationTotalPeerCount = -1
         lastNotificationYggdrasilIp = null
+        lastNotificationIcon = 0
     }
 
-    private fun updateNotification(status: String, peerCount: Int, totalPeerCount: Int) {
-        // The peer poller calls this every second; the notification content is
-        // fully determined by these four values, so skip identical re-posts
-        // instead of waking SystemUI to redraw the same notification
-        val ip = _yggdrasilIp.value
-        if (status == lastNotificationStatus &&
-            peerCount == lastNotificationPeerCount &&
-            totalPeerCount == lastNotificationTotalPeerCount &&
-            ip == lastNotificationYggdrasilIp
-        ) {
-            return
+    /** Small icon for the running notification: steady Y/S when connected,
+     *  otherwise the Y-only/empty blink driven by [blinkShowIcon]. */
+    private fun currentSmallIcon(): Int = when {
+        connectivityState == ConnectivityState.CONNECTED -> R.drawable.ic_qs_tile
+        blinkShowIcon -> R.drawable.ic_qs_tile_y
+        else -> R.drawable.ic_qs_tile_empty
+    }
+
+    private fun notificationStatusText(): String =
+        if (connectivityState == ConnectivityState.CONNECTED) {
+            "Connected"
+        } else {
+            getString(R.string.notification_waiting_for_peers)
         }
-        lastNotificationStatus = status
-        lastNotificationPeerCount = peerCount
-        lastNotificationTotalPeerCount = totalPeerCount
-        lastNotificationYggdrasilIp = ip
-        val notification = createNotification(status, peerCount, totalPeerCount)
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
+
+    /**
+     * Post the foreground notification from the current state. Identical
+     * re-posts (content and icon) are skipped so neither the peer poll nor
+     * the blink timer keeps waking SystemUI without a visual change — the
+     * blink alternates the icon, so its posts always pass the dedupe.
+     */
+    private fun postNotification() {
+        synchronized(this) {
+            val ip = _yggdrasilIp.value
+            val status = notificationStatusText()
+            val icon = currentSmallIcon()
+            val peerCount = _peerCount.value
+            val totalPeerCount = _totalPeerCount.value
+            if (status == lastNotificationStatus &&
+                peerCount == lastNotificationPeerCount &&
+                totalPeerCount == lastNotificationTotalPeerCount &&
+                ip == lastNotificationYggdrasilIp &&
+                icon == lastNotificationIcon
+            ) {
+                return
+            }
+            lastNotificationStatus = status
+            lastNotificationPeerCount = peerCount
+            lastNotificationTotalPeerCount = totalPeerCount
+            lastNotificationYggdrasilIp = ip
+            lastNotificationIcon = icon
+            val notification = createNotification(status, peerCount, totalPeerCount, smallIcon = icon)
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
+    }
+
+    /** Service up, zero connected peers: "Waiting for peers" with the
+     *  Y-only/empty blink until a snapshot reports a connected peer. */
+    private fun enterWaitingForPeers() {
+        connectivityState = ConnectivityState.WAITING
+        postNotification()
+        startBlink()
+    }
+
+    private fun startBlink() {
+        synchronized(this) {
+            if (blinkJob?.isActive == true) return
+            blinkJob = serviceScope.launch {
+                while (true) {
+                    delay(BLINK_INTERVAL_MS)
+                    if (!_isRunning.value) break
+                    blinkShowIcon = !blinkShowIcon
+                    if (_isPowerSaveIdle.value) break
+                    postNotification()
+                }
+            }
+        }
+    }
+
+    private fun stopBlink() {
+        synchronized(this) {
+            blinkJob?.cancel()
+            blinkJob = null
+        }
+        blinkShowIcon = true
+    }
+
+    /**
+     * Apply a full peer snapshot (engine callback or Peers-tab poll):
+     * refresh the peer-details feed, the peer counts, and the
+     * notification's connectivity state. Idempotent for a repeated
+     * identical snapshot — events are only triggers, the snapshot is
+     * the truth.
+     */
+    private suspend fun applyPeersSnapshot(peersJson: String) {
+        if (!_isRunning.value) return
+        lastPeersSnapshot = peersJson
+        // Session-cumulative RX/TX plus reconnect counts; the raw Up
+        // flags below are unaffected by the rewrite
+        _peerDetailsJSON.emit(accumulatePeerStats(peersJson))
+        try {
+            val jsonArray = JSONArray(peersJson)
+            val totalCount = jsonArray.length()
+            // Count only peers that are Up (connected)
+            var connectedCount = 0
+            for (i in 0 until jsonArray.length()) {
+                val peerObj = jsonArray.getJSONObject(i)
+                if (peerObj.optBoolean("Up", false)) {
+                    connectedCount++
+                }
+            }
+            _peerCount.value = connectedCount
+            _totalPeerCount.value = totalCount
+        } catch (e: Exception) {
+            logError("Error parsing peer JSON: ${e.message}")
+            _peerCount.value = 0
+            _totalPeerCount.value = 0
+        }
+        val wasWaiting = connectivityState == ConnectivityState.WAITING
+        connectivityState = if (_peerCount.value > 0) ConnectivityState.CONNECTED
+        else ConnectivityState.WAITING
+        if (connectivityState == ConnectivityState.CONNECTED) {
+            if (wasWaiting) logInfo("Peers connected (${_peerCount.value}/${_totalPeerCount.value})")
+            stopBlink()
+        } else {
+            startBlink()
+        }
+        postNotification()
     }
 
     /**
@@ -2335,7 +2466,7 @@ class YggstackService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.power_save_notification_text))
-            .setSmallIcon(R.drawable.ic_power_save_idle)
+            .setSmallIcon(R.drawable.ic_qs_tile_empty)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -2349,7 +2480,7 @@ class YggstackService : Service() {
             action = ACTION_WAKE_NOW
         }
         val wakePendingIntent = PendingIntent.getService(this, 1, wakeIntent, pendingIntentFlags)
-        builder.addAction(R.drawable.ic_power_save_idle, getString(R.string.power_save_wake_now), wakePendingIntent)
+        builder.addAction(R.drawable.ic_qs_tile_empty, getString(R.string.power_save_wake_now), wakePendingIntent)
 
         val stopIntent = Intent(this, YggstackService::class.java).apply {
             action = ACTION_STOP

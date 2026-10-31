@@ -4,6 +4,7 @@ import link.yggdrasil.yggstack.android.data.NativeConfigJson
 import link.yggdrasil.yggstack.android.data.YggstackConfig
 import link.yggdrasil.yggstack.mobile.LogCallback
 import link.yggdrasil.yggstack.mobile.Mobile
+import link.yggdrasil.yggstack.mobile.PeerCallback
 import link.yggdrasil.yggstack.mobile.PingCallback
 import link.yggdrasil.yggstack.mobile.Yggstack
 
@@ -23,6 +24,14 @@ internal class GoEngine : NativeEngine {
     }
 
     override fun setLogLevel(level: String) = yggstack.setLogLevel(level)
+
+    override fun setPeersCallback(callback: NativePeersCallback) {
+        yggstack.setPeerCallback(object : PeerCallback {
+            override fun onPeersChanged(peersJSON: String) {
+                callback.onPeersChanged(peersJSON)
+            }
+        })
+    }
 
     override fun generateConfigText(): String = Mobile.generateConfig()
 
