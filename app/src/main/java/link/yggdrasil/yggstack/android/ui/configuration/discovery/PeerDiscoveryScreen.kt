@@ -522,6 +522,7 @@ fun PeerCard(
                 
                 // Country and RTT
                 Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     // Country flag where known, then the country name
