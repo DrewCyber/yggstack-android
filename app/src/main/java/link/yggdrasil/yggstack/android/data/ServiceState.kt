@@ -34,3 +34,27 @@ data class PingSessionState(
     val error: String? = null
 )
 
+/**
+ * One-shot liveness verdict for a forward mapping's remote service, from
+ * the engine's netstack probe. Drives the alive dot on forward cards.
+ */
+enum class PortCheckState {
+    /** The remote service answered: TCP handshake completed / UDP reply. */
+    ALIVE,
+
+    /** The remote side answered RST — nothing listens on that port (TCP only). */
+    DEAD,
+
+    /** UDP probe got no reply — inconclusive in UDP, never shown as dead. */
+    NO_ANSWER
+}
+
+/** Stable key identifying a forward mapping in the port-check results. */
+fun ForwardMapping.portCheckKey(): String =
+    "${protocol.name}|$localIp:$localPort|[$remoteIp]:$remotePort"
+
+/** Stable key identifying an expose mapping in the port-check results.
+ *  Prefixed to never collide with forward keys. */
+fun ExposeMapping.portCheckKey(): String =
+    "expose|${protocol.name}|$localIp:$localPort|ygg:$yggPort"
+

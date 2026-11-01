@@ -81,6 +81,15 @@ class ConfigurationViewModel(
     private val _peerCountries = MutableStateFlow<Map<String, String>>(emptyMap())
     val peerCountries: StateFlow<Map<String, String>> = _peerCountries.asStateFlow()
 
+    // Connected (Up) peer URIs from the service's peer snapshot — drives
+    // the per-peer alive dots while the service is running
+    private val _connectedPeerUris = MutableStateFlow<Set<String>>(emptySet())
+    val connectedPeerUris: StateFlow<Set<String>> = _connectedPeerUris.asStateFlow()
+
+    // Latest forward port-check verdicts (see ForwardMapping.portCheckKey)
+    private val _portChecks = MutableStateFlow<Map<String, PortCheckState>>(emptyMap())
+    val portChecks: StateFlow<Map<String, PortCheckState>> = _portChecks.asStateFlow()
+
     private var yggstackService: YggstackService? = null
     private var serviceBound = false
 
@@ -154,6 +163,14 @@ class ConfigurationViewModel(
                     }
                 }
 
+                // Alive-indicator state from the peer snapshots / port checks
+                viewModelScope.launch {
+                    service.connectedPeerUris.collect { _connectedPeerUris.value = it }
+                }
+                viewModelScope.launch {
+                    service.portChecks.collect { _portChecks.value = it }
+                }
+
                 // Observe generated private key and save it
                 viewModelScope.launch {
                     service.generatedPrivateKey.collect { key ->
@@ -174,6 +191,8 @@ class ConfigurationViewModel(
             yggstackService = null
             _serviceState.value = ServiceState.Stopped
             _yggdrasilIp.value = null
+            _connectedPeerUris.value = emptySet()
+            _portChecks.value = emptyMap()
         }
     }
 
@@ -405,8 +424,13 @@ class ConfigurationViewModel(
                 else -> m
             }
         }
-        updateConfig(_config.value.copy(exposeMappings = newList))
+        val newConfig = _config.value.copy(exposeMappings = newList)
+        updateConfig(newConfig)
         if (_serviceState.value is ServiceState.Running) {
+            // Keep the service's config snapshot in sync with the live
+            // toggle — the port-check coordinator probes the enabled
+            // mappings from it (same as forward toggles)
+            yggstackService?.updateLiveConfig(newConfig)
             yggstackService?.enableExposeMapping(mapping, newEnabled)
         }
     }
@@ -456,8 +480,14 @@ class ConfigurationViewModel(
                 else -> m
             }
         }
-        updateConfig(_config.value.copy(forwardMappings = newList))
+        val newConfig = _config.value.copy(forwardMappings = newList)
+        updateConfig(newConfig)
         if (_serviceState.value is ServiceState.Running) {
+            // Keep the service's config snapshot in sync with the live
+            // toggle — the port-check coordinator probes the enabled
+            // mappings from it, so without this the freshly enabled rule
+            // would be missing from its own re-check.
+            yggstackService?.updateLiveConfig(newConfig)
             yggstackService?.enableForwardMapping(mapping, newEnabled)
         }
     }

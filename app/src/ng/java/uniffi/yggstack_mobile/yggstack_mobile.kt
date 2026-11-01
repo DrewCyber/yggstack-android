@@ -847,6 +847,10 @@ internal open class UniffiVTableCallbackInterfacePingCallback(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -877,6 +881,10 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_add_local_udp(
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_add_remote_tcp(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_add_remote_udp(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_check_tcp_port(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_check_udp_port(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_clear_mappings(
 ): Short
@@ -1006,6 +1014,10 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_add_remote_tcp(`ptr`: Pointe
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_add_remote_udp(`ptr`: Pointer,`spec`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_check_tcp_port(`ptr`: Pointer,`addrPort`: RustBuffer.ByValue,`timeoutMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_check_udp_port(`ptr`: Pointer,`addrPort`: RustBuffer.ByValue,`timeoutMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_clear_mappings(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_generate_and_load_config(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1218,6 +1230,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_add_remote_udp() != 47882.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_check_tcp_port() != 24832.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_check_udp_port() != 22844.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_clear_mappings() != 24842.toShort()) {
@@ -1738,6 +1756,26 @@ public interface YggstackMobileInterface {
     fun `addRemoteUdp`(`spec`: kotlin.String)
     
     /**
+     * One-shot liveness probe of a remote Yggdrasil TCP service
+     * ("[200:...]:port"), dialed through the node's own netstack — no
+     * proxy involved. Returns "connected" (handshake completed: a real
+     * service answered), "refused" (RST: nothing listens on that port),
+     * "timeout" (no answer within timeout_ms), or "error" (node not
+     * running / malformed address).
+     */
+    fun `checkTcpPort`(`addrPort`: kotlin.String, `timeoutMs`: kotlin.Long): kotlin.String
+    
+    /**
+     * One-shot UDP probe: sends datagrams to a remote Yggdrasil UDP
+     * port and listens for any reply (a mid-window re-probe covers the
+     * lookup-consumed first datagram; port 53 is probed with a real
+     * minimal DNS query). Returns "replied" (a service answered),
+     * "silent" (no reply — inconclusive in UDP, not proof of death),
+     * or "error" (node not running / malformed address).
+     */
+    fun `checkUdpPort`(`addrPort`: kotlin.String, `timeoutMs`: kotlin.Long): kotlin.String
+    
+    /**
      * Remove all configured mappings.
      */
     fun `clearMappings`()
@@ -2051,6 +2089,46 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
 }
     }
     
+    
+
+    
+    /**
+     * One-shot liveness probe of a remote Yggdrasil TCP service
+     * ("[200:...]:port"), dialed through the node's own netstack — no
+     * proxy involved. Returns "connected" (handshake completed: a real
+     * service answered), "refused" (RST: nothing listens on that port),
+     * "timeout" (no answer within timeout_ms), or "error" (node not
+     * running / malformed address).
+     */override fun `checkTcpPort`(`addrPort`: kotlin.String, `timeoutMs`: kotlin.Long): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_check_tcp_port(
+        it, FfiConverterString.lower(`addrPort`),FfiConverterLong.lower(`timeoutMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * One-shot UDP probe: sends datagrams to a remote Yggdrasil UDP
+     * port and listens for any reply (a mid-window re-probe covers the
+     * lookup-consumed first datagram; port 53 is probed with a real
+     * minimal DNS query). Returns "replied" (a service answered),
+     * "silent" (no reply — inconclusive in UDP, not proof of death),
+     * or "error" (node not running / malformed address).
+     */override fun `checkUdpPort`(`addrPort`: kotlin.String, `timeoutMs`: kotlin.Long): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_check_udp_port(
+        it, FfiConverterString.lower(`addrPort`),FfiConverterLong.lower(`timeoutMs`),_status)
+}
+    }
+    )
+    }
     
 
     

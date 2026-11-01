@@ -97,4 +97,23 @@ interface NativeEngine {
     /** Stop the running ping session, if any. The callback receives its
      *  final done event before this returns. */
     fun stopPing()
+
+    /** One-shot liveness probe of a remote Yggdrasil TCP service
+     *  ([yggAddrPort] is "[200:...]:port"), dialed through the engine's own
+     *  netstack — no proxy or mapping involved. Returns "connected" (a real
+     *  service answered the handshake), "refused" (RST: nothing listens on
+     *  that port), "timeout" (no answer within [timeoutMs]) or "error"
+     *  (engine not running / malformed address). Dialled twice with a short
+     *  gap: the first dial on a cold start can lose the race with the
+     *  overlay's key lookup — the retry dials through the cached key.
+     *  Blocks for up to ~2x [timeoutMs]; call off the main thread. */
+    fun checkTcpPort(yggAddrPort: String, timeoutMs: Long): String
+
+    /** One-shot UDP probe: sends datagrams to a remote Yggdrasil UDP port
+     *  and listens for any reply (a mid-window re-probe covers the
+     *  lookup-consumed first datagram; port 53 is probed with a real
+     *  minimal DNS query). Returns "replied" (a service answered),
+     *  "silent" (no reply — inconclusive in UDP, not proof of death) or
+     *  "error". Blocks for up to [timeoutMs]; call off the main thread. */
+    fun checkUdpPort(yggAddrPort: String, timeoutMs: Long): String
 }

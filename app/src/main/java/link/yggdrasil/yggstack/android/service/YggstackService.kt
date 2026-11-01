@@ -32,7 +32,9 @@ import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
 import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.CachedPeer
+import link.yggdrasil.yggstack.android.data.PortCheckState
 import link.yggdrasil.yggstack.android.data.hasAlwaysOnInbound
+import link.yggdrasil.yggstack.android.data.portCheckKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -280,6 +282,17 @@ class YggstackService : Service() {
 
     private val _totalPeerCount = MutableStateFlow(0)
     val totalPeerCount: StateFlow<Int> = _totalPeerCount.asStateFlow()
+
+    // Connected (Up=true) peer URIs from the latest snapshot — drives the
+    // per-peer alive dots on the Configuration screen. Empty while stopped.
+    private val _connectedPeerUris = MutableStateFlow<Set<String>>(emptySet())
+    val connectedPeerUris: StateFlow<Set<String>> = _connectedPeerUris.asStateFlow()
+
+    // Latest port-check verdicts per forward mapping key (see
+    // ForwardMapping.portCheckKey) — drives the forward card alive dots.
+    // Empty while stopped or when no peers are connected (nothing to check).
+    private val _portChecks = MutableStateFlow<Map<String, PortCheckState>>(emptyMap())
+    val portChecks: StateFlow<Map<String, PortCheckState>> = _portChecks.asStateFlow()
 
     private val _peerDetailsJSON = MutableSharedFlow<String>(replay = 1)
     val peerDetailsJSON: SharedFlow<String> = _peerDetailsJSON.asSharedFlow()
@@ -692,6 +705,13 @@ class YggstackService : Service() {
                 if (lifecycle.isDestroyed) return
                 persistServiceWasRunning(true)
                 _peerCount.value = 0
+                // A fresh run starts with no alive indicators; the peer
+                // callback's baseline snapshot (and the port checks it
+                // triggers) repopulates them.
+                _connectedPeerUris.value = emptySet()
+                portCheckJob?.cancel()
+                portCheckJob = null
+                _portChecks.value = emptyMap()
                 // A fresh run starts with no snapshot; the callback's
                 // baseline is applied when it arrives (or right below if it
                 // already raced past the start sequence).
@@ -786,6 +806,10 @@ class YggstackService : Service() {
             _yggdrasilPublicKey.value = null
             _peerCount.value = 0
             _totalPeerCount.value = 0
+            _connectedPeerUris.value = emptySet()
+            portCheckJob?.cancel()
+            portCheckJob = null
+            _portChecks.value = emptyMap()
             _generatedPrivateKey.value = null
             hasNoNetwork = false
             // The engine stop ends its ping session with a done event, but a
@@ -1111,6 +1135,13 @@ class YggstackService : Service() {
         } catch (e: Exception) {
             logError("✗ Error ${action.lowercase()} expose rule: ${e.message}")
         }
+        // The rule's previous verdict is stale the moment its listener is
+        // toggled — drop it so the card shows yellow until the fresh probe
+        // lands (a re-enabled rule would otherwise show its old color).
+        _portChecks.update { it - mapping.portCheckKey() }
+        // A freshly enabled expose gets an immediate verdict when there is
+        // connectivity to check against (no-op otherwise).
+        if (enable) schedulePortChecks(delayMs = 500)
     }
 
     /**
@@ -1145,6 +1176,13 @@ class YggstackService : Service() {
         } catch (e: Exception) {
             logError("✗ Error ${action.lowercase()} forward rule: ${e.message}")
         }
+        // The rule's previous verdict is stale the moment its listener is
+        // toggled — drop it so the card shows yellow until the fresh probe
+        // lands (a re-enabled rule would otherwise show its old color).
+        _portChecks.update { it - mapping.portCheckKey() }
+        // A freshly enabled forward gets an immediate alive verdict when
+        // there is connectivity to check against (no-op otherwise).
+        if (enable) schedulePortChecks(delayMs = 500)
     }
 
     // Log level helper functions
@@ -2418,20 +2456,28 @@ class YggstackService : Service() {
         try {
             val jsonArray = JSONArray(peersJson)
             val totalCount = jsonArray.length()
-            // Count only peers that are Up (connected)
+            // Count only peers that are Up (connected); collect their URIs
+            // for the per-peer alive dots on the Configuration screen.
+            // Query-stripped: configured URIs may carry ?priority=… etc.
             var connectedCount = 0
+            val connected = mutableSetOf<String>()
             for (i in 0 until jsonArray.length()) {
                 val peerObj = jsonArray.getJSONObject(i)
                 if (peerObj.optBoolean("Up", false)) {
                     connectedCount++
+                    peerObj.optString("URI", "")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { connected.add(it.split("?")[0]) }
                 }
             }
             _peerCount.value = connectedCount
             _totalPeerCount.value = totalCount
+            _connectedPeerUris.value = connected
         } catch (e: Exception) {
             logError("Error parsing peer JSON: ${e.message}")
             _peerCount.value = 0
             _totalPeerCount.value = 0
+            _connectedPeerUris.value = emptySet()
         }
         val wasWaiting = connectivityState == ConnectivityState.WAITING
         connectivityState = if (_peerCount.value > 0) ConnectivityState.CONNECTED
@@ -2443,6 +2489,164 @@ class YggstackService : Service() {
             startBlink()
         }
         postNotification()
+
+        // Peer connectivity is the only trigger for forward port checks —
+        // no polling: with no peers connected there is no route to the
+        // remote side, so there is nothing to check (cards show yellow).
+        // The 0→connected transition runs almost immediately — that is the
+        // moment the user is watching the dots; later peer-set churn keeps
+        // the full anti-flap debounce.
+        schedulePortChecks(delayMs = if (wasWaiting) 300L else PORT_CHECK_DEBOUNCE_MS)
+    }
+
+    /** Pending debounced port-check pass, if any. */
+    private var portCheckJob: Job? = null
+
+    /**
+     * Schedule a forward port-check pass. Only meaningful with the node
+     * running, awake (not Power Save idle) and at least one peer connected;
+     * in any other state results are cleared and nothing is scheduled.
+     * Debounced to ride out rapid connect/disconnect flapping.
+     */
+    private fun schedulePortChecks(delayMs: Long = PORT_CHECK_DEBOUNCE_MS) {
+        portCheckJob?.cancel()
+        portCheckJob = null
+        if (!_isRunning.value || _isPowerSaveIdle.value || _peerCount.value == 0) {
+            _portChecks.value = emptyMap()
+            return
+        }
+        portCheckJob = serviceScope.launch {
+            delay(delayMs)
+            runPortChecks()
+        }
+    }
+
+    /**
+     * Probe every enabled forward mapping's remote service once, through
+     * the engine's netstack (no proxy involved). Each verdict is published
+     * the moment its probe completes — a batch would hold every indicator
+     * hostage to the slowest probe (a silent UDP rule waits out its full
+     * window). Verdicts for rules not re-checked in this pass stay as they
+     * were. One TCP handshake / UDP exchange per mapping — negligible cost.
+     */
+    private suspend fun runPortChecks() {
+        val engine = yggstack ?: return
+        val config = lastConfig ?: return
+        if (!_isRunning.value || _isPowerSaveIdle.value || _peerCount.value == 0) return
+        if (!config.forwardEnabled) return
+        val mappings = config.forwardMappings.filter { it.enabled }
+        if (mappings.isEmpty()) return
+
+        val probed = java.util.concurrent.atomic.AtomicInteger()
+        kotlinx.coroutines.coroutineScope {
+            mappings.forEach { mapping ->
+                launch(Dispatchers.IO) {
+                    val target = "[${mapping.remoteIp}]:${mapping.remotePort}"
+                    val verdict = try {
+                        when (mapping.protocol) {
+                            Protocol.TCP -> when (engine.checkTcpPort(target, PORT_CHECK_TIMEOUT_MS)) {
+                                "connected" -> PortCheckState.ALIVE
+                                "refused", "timeout" -> PortCheckState.DEAD
+                                else -> null // "error": leave the card unchecked (yellow)
+                            }
+                            Protocol.UDP -> when (engine.checkUdpPort(target, PORT_CHECK_TIMEOUT_MS)) {
+                                "replied" -> PortCheckState.ALIVE
+                                "silent" -> PortCheckState.NO_ANSWER
+                                else -> null
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Engine torn down mid-check; leave unchecked
+                        null
+                    }
+                    // Publish only while conditions still hold — a verdict
+                    // landing after everything dropped would be stale.
+                    if (verdict != null &&
+                        _isRunning.value && !_isPowerSaveIdle.value && _peerCount.value > 0
+                    ) {
+                        probed.incrementAndGet()
+                        _portChecks.update { current ->
+                            current + (mapping.portCheckKey() to verdict)
+                        }
+                    }
+                }
+            }
+
+            // Exposed rules: the target is a local service, directly
+            // probeable with plain sockets — same pass, same gating (with
+            // no peers connected the exposed port is unreachable from the
+            // network anyway, so the card stays yellow until then).
+            if (config.exposeEnabled) {
+                config.exposeMappings.filter { it.enabled }.forEach { mapping ->
+                    launch(Dispatchers.IO) {
+                        val verdict = checkLocalService(
+                            mapping.protocol, mapping.localIp, mapping.localPort
+                        )
+                        if (verdict != null &&
+                            _isRunning.value && !_isPowerSaveIdle.value && _peerCount.value > 0
+                        ) {
+                            probed.incrementAndGet()
+                            _portChecks.update { current ->
+                                current + (mapping.portCheckKey() to verdict)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        logInfo("Port checks: ${probed.get()} rule(s) probed")
+    }
+
+    /**
+     * Probe an expose rule's local target service with plain sockets — no
+     * engine involvement, the target is directly reachable from the app.
+     * TCP: a completed handshake is a live service, refused/timeout is
+     * dead. UDP: any reply is alive; silence is inconclusive (NO_ANSWER),
+     * with a DNS-aware payload for port 53.
+     */
+    private fun checkLocalService(
+        protocol: Protocol,
+        host: String,
+        port: Int
+    ): PortCheckState? {
+        return try {
+            when (protocol) {
+                Protocol.TCP -> {
+                    java.net.Socket().use { s ->
+                        s.connect(java.net.InetSocketAddress(host, port), PORT_CHECK_TIMEOUT_MS.toInt())
+                    }
+                    PortCheckState.ALIVE
+                }
+                Protocol.UDP -> {
+                    java.net.DatagramSocket().use { sock ->
+                        sock.soTimeout = PORT_CHECK_TIMEOUT_MS.toInt()
+                        val addr = java.net.InetAddress.getByName(host)
+                        val payload = if (port == 53) DNS_PROBE else ByteArray(16)
+                        fun send() = sock.send(java.net.DatagramPacket(payload, payload.size, addr, port))
+                        val buf = ByteArray(4096)
+                        try {
+                            send()
+                            sock.receive(java.net.DatagramPacket(buf, buf.size))
+                            PortCheckState.ALIVE
+                        } catch (e: java.net.SocketTimeoutException) {
+                            // One re-probe: datagrams are lossy by design
+                            try {
+                                send()
+                                sock.receive(java.net.DatagramPacket(buf, buf.size))
+                                PortCheckState.ALIVE
+                            } catch (e2: java.net.SocketTimeoutException) {
+                                PortCheckState.NO_ANSWER
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            PortCheckState.DEAD
+        } catch (e: java.io.IOException) {
+            // Connection refused (nothing listens there) lands here
+            PortCheckState.DEAD
+        }
     }
 
     /**
@@ -3117,6 +3321,25 @@ class YggstackService : Service() {
         private const val LOG_TAG = "YggstackService"
         const val CHANNEL_ID = "yggstack_service_channel"
         const val NOTIFICATION_ID = 1
+
+        // Forward port checks: debounce after a peer-set change (flapping
+        // peers must not spam probes) and the per-probe deadline.
+        private const val PORT_CHECK_DEBOUNCE_MS = 3000L
+        private const val PORT_CHECK_TIMEOUT_MS = 2500L
+
+        // Minimal DNS root-NS query for UDP checks against port 53: any
+        // reply (even REFUSED) proves a live resolver — generic zero-filled
+        // datagrams are silently dropped by most servers. Mirrors the
+        // engines' udpProbePayload.
+        private val DNS_PROBE = byteArrayOf(
+            0x12, 0x34, // ID
+            0x01, 0x00, // flags: RD
+            0x00, 0x01, // QDCOUNT: 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // counts: 0
+            0x00,       // QNAME: root
+            0x00, 0x02, // QTYPE: NS
+            0x00, 0x01  // QCLASS: IN
+        )
 
         // Whether a service instance is alive in this process (running OR in
         // Power Save idle). Read by the "Keep last state" app-start policy to

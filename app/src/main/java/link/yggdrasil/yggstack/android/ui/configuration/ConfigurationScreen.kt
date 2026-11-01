@@ -11,6 +11,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -74,6 +76,8 @@ fun ConfigurationScreen(
     val pendingDeepLink by viewModel.pendingDeepLink.collectAsStateWithLifecycle()
     val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsStateWithLifecycle()
     val peerCountries by viewModel.peerCountries.collectAsStateWithLifecycle()
+    val connectedPeerUris by viewModel.connectedPeerUris.collectAsStateWithLifecycle()
+    val portChecks by viewModel.portChecks.collectAsStateWithLifecycle()
 
     // Peer Discovery's ViewModel is created here instead of inside the screen
     // so the Discover Peers button can mirror the RTT check progress — and so
@@ -187,6 +191,11 @@ fun ConfigurationScreen(
         serviceState is ServiceState.PowerSaving ||
         serviceState is ServiceState.Stopping
 
+    // Stricter than isServiceRunning: the native node is genuinely up
+    // (Power Save idle keeps the service alive but powers the node down).
+    // Gates the alive dots — no dot can be honest about a sleeping node.
+    val engineUp = serviceState is ServiceState.Running
+
     Box(
         modifier = modifier.fillMaxSize()
     ) {
@@ -265,6 +274,16 @@ fun ConfigurationScreen(
                         PeerItem(
                             peer = peer,
                             flag = peerCountries[peer]?.let { CountryFlags.flagEmoji(it) },
+                            draggable = !isServiceRunning,
+                            aliveDot = when {
+                                // Disabled peers are never dialed — a red
+                                // dot would be misleading; no dot instead
+                                !engineUp || peer in config.disabledPeers -> null
+                                // Query-stripped: config URIs may carry
+                                // ?priority=… the snapshot URIs drop
+                                peer.split("?")[0] in connectedPeerUris -> AliveDot.GREEN
+                                else -> AliveDot.RED
+                            },
                             isEnabled = peer !in config.disabledPeers,
                             onToggleEnabled = { viewModel.togglePeerEnabled(peer) },
                             enabled = !isServiceRunning,
@@ -581,6 +600,18 @@ fun ConfigurationScreen(
                         checkboxEnabled = config.forwardEnabled,
                         isDragging = isDragging,
                         linkEnabled = isServiceRunning,
+                        draggable = !isServiceRunning && config.forwardEnabled,
+                        // Yellow while there is no verdict: no peers
+                        // connected (nothing to check), check still
+                        // pending, or UDP stayed silent — honest "unknown"
+                        aliveDot = when {
+                            !engineUp || !config.forwardEnabled || !mapping.enabled -> null
+                            else -> when (portChecks[mapping.portCheckKey()]) {
+                                PortCheckState.ALIVE -> AliveDot.GREEN
+                                PortCheckState.DEAD -> AliveDot.RED
+                                else -> AliveDot.YELLOW
+                            }
+                        },
                         onEdit = {
                             editingForwardMapping = mapping
                             showForwardDialog = true
@@ -629,6 +660,17 @@ fun ConfigurationScreen(
                         checkboxEnabled = config.exposeEnabled,
                         isDragging = isDragging,
                         linkEnabled = isServiceRunning,
+                        // Expose targets are local services, probed with
+                        // plain sockets in the same pass as forwards
+                        aliveDot = when {
+                            !engineUp || !config.exposeEnabled || !mapping.enabled -> null
+                            else -> when (portChecks[mapping.portCheckKey()]) {
+                                PortCheckState.ALIVE -> AliveDot.GREEN
+                                PortCheckState.DEAD -> AliveDot.RED
+                                else -> AliveDot.YELLOW
+                            }
+                        },
+                        draggable = !isServiceRunning && config.exposeEnabled,
                         onEdit = {
                             editingExposeMapping = mapping
                             showExposeDialog = true
@@ -1590,8 +1632,56 @@ fun PacServerDialog(
     )
 }
 
+/**
+ * Traffic-light alive state shown as a dot on the configuration cards.
+ * Peers: green = connected, red = not connected (while the engine is up).
+ * Forwards: green = remote service answered, red = nothing listens there,
+ * yellow = unknown (no peers to check through, check pending, UDP silent).
+ */
+internal enum class AliveDot { GREEN, YELLOW, RED }
+
+/** The 10dp dot; emits nothing (and takes no space) when [dot] is null. */
 @Composable
-fun PeerItem(
+private fun AliveDotIndicator(dot: AliveDot?) {
+    if (dot == null) return
+    val color = when (dot) {
+        AliveDot.GREEN -> Color(0xFF4CAF50)
+        AliveDot.YELLOW -> Color(0xFFFFC107)
+        AliveDot.RED -> MaterialTheme.colorScheme.error
+    }
+    Box(
+        modifier = Modifier
+            .padding(end = 6.dp)
+            .size(10.dp)
+            .background(color, CircleShape)
+    )
+}
+
+/** Two-line drag affordance shown in the alive-dot slot while the service
+ *  is stopped: reordering is only possible then, and the alive dots are
+ *  absent — the handle says "this row moves". */
+@Composable
+private fun DragHandleIndicator() {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier.padding(end = 6.dp)
+    ) {
+        Box(
+            Modifier
+                .size(10.dp, 2.dp)
+                .background(color, RoundedCornerShape(1.dp))
+        )
+        Box(
+            Modifier
+                .size(10.dp, 2.dp)
+                .background(color, RoundedCornerShape(1.dp))
+        )
+    }
+}
+
+@Composable
+private fun PeerItem(
     peer: String,
     isEnabled: Boolean,
     onToggleEnabled: () -> Unit,
@@ -1599,6 +1689,8 @@ fun PeerItem(
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
     flag: String? = null,
+    aliveDot: AliveDot? = null,
+    draggable: Boolean = false,
     isDragging: Boolean = false
 ) {
     Row(
@@ -1610,6 +1702,7 @@ fun PeerItem(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (draggable) DragHandleIndicator() else AliveDotIndicator(aliveDot)
         // Country flag for peers known from the public-peers list
         if (flag != null) {
             Text(
@@ -1635,12 +1728,14 @@ fun PeerItem(
 }
 
 @Composable
-fun ExposeMappingItem(
+private fun ExposeMappingItem(
     mapping: ExposeMapping,
     enabled: Boolean,
     checkboxEnabled: Boolean,
     isDragging: Boolean = false,
     linkEnabled: Boolean = false,
+    aliveDot: AliveDot? = null,
+    draggable: Boolean = false,
     onEdit: () -> Unit,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
@@ -1654,6 +1749,7 @@ fun ExposeMappingItem(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (draggable) DragHandleIndicator() else AliveDotIndicator(aliveDot)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = if (mapping.shortName.isNotBlank()) mapping.shortName
@@ -1671,12 +1767,14 @@ fun ExposeMappingItem(
 }
 
 @Composable
-fun ForwardMappingItem(
+private fun ForwardMappingItem(
     mapping: ForwardMapping,
     enabled: Boolean,
     checkboxEnabled: Boolean,
     isDragging: Boolean = false,
     linkEnabled: Boolean = false,
+    aliveDot: AliveDot? = null,
+    draggable: Boolean = false,
     onEdit: () -> Unit,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
@@ -1690,6 +1788,7 @@ fun ForwardMappingItem(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (draggable) DragHandleIndicator() else AliveDotIndicator(aliveDot)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = if (mapping.shortName.isNotBlank()) mapping.shortName

@@ -112,4 +112,10 @@ internal class GoEngine : NativeEngine {
     )
 
     override fun stopPing() = yggstack.stopPing()
+
+    override fun checkTcpPort(yggAddrPort: String, timeoutMs: Long): String =
+        yggstack.checkTCPPort(yggAddrPort, timeoutMs)
+
+    override fun checkUdpPort(yggAddrPort: String, timeoutMs: Long): String =
+        yggstack.checkUDPPort(yggAddrPort, timeoutMs)
 }

@@ -131,6 +131,12 @@ internal class RustEngine : NativeEngine {
 
     override fun stopPing() = yggstack.stopPing()
 
+    override fun checkTcpPort(yggAddrPort: String, timeoutMs: Long): String =
+        yggstack.checkTcpPort(yggAddrPort, timeoutMs)
+
+    override fun checkUdpPort(yggAddrPort: String, timeoutMs: Long): String =
+        yggstack.checkUdpPort(yggAddrPort, timeoutMs)
+
     private fun localForwardSpec(localAddr: String, remoteAddr: String): String {
         val (localIp, localPort) = splitHostPort(localAddr)
         val (remoteIp, remotePort) = splitHostPort(remoteAddr)
