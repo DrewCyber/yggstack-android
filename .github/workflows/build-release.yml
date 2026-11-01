@@ -5,7 +5,10 @@ permissions:
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      # Bare x.y.z (legacy) and vx.y.z (F-Droid convention). Transition:
+      # releases still tag bare; v-tags are accepted so the switch is a
+      # no-op. Drop the bare alternative once all releases use the v prefix.
+      - 'v?[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   build-go:
@@ -257,8 +260,9 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # Get the previous tag
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p')
+          # Get the previous tag (bare legacy and v-prefixed both count;
+          # version:refname sort ranks v1.2.4 above 1.2.3 correctly)
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p')
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous release tag found, generating full changelog"

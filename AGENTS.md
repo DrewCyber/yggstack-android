@@ -83,7 +83,7 @@ ANDROID_NDK_HOME=<ndk-path> ./crates/yggstack-mobile/scripts/build_android.sh
 
 Editing engine sources has no effect until the AAR / `.so` are rebuilt as above. After changing the UniFFI UDL, regenerate the Kotlin bindings and update the checked-in copy in `app/src/ng/java/uniffi/` (CI does NOT regenerate them — the checked-in bindings are what ships). `crates/yggstack-mobile/scripts/build_android.sh` does the regeneration: `uniffi-bindgen --library` needs a library the host can load, so the script builds the cdylib for the host and generates from that (the Android `.so` cannot be dlopened on macOS/Linux); output lands in `lib/yggstack-ng/android-build/kotlin/uniffi/yggstack_mobile/`.
 
-Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal) for both flavors and published on tag push (`[0-9]+.[0-9]+.[0-9]+`) via `build-release.yml`. go APKs keep the legacy names `yggstack-<version>-<abi>.apk`; ng APKs are `yggstack-ng-<version>-<abi>.apk`.
+Release APKs are produced per-ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal) for both flavors and published on tag push (`v?[0-9]+.[0-9]+.[0-9]+` — bare legacy and v-prefixed both trigger; version in names never carries the v) via `build-release.yml`. go APKs keep the legacy names `yggstack-<version>-<abi>.apk`; ng APKs are `yggstack-ng-<version>-<abi>.apk`.
 
 ## Conventions
 
