@@ -90,8 +90,9 @@ interface NativeEngine {
      *  `{"Type":"probe","Seq":N,"Success":bool,"RttMs":float|"Error":str}`
      *  and a final `{"Type":"done","Reason":"completed"|"stopped"|"error"}`.
      *  Replaces any running session; throws when the engine is not running.
-     *  The first probe to a never-contacted address may time out (overlay
-     *  key lookup) — it is reported as a plain timeout. */
+     *  The first probe to a never-contacted address may time out (the
+     *  overlay's first-contact path lookup and session handshake) — it is
+     *  reported as a plain timeout. */
     fun startPing(address: String, count: Int, timeoutMs: Long, intervalMs: Long, callback: NativePingCallback)
 
     /** Stop the running ping session, if any. The callback receives its
@@ -105,13 +106,15 @@ interface NativeEngine {
      *  that port), "timeout" (no answer within [timeoutMs]) or "error"
      *  (engine not running / malformed address). Dialled twice with a short
      *  gap: the first dial on a cold start can lose the race with the
-     *  overlay's key lookup — the retry dials through the cached key.
+     *  overlay's first-contact path lookup and session handshake — the
+     *  retry dials through the now-cached path and session.
      *  Blocks for up to ~2x [timeoutMs]; call off the main thread. */
     fun checkTcpPort(yggAddrPort: String, timeoutMs: Long): String
 
     /** One-shot UDP probe: sends datagrams to a remote Yggdrasil UDP port
-     *  and listens for any reply (a mid-window re-probe covers the
-     *  lookup-consumed first datagram; port 53 is probed with a real
+     *  and listens for any reply (a mid-window re-probe covers the first
+     *  datagram held back by the first-contact path lookup and session
+     *  handshake; port 53 is probed with a real
      *  minimal DNS query). Returns "replied" (a service answered),
      *  "silent" (no reply — inconclusive in UDP, not proof of death) or
      *  "error". Blocks for up to [timeoutMs]; call off the main thread. */

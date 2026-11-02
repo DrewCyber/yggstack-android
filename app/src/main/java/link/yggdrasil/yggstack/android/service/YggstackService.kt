@@ -2490,13 +2490,21 @@ class YggstackService : Service() {
         }
         postNotification()
 
-        // Peer connectivity is the only trigger for forward port checks —
-        // no polling: with no peers connected there is no route to the
-        // remote side, so there is nothing to check (cards show yellow).
-        // The 0→connected transition runs almost immediately — that is the
-        // moment the user is watching the dots; later peer-set churn keeps
-        // the full anti-flap debounce.
-        schedulePortChecks(delayMs = if (wasWaiting) 300L else PORT_CHECK_DEBOUNCE_MS)
+        // Port checks re-arm only on the 0→connected transition. The pass
+        // has its own triggers (rule toggles, requestPortCheckPass when the
+        // Configuration screen becomes visible); scheduling on every
+        // snapshot coupled the checks to whoever was collecting peers — and
+        // the 1s peers poller kept re-arming the debounce so no pass ever
+        // ran while a peers-collecting screen stayed visible. Dropping to
+        // zero peers leaves no route to probe through — clear stale
+        // verdicts (cards show yellow).
+        if (_peerCount.value > 0) {
+            if (wasWaiting) schedulePortChecks(delayMs = 300L)
+        } else {
+            portCheckJob?.cancel()
+            portCheckJob = null
+            _portChecks.value = emptyMap()
+        }
     }
 
     /** Pending debounced port-check pass, if any. */
@@ -2506,19 +2514,34 @@ class YggstackService : Service() {
      * Schedule a forward port-check pass. Only meaningful with the node
      * running, awake (not Power Save idle) and at least one peer connected;
      * in any other state results are cleared and nothing is scheduled.
-     * Debounced to ride out rapid connect/disconnect flapping.
+     * Debounced to ride out rapid connect/disconnect flapping. A pending
+     * pass is never re-armed: repeated triggers while one waits must not
+     * keep pushing it back.
      */
     private fun schedulePortChecks(delayMs: Long = PORT_CHECK_DEBOUNCE_MS) {
-        portCheckJob?.cancel()
-        portCheckJob = null
         if (!_isRunning.value || _isPowerSaveIdle.value || _peerCount.value == 0) {
+            portCheckJob?.cancel()
+            portCheckJob = null
             _portChecks.value = emptyMap()
             return
         }
+        if (portCheckJob?.isActive == true) return
         portCheckJob = serviceScope.launch {
             delay(delayMs)
             runPortChecks()
         }
+    }
+
+    /**
+     * Request a fresh port-check pass. The Configuration screen calls this
+     * whenever it becomes visible, so returning to the app refreshes stale
+     * verdicts — a cold-start UDP "silent" (the overlay's first-contact
+     * path lookup and session handshake outlasted the probe window) heals
+     * on the next look once they have completed. No-op when a pass cannot
+     * run right now or one is already pending.
+     */
+    fun requestPortCheckPass() {
+        schedulePortChecks()
     }
 
     /**

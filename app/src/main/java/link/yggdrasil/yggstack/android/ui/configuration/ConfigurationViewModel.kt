@@ -312,6 +312,16 @@ class ConfigurationViewModel(
         }
     }
 
+    /**
+     * Ask the service for a fresh port-check pass. Called whenever this
+     * screen becomes visible, so returning to the app refreshes possibly
+     * stale alive dots (e.g. a UDP probe that lost the race with the
+     * overlay's first-contact path lookup).
+     */
+    fun refreshAliveChecks() {
+        yggstackService?.requestPortCheckPass()
+    }
+
     fun togglePeerEnabled(peer: String) {
         val currentDisabled = _config.value.disabledPeers.toMutableList()
         if (peer in currentDisabled) {

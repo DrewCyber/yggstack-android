@@ -1948,12 +1948,15 @@ fun PingViewer(viewModel: DiagnosticsViewModel, isVisible: Boolean) {
     var showTargetPicker by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Feed the target suggestions: collect peer details only while this tab
-    // is visible and the service is running and bound (same pattern as the
-    // Peers tab — the SharedFlow subscription also drives the poller).
+    // Feed the target suggestions: collect peer details only while the
+    // target picker is open. The SharedFlow subscription drives the
+    // service's 1-second peers poller — keeping it up for the whole tab
+    // polled peers nonstop for a suggestions list nobody was looking at.
+    // peerDetails is a StateFlow, so the picker renders instantly from the
+    // last snapshot and fills in as the poller ticks.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(isVisible, isServiceRunning, serviceConnected, lifecycleOwner) {
-        if (isVisible && isServiceRunning && serviceConnected) {
+    LaunchedEffect(isVisible, isServiceRunning, serviceConnected, lifecycleOwner, showTargetPicker) {
+        if (isVisible && isServiceRunning && serviceConnected && showTargetPicker) {
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.collectPeerDetails()
             }

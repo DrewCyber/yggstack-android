@@ -152,6 +152,15 @@ fun ConfigurationScreen(
         viewModel.refreshPeerCountries()
     }
 
+    // Alive dots: request a fresh port-check pass whenever this screen
+    // (re)enters composition — bottom-nav switches dispose it, so every
+    // return to Configuration (and every app foreground that lands here)
+    // re-probes rules whose verdict went stale, e.g. a UDP check that lost
+    // the race with the overlay's first-contact path lookup.
+    LaunchedEffect(Unit) {
+        viewModel.refreshAliveChecks()
+    }
+
     // Read the saved position once for restoration instead of collecting it:
     // subscribing here would recompose the whole screen on every save
     val savedScrollPosition = viewModel.scrollPosition.value
