@@ -48,6 +48,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -287,6 +290,13 @@ class YggstackService : Service() {
     // per-peer alive dots on the Configuration screen. Empty while stopped.
     private val _connectedPeerUris = MutableStateFlow<Set<String>>(emptySet())
     val connectedPeerUris: StateFlow<Set<String>> = _connectedPeerUris.asStateFlow()
+
+    // ≥1 peer link Up — a proxy for overlay attachment (not proof of
+    // reachability; a partitioned peer still counts). Derived from the
+    // peer snapshot, never set directly.
+    val isConnected: StateFlow<Boolean> = _peerCount
+        .map { it > 0 }
+        .stateIn(serviceScope, SharingStarted.Eagerly, false)
 
     // Latest port-check verdicts per forward mapping key (see
     // ForwardMapping.portCheckKey) — drives the forward card alive dots.
@@ -1180,9 +1190,13 @@ class YggstackService : Service() {
         // toggled — drop it so the card shows yellow until the fresh probe
         // lands (a re-enabled rule would otherwise show its old color).
         _portChecks.update { it - mapping.portCheckKey() }
-        // A freshly enabled forward gets an immediate alive verdict when
-        // there is connectivity to check against (no-op otherwise).
-        if (enable) schedulePortChecks(delayMs = 500)
+        // A freshly enabled forward gets its route warmed ahead of the
+        // probe, then an immediate verdict when there is connectivity to
+        // check against (no-op otherwise).
+        if (enable) {
+            warmupAddresses(listOf(mapping.remoteIp))
+            schedulePortChecks(delayMs = 500)
+        }
     }
 
     // Log level helper functions
@@ -1874,25 +1888,29 @@ class YggstackService : Service() {
         try {
             client.tcpNoDelay = true
 
-            // Wait for the node to finish starting. _isRunning flips true only
-            // after start() returns, and the real listeners are bound even
-            // before that (mappings are registered in setupPortMappings, prior
-            // to start()). Watching the state flow instead of polling
-            // getListenersJSON keeps this loop off the JNI boundary: every
-            // crossing multiplies exposure to a known arm64 cgo bug
+            // Wait for the node to finish starting AND at least one peer to
+            // be connected. _isRunning flips true only after start() returns,
+            // and the real listeners are bound even before that (mappings are
+            // registered in setupPortMappings, prior to start()). The peer
+            // gate matters: relaying into a peer-less node would park the
+            // connection's first packets behind path lookups that cannot
+            // leave the node — with a peer up, the transition-fired route
+            // warmup has a tree to ride. Watching the state flows instead of
+            // polling getListenersJSON keeps this loop off the JNI boundary:
+            // every crossing multiplies exposure to a known arm64 cgo bug
             // (golang/go#46893, "bulkBarrierPreWrite: unaligned arguments")
             // that crashes the process probabilistically per call.
             var ready = false
             val deadline = System.currentTimeMillis() + SPLICE_HOLD_TIMEOUT_MS
             while (System.currentTimeMillis() < deadline) {
-                if (_isRunning.value) {
+                if (_isRunning.value && _peerCount.value > 0) {
                     ready = true
                     break
                 }
                 kotlinx.coroutines.delay(SPLICE_READY_POLL_MS)
             }
             if (!ready) {
-                logWarn("Power Save: node listener on $host:$port not ready in time - releasing held connection")
+                logWarn("Power Save: node/peers for $host:$port not ready in time - releasing held connection")
                 return
             }
 
@@ -2490,21 +2508,70 @@ class YggstackService : Service() {
         }
         postNotification()
 
-        // Port checks re-arm only on the 0→connected transition. The pass
-        // has its own triggers (rule toggles, requestPortCheckPass when the
-        // Configuration screen becomes visible); scheduling on every
-        // snapshot coupled the checks to whoever was collecting peers — and
-        // the 1s peers poller kept re-arming the debounce so no pass ever
-        // ran while a peers-collecting screen stayed visible. Dropping to
-        // zero peers leaves no route to probe through — clear stale
-        // verdicts (cards show yellow).
+        // The 0→connected transition is the moment routes become usable:
+        // warm up the config's overlay destinations first, then arm the
+        // quick port-check pass (~300ms later) so it probes warm routes.
+        // Steady snapshots schedule nothing (the pass has its own triggers:
+        // rule toggles, requestPortCheckPass on Configuration visible).
+        // Dropping to zero peers leaves no route to probe through — clear
+        // stale verdicts (cards show yellow).
         if (_peerCount.value > 0) {
-            if (wasWaiting) schedulePortChecks(delayMs = 300L)
+            if (wasWaiting) {
+                warmupConfiguredDestinations()
+                schedulePortChecks(delayMs = 300L)
+            }
         } else {
             portCheckJob?.cancel()
             portCheckJob = null
             _portChecks.value = emptyMap()
         }
+    }
+
+    /**
+     * Fire-and-forget route warm-up for every overlay destination the
+     * config references: enabled forwards' remote hosts plus the proxy
+     * DNS servers when they are Yggdrasil addresses (expose targets are
+     * local services — nothing to warm). One rumor lookup each — the
+     * same lookup a cold packet triggers — fired at the 0→connected peer
+     * transition (start, wake, peer-flap reconnect) so it rides the
+     * freshly attached tree; the next real packet to each destination
+     * then skips path discovery and only pays the session handshake.
+     */
+    private fun warmupConfiguredDestinations() {
+        val config = lastConfig ?: return
+        val dests = sortedSetOf<String>()
+        config.forwardMappings.filter { it.enabled }.forEach { dests.add(it.remoteIp) }
+        if (config.proxyEnabled) {
+            listOf(config.dnsServer, config.dnsServer2)
+                .filter { it.isNotBlank() && isYggdrasilAddress(it) }
+                .forEach { dests.add(it) }
+        }
+        warmupAddresses(dests)
+    }
+
+    /** Fire one lookup per destination; the engine no-ops bad addresses. */
+    private fun warmupAddresses(dests: Collection<String>) {
+        if (dests.isEmpty()) return
+        val engine = yggstack ?: return
+        var fired = 0
+        dests.forEach { dest ->
+            try {
+                engine.warmupAddress(dest)
+                fired++
+            } catch (e: Exception) {
+                logDebug("Warmup: $dest failed: ${e.message}")
+            }
+        }
+        if (fired > 0) logInfo("Warmup: route lookup fired for $fired destination(s)")
+    }
+
+    /** True for addresses inside 200::/7 — the first hextet is 2xx/3xx. */
+    private fun isYggdrasilAddress(addr: String): Boolean {
+        var s = addr.trim()
+        if (s.startsWith("[")) s = s.substringAfter("[").substringBefore("]")
+        val h = s.substringBefore(':')
+        return h.length == 3 && h[0] in '2'..'3' &&
+            h.drop(1).all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
     }
 
     /** Pending debounced port-check pass, if any. */

@@ -851,6 +851,8 @@ internal open class UniffiVTableCallbackInterfacePingCallback(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -937,6 +939,8 @@ fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_start_ping(
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop(
 ): Short
 fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop_ping(
+): Short
+fun uniffi_yggstack_mobile_checksum_method_yggstackmobile_warmup_address(
 ): Short
 fun uniffi_yggstack_mobile_checksum_constructor_yggstackmobile_new(
 ): Short
@@ -1069,6 +1073,8 @@ fun uniffi_yggstack_mobile_fn_method_yggstackmobile_start_ping(`ptr`: Pointer,`a
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_method_yggstackmobile_stop_ping(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_yggstack_mobile_fn_method_yggstackmobile_warmup_address(`ptr`: Pointer,`addr`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_yggstack_mobile_fn_init_callback_vtable_logcallback(`vtable`: UniffiVTableCallbackInterfaceLogCallback,
 ): Unit
@@ -1314,6 +1320,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_stop_ping() != 57572.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yggstack_mobile_checksum_method_yggstackmobile_warmup_address() != 13342.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yggstack_mobile_checksum_constructor_yggstackmobile_new() != 50883.toShort()) {
@@ -1768,7 +1777,8 @@ public interface YggstackMobileInterface {
     /**
      * One-shot UDP probe: sends datagrams to a remote Yggdrasil UDP
      * port and listens for any reply (a mid-window re-probe covers the
-     * lookup-consumed first datagram; port 53 is probed with a real
+     * first datagram held back by the first-contact path lookup and
+     * session handshake; port 53 is probed with a real
      * minimal DNS query). Returns "replied" (a service answered),
      * "silent" (no reply — inconclusive in UDP, not proof of death),
      * or "error" (node not running / malformed address).
@@ -1907,7 +1917,8 @@ public interface YggstackMobileInterface {
      *   {"Type":"probe","Seq":2,"Success":false,"Error":"timeout"}
      *   {"Type":"done","Reason":"completed"|"stopped"|"error"}
      * The first probe to an unknown destination may be delayed by the
-     * overlay's key lookup and time out — it is reported as-is.
+     * overlay's first-contact path lookup and session handshake and
+     * time out — it is reported as-is.
      * Replaces any running session. Requires a running node.
      */
     fun `startPing`(`address`: kotlin.String, `count`: kotlin.Int, `timeoutMs`: kotlin.Long, `intervalMs`: kotlin.Long, `callback`: PingCallback)
@@ -1922,6 +1933,19 @@ public interface YggstackMobileInterface {
      * final {"Type":"done","Reason":"stopped"} event.
      */
     fun `stopPing`()
+    
+    /**
+     * Fire-and-forget warm-up of the overlay route to a Yggdrasil
+     * address (200::/7): triggers the same rumor path lookup a cold
+     * packet would, with no payload — the signed response caches the
+     * destination's path and teaches the address→key cache, so the next
+     * real packet skips both round trips and only pays the session
+     * handshake. No verdict is returned — the port checks that follow
+     * are the verdict. A port suffix on `addr` ("[200:...]:53") is
+     * accepted and ignored. No-op when the node is not running or the
+     * address is outside 200::/7.
+     */
+    fun `warmupAddress`(`addr`: kotlin.String)
     
     companion object
 }
@@ -2115,7 +2139,8 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
     /**
      * One-shot UDP probe: sends datagrams to a remote Yggdrasil UDP
      * port and listens for any reply (a mid-window re-probe covers the
-     * lookup-consumed first datagram; port 53 is probed with a real
+     * first datagram held back by the first-contact path lookup and
+     * session handshake; port 53 is probed with a real
      * minimal DNS query). Returns "replied" (a service answered),
      * "silent" (no reply — inconclusive in UDP, not proof of death),
      * or "error" (node not running / malformed address).
@@ -2489,7 +2514,8 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
      *   {"Type":"probe","Seq":2,"Success":false,"Error":"timeout"}
      *   {"Type":"done","Reason":"completed"|"stopped"|"error"}
      * The first probe to an unknown destination may be delayed by the
-     * overlay's key lookup and time out — it is reported as-is.
+     * overlay's first-contact path lookup and session handshake and
+     * time out — it is reported as-is.
      * Replaces any running session. Requires a running node.
      */
     @Throws(YggstackException::class)override fun `startPing`(`address`: kotlin.String, `count`: kotlin.Int, `timeoutMs`: kotlin.Long, `intervalMs`: kotlin.Long, `callback`: PingCallback)
@@ -2527,6 +2553,28 @@ open class YggstackMobile: Disposable, AutoCloseable, YggstackMobileInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_stop_ping(
         it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Fire-and-forget warm-up of the overlay route to a Yggdrasil
+     * address (200::/7): triggers the same rumor path lookup a cold
+     * packet would, with no payload — the signed response caches the
+     * destination's path and teaches the address→key cache, so the next
+     * real packet skips both round trips and only pays the session
+     * handshake. No verdict is returned — the port checks that follow
+     * are the verdict. A port suffix on `addr` ("[200:...]:53") is
+     * accepted and ignored. No-op when the node is not running or the
+     * address is outside 200::/7.
+     */override fun `warmupAddress`(`addr`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_yggstack_mobile_fn_method_yggstackmobile_warmup_address(
+        it, FfiConverterString.lower(`addr`),_status)
 }
     }
     

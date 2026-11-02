@@ -119,4 +119,14 @@ interface NativeEngine {
      *  "silent" (no reply — inconclusive in UDP, not proof of death) or
      *  "error". Blocks for up to [timeoutMs]; call off the main thread. */
     fun checkUdpPort(yggAddrPort: String, timeoutMs: Long): String
+
+    /** Fire-and-forget warm-up of the overlay route to a Yggdrasil
+     *  address (200::/7): triggers the same rumor path lookup a cold
+     *  packet would, with no payload. The signed response caches the
+     *  destination's path and teaches the address→key cache, so the next
+     *  real packet skips both round trips and only pays the session
+     *  handshake. Carries no verdict — the port checks that follow are
+     *  the verdict. A port suffix on [addr] is ignored; a malformed or
+     *  non-ygg address is a silent no-op. */
+    fun warmupAddress(addr: String)
 }

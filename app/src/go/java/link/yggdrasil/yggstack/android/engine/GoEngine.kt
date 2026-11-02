@@ -118,4 +118,6 @@ internal class GoEngine : NativeEngine {
 
     override fun checkUdpPort(yggAddrPort: String, timeoutMs: Long): String =
         yggstack.checkUDPPort(yggAddrPort, timeoutMs)
+
+    override fun warmupAddress(addr: String) = yggstack.warmupAddress(addr)
 }

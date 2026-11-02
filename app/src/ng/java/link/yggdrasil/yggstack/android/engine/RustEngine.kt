@@ -137,6 +137,8 @@ internal class RustEngine : NativeEngine {
     override fun checkUdpPort(yggAddrPort: String, timeoutMs: Long): String =
         yggstack.checkUdpPort(yggAddrPort, timeoutMs)
 
+    override fun warmupAddress(addr: String) = yggstack.warmupAddress(addr)
+
     private fun localForwardSpec(localAddr: String, remoteAddr: String): String {
         val (localIp, localPort) = splitHostPort(localAddr)
         val (remoteIp, remotePort) = splitHostPort(remoteAddr)
