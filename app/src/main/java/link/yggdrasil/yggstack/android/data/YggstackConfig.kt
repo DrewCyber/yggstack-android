@@ -5,11 +5,23 @@ import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
 
 /**
+ * How the Peers card uses the ticked peers while the service runs.
+ * ALL connects every ticked peer (previous behavior). BEST connects them all,
+ * waits for the route costs to be measured, then removes every peer except
+ * the cheapest from the running node (a runtime overlay — the ticks in the
+ * stored config are never modified) and re-dials the parked peers when the
+ * survivor is lost.
+ */
+@Serializable
+enum class PeerSelectionMode { ALL, BEST }
+
+/**
  * Configuration model for Yggstack
  */
 @Serializable
 data class YggstackConfig(
     val peers: List<String> = emptyList(),
+    val peerSelectionMode: PeerSelectionMode = PeerSelectionMode.ALL,
     val privateKey: String = "",
     val socksProxy: String = "",
     val httpProxy: String = "",

@@ -32,6 +32,7 @@ import link.yggdrasil.yggstack.android.data.ExposeMapping
 import link.yggdrasil.yggstack.android.data.ForwardMapping
 import link.yggdrasil.yggstack.android.data.Protocol
 import link.yggdrasil.yggstack.android.data.CachedPeer
+import link.yggdrasil.yggstack.android.data.PeerSelectionMode
 import link.yggdrasil.yggstack.android.data.PortCheckState
 import link.yggdrasil.yggstack.android.data.hasAlwaysOnInbound
 import link.yggdrasil.yggstack.android.data.portCheckKey
@@ -290,6 +291,43 @@ class YggstackService : Service() {
     // per-peer alive dots on the Configuration screen. Empty while stopped.
     private val _connectedPeerUris = MutableStateFlow<Set<String>>(emptySet())
     val connectedPeerUris: StateFlow<Set<String>> = _connectedPeerUris.asStateFlow()
+
+    // "Best one" runtime peer selection (see BestPeerSelector). Created with
+    // the service, fed snapshots and config/node transitions; its engine
+    // commands (add/remove live peer) run inline on the actor coroutine in
+    // a strict order.
+    private val bestPeerSelector by lazy {
+        BestPeerSelector(serviceScope, selectorCommands).also { it.start() }
+    }
+    val bestPeerSelection: StateFlow<BestPeerSelector.SelectionState>
+        get() = bestPeerSelector.state
+
+    // Direct engine calls for the selector (NOT the fire-and-forget
+    // addLivePeer/removeLivePeer wrappers — those launch independent
+    // coroutines, which could reorder a remove/add sequence).
+    private val selectorCommands = object : BestPeerSelector.Commands {
+        override fun addPeer(rawUri: String) {
+            try {
+                yggstack?.addLivePeer(withMaxBackoff(rawUri))
+            } catch (e: Exception) {
+                logWarn("Best one: error re-dialing $rawUri: ${e.message}")
+            }
+        }
+
+        override fun removePeer(rawUri: String) {
+            val fullUri = withMaxBackoff(rawUri)
+            try {
+                yggstack?.removeLivePeer(fullUri)
+                if (fullUri != rawUri) {
+                    yggstack?.removeLivePeer(rawUri)
+                }
+            } catch (e: Exception) {
+                logWarn("Best one: error parking $rawUri: ${e.message}")
+            }
+        }
+
+        override fun log(message: String) = logInfo(message)
+    }
 
     // ≥1 peer link Up — a proxy for overlay attachment (not proof of
     // reachability; a partitioned peer still counts). Derived from the
@@ -776,6 +814,11 @@ class YggstackService : Service() {
                 // Keep the screen-event receiver in sync with the live config
                 syncScreenStateReceiver()
 
+                // (Re)arm Best-one selection for this run: the config dialed
+                // all ticked peers; the selector's stability window starts
+                // with the first snapshots that follow.
+                armBestPeerSelector(config)
+
         } catch (e: Exception) {
             logError("ERROR starting Yggstack: ${e.message}")
             stopNode(enterPowerSaveIdle = false, destroying = lifecycle.isDestroyed)
@@ -800,6 +843,10 @@ class YggstackService : Service() {
         if (enterPowerSaveIdle && (!_isRunning.value || !_isSessionActive.value)) return
         _isTransitioning.value = true
         try {
+            // Clear Best-one selection state before the engine goes down, so
+            // no queued command can race the teardown (a late add/remove on a
+            // stopped engine just errors and is logged).
+            bestPeerSelector.post(BestPeerSelector.Msg.NodeStopped)
             stopNodeObservers()
             stopBlink()
             stopPlaceholderListeners()
@@ -985,6 +1032,59 @@ class YggstackService : Service() {
             rawUri.contains("maxbackoff=") -> rawUri
             rawUri.contains("?") -> "$rawUri&maxbackoff=$maxBackoffValue"
             else -> "$rawUri?maxbackoff=$maxBackoffValue"
+        }
+    }
+
+    /** Tick-only configured peers — the candidate set for Best-one selection. */
+    private fun selectionCandidates(config: YggstackConfig): List<String> =
+        config.peers.filter { it !in config.disabledPeers }
+
+    /** Tell the Best-one selector the underlay network changed (see
+     *  [BestPeerSelector.Msg.NetworkChanged]): measured costs are stale, so
+     *  it re-dials the parked peers and re-selects — even when the current
+     *  link survived the handover and no peer loss is observed. */
+    private fun notifyBestSelectorNetworkChanged() {
+        if (_isRunning.value && lastConfig?.peerSelectionMode == PeerSelectionMode.BEST) {
+            bestPeerSelector.post(BestPeerSelector.Msg.NetworkChanged)
+        }
+    }
+
+    /** (Re)arm the Best-one selector after a node start / Power Save wake. */
+    private fun armBestPeerSelector(config: YggstackConfig) {        bestPeerSelector.post(
+            BestPeerSelector.Msg.ConfigChanged(
+                enabled = config.peerSelectionMode == PeerSelectionMode.BEST,
+                candidates = selectionCandidates(config)
+            )
+        )
+        // The engine's peer callback is event-driven: it fires on
+        // connected-peer-set changes only, so a node whose peer set is steady
+        // (the live ALL→BEST toggle case — everything already connected)
+        // delivers nothing, and the measuring window would starve until some
+        // link flapped or the Peers tab's poller started. Kick one snapshot
+        // through the normal path so the window has data immediately; the
+        // channel keeps it ordered after the ConfigChanged above.
+        if (config.peerSelectionMode == PeerSelectionMode.BEST && _isRunning.value) {
+            serviceScope.launch {
+                try {
+                    yggstack?.getPeersJson()?.let { applyPeersSnapshot(it) }
+                } catch (e: Exception) {
+                    logWarn("Best one: snapshot kick failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Live-apply a Peers-card mode change while the service runs: refresh the
+     * in-service config (diagnostics display, crash-recovery snapshot) and
+     * hand the new mode to the selector — BEST starts measuring immediately,
+     * ALL re-dials everything the selector had parked. No-op for the stored
+     * tick set: parking never touched it.
+     */
+    fun applyPeerSelectionMode(config: YggstackConfig) {
+        if (_isRunning.value || _isPowerSaveIdle.value) {
+            updateLiveConfig(config)
+            armBestPeerSelector(config)
         }
     }
 
@@ -2325,11 +2425,14 @@ class YggstackService : Service() {
 
         val contentText = buildString {
             append(status)
-            if (_yggdrasilIp.value != null) {
-                append("\n${_yggdrasilIp.value}")
-            }
+            // Peers line before the IP: the folded shade shows title + two
+            // content lines, so the peer count stays visible folded and the
+            // (long) IPv6 address only appears unfolded.
             if (totalPeerCount > 0) {
                 append("\nPeers: $peerCount/$totalPeerCount")
+            }
+            if (_yggdrasilIp.value != null) {
+                append("\n${_yggdrasilIp.value}")
             }
         }
 
@@ -2479,18 +2582,33 @@ class YggstackService : Service() {
             // Query-stripped: configured URIs may carry ?priority=… etc.
             var connectedCount = 0
             val connected = mutableSetOf<String>()
+            // Full samples (Up flag, route cost, latency, priority) for the
+            // Best-one selector, which ranks ticked peers by measured cost.
+            val selectorSamples = mutableListOf<BestPeerSelector.PeerSample>()
             for (i in 0 until jsonArray.length()) {
                 val peerObj = jsonArray.getJSONObject(i)
-                if (peerObj.optBoolean("Up", false)) {
+                val uri = peerObj.optString("URI", "")
+                val up = peerObj.optBoolean("Up", false)
+                if (up) {
                     connectedCount++
-                    peerObj.optString("URI", "")
-                        .takeIf { it.isNotBlank() }
-                        ?.let { connected.add(it.split("?")[0]) }
+                    if (uri.isNotBlank()) connected.add(uri.split("?")[0])
+                }
+                if (uri.isNotBlank()) {
+                    selectorSamples += BestPeerSelector.PeerSample(
+                        uri = uri.split("?")[0],
+                        up = up,
+                        cost = peerObj.optLong("Cost", 0),
+                        latencyMs = peerObj.optLong("Latency", 0) / 1_000_000,
+                        priority = peerObj.optInt("Priority", 0)
+                    )
                 }
             }
             _peerCount.value = connectedCount
             _totalPeerCount.value = totalCount
             _connectedPeerUris.value = connected
+            if (lastConfig?.peerSelectionMode == PeerSelectionMode.BEST) {
+                bestPeerSelector.post(BestPeerSelector.Msg.Snapshot(selectorSamples))
+            }
         } catch (e: Exception) {
             logError("Error parsing peer JSON: ${e.message}")
             _peerCount.value = 0
@@ -3031,15 +3149,25 @@ class YggstackService : Service() {
                             currentNetworkType = newNetworkType
                             hasNoNetwork = false
                         }
-                        
+
                         else -> {
                             logInfo("Network available but type unchanged: $newNetworkTypeName")
                             hasNoNetwork = false
                         }
                     }
+
+                    // Any committed network transition while running
+                    // invalidates the Best-one cost basis — tell the selector
+                    // even if the current peer link survived the handover.
+                    if (currentNetworkType != previousType) {
+                        notifyBestSelectorNetworkChanged()
+                    }
                 }
                 
                 override fun onLost(network: Network) {
+                    // Network type before this loss mutates currentNetworkType
+                    // in the branches below; captured for the transition check.
+                    val typeBeforeLoss = currentNetworkType
                     // Look up the lost network type from our tracking map
                     // Don't query the network object - it may already be disconnected
                     val lostNetworkType = networkTypeMap.remove(network.networkHandle) ?: NetworkType.NONE
@@ -3099,6 +3227,13 @@ class YggstackService : Service() {
                             hasNoNetwork = false
                             currentNetworkType = activeNetworkType
                         }
+                    }
+
+                    // Same as in onAvailable: a committed transition (e.g.
+                    // Cellular lost with WiFi now active) invalidates the
+                    // Best-one cost basis.
+                    if (currentNetworkType != typeBeforeLoss) {
+                        notifyBestSelectorNetworkChanged()
                     }
                 }
                 

@@ -86,6 +86,13 @@ class ConfigurationViewModel(
     private val _connectedPeerUris = MutableStateFlow<Set<String>>(emptySet())
     val connectedPeerUris: StateFlow<Set<String>> = _connectedPeerUris.asStateFlow()
 
+    // "Best one" selection state (which peer won, which are parked) from the
+    // service's selector — drives the amber parked dots and the best badge
+    private val _bestPeerSelection =
+        MutableStateFlow(link.yggdrasil.yggstack.android.service.BestPeerSelector.SelectionState())
+    val bestPeerSelection =
+        _bestPeerSelection.asStateFlow()
+
     // Latest forward port-check verdicts (see ForwardMapping.portCheckKey)
     private val _portChecks = MutableStateFlow<Map<String, PortCheckState>>(emptyMap())
     val portChecks: StateFlow<Map<String, PortCheckState>> = _portChecks.asStateFlow()
@@ -168,6 +175,9 @@ class ConfigurationViewModel(
                     service.connectedPeerUris.collect { _connectedPeerUris.value = it }
                 }
                 viewModelScope.launch {
+                    service.bestPeerSelection.collect { _bestPeerSelection.value = it }
+                }
+                viewModelScope.launch {
                     service.portChecks.collect { _portChecks.value = it }
                 }
 
@@ -192,6 +202,8 @@ class ConfigurationViewModel(
             _serviceState.value = ServiceState.Stopped
             _yggdrasilIp.value = null
             _connectedPeerUris.value = emptySet()
+            _bestPeerSelection.value =
+                link.yggdrasil.yggstack.android.service.BestPeerSelector.SelectionState()
             _portChecks.value = emptyMap()
         }
     }
@@ -340,6 +352,22 @@ class ConfigurationViewModel(
                 yggstackService?.removeLivePeer(peer)
                 yggstackService?.updateLiveConfig(newConfig)
             }
+        }
+    }
+
+    /**
+     * Switch the Peers card between "All" and "Best one". Applies live while
+     * the service runs (BEST starts measuring now; ALL re-dials everything
+     * the selector parked); otherwise it takes effect on the next start.
+     */
+    fun setPeerSelectionMode(mode: PeerSelectionMode) {
+        if (_config.value.peerSelectionMode == mode) return
+        val newConfig = _config.value.copy(peerSelectionMode = mode)
+        updateConfig(newConfig)
+        when (_serviceState.value) {
+            is ServiceState.Running, is ServiceState.PowerSaving ->
+                yggstackService?.applyPeerSelectionMode(newConfig)
+            else -> Unit
         }
     }
 

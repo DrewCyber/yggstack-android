@@ -77,6 +77,7 @@ fun ConfigurationScreen(
     val showTransitTrafficWarning by viewModel.showTransitTrafficWarning.collectAsStateWithLifecycle()
     val peerCountries by viewModel.peerCountries.collectAsStateWithLifecycle()
     val connectedPeerUris by viewModel.connectedPeerUris.collectAsStateWithLifecycle()
+    val bestPeerSelection by viewModel.bestPeerSelection.collectAsStateWithLifecycle()
     val portChecks by viewModel.portChecks.collectAsStateWithLifecycle()
 
     // Peer Discovery's ViewModel is created here instead of inside the screen
@@ -257,12 +258,64 @@ fun ConfigurationScreen(
             // Peers Section with clickable header
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    // Header
-                    Text(
-                        text = stringResource(R.string.peers_section),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    // Header with the All / Best one mode toggle at the far
+                    // right (same pattern as the title row's Light/PRO toggle:
+                    // the label swaps with the state — checked = All, the
+                    // previous behavior; unchecked = Best one, keep only the
+                    // cheapest ticked peer). Applies live while running.
+                    val isAllMode = config.peerSelectionMode == PeerSelectionMode.ALL
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.peers_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .toggleable(
+                                    value = isAllMode,
+                                    onValueChange = {
+                                        viewModel.setPeerSelectionMode(
+                                            if (it) PeerSelectionMode.ALL else PeerSelectionMode.BEST
+                                        )
+                                    },
+                                    role = Role.Switch
+                                ),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Measuring in progress (mode on, no winner yet):
+                            // small indeterminate spinner while the stability
+                            // window runs — reappears whenever a lost survivor
+                            // triggers re-selection.
+                            if (bestPeerSelection.active && bestPeerSelection.bestUri == null) {
+                                CircularProgressIndicator(
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier
+                                        .padding(end = 6.dp)
+                                        .size(14.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(
+                                    if (isAllMode) R.string.peers_mode_all else R.string.peers_mode_best
+                                ),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isAllMode) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.primary
+                            )
+                            Switch(
+                                checked = isAllMode,
+                                onCheckedChange = null,
+                                modifier = Modifier.scale(0.8f)
+                            )
+                        }
+                    }
 
                     // Nothing configured to dial out to: the node stays
                     // isolated. Recommends exactly one peer — the closest —
@@ -280,6 +333,9 @@ fun ConfigurationScreen(
                         onReorder = { viewModel.reorderPeers(it) },
                         enabled = !isServiceRunning
                     ) { peer, isDragging ->
+                        // Query-stripped identity, the same key the engine
+                        // snapshots and the selector use
+                        val peerKey = peer.split("?")[0]
                         PeerItem(
                             peer = peer,
                             flag = peerCountries[peer]?.let { CountryFlags.flagEmoji(it) },
@@ -288,11 +344,21 @@ fun ConfigurationScreen(
                                 // Disabled peers are never dialed — a red
                                 // dot would be misleading; no dot instead
                                 !engineUp || peer in config.disabledPeers -> null
-                                // Query-stripped: config URIs may carry
-                                // ?priority=… the snapshot URIs drop
-                                peer.split("?")[0] in connectedPeerUris -> AliveDot.GREEN
+                                // Best-one mode: green = the survivor, amber =
+                                // parked standby (re-dials if the survivor is
+                                // lost), red = trying but not connected. While
+                                // the selection is still measuring, everything
+                                // behaves as in All mode (green = connected).
+                                bestPeerSelection.active -> when {
+                                    peerKey == bestPeerSelection.bestUri -> AliveDot.GREEN
+                                    peerKey in bestPeerSelection.parkedUris -> AliveDot.YELLOW
+                                    peerKey in connectedPeerUris -> AliveDot.GREEN
+                                    else -> AliveDot.RED
+                                }
+                                peerKey in connectedPeerUris -> AliveDot.GREEN
                                 else -> AliveDot.RED
                             },
+                            isBestPeer = bestPeerSelection.active && peerKey == bestPeerSelection.bestUri,
                             isEnabled = peer !in config.disabledPeers,
                             onToggleEnabled = { viewModel.togglePeerEnabled(peer) },
                             enabled = !isServiceRunning,
@@ -1699,6 +1765,8 @@ private fun PeerItem(
     modifier: Modifier = Modifier,
     flag: String? = null,
     aliveDot: AliveDot? = null,
+    // Best-one mode: this peer won the selection and is the only one kept
+    isBestPeer: Boolean = false,
     draggable: Boolean = false,
     isDragging: Boolean = false
 ) {
@@ -1729,6 +1797,16 @@ private fun PeerItem(
             color = if (isEnabled) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         )
+        if (isBestPeer) {
+            Icon(
+                Icons.Default.Star,
+                contentDescription = stringResource(R.string.best_peer_badge),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .size(16.dp)
+            )
+        }
         Checkbox(
             checked = isEnabled,
             onCheckedChange = { onToggleEnabled() }

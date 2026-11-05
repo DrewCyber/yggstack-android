@@ -41,7 +41,8 @@ data class YggstackConfigParcelable(
     val powerSaveSleepOnPortsIdle: Boolean,
     val powerSaveWakeOnPortsActive: Boolean,
     val powerSaveSleepDuringScreenOff: Boolean,
-    val powerSaveWakeOnScreenOn: Boolean
+    val powerSaveWakeOnScreenOn: Boolean,
+    val peerSelectionMode: PeerSelectionMode = PeerSelectionMode.ALL
 ) : Parcelable {
 
     fun toYggstackConfig(): YggstackConfig {
@@ -78,7 +79,8 @@ data class YggstackConfigParcelable(
             powerSaveSleepOnPortsIdle = powerSaveSleepOnPortsIdle,
             powerSaveWakeOnPortsActive = powerSaveWakeOnPortsActive,
             powerSaveSleepDuringScreenOff = powerSaveSleepDuringScreenOff,
-            powerSaveWakeOnScreenOn = powerSaveWakeOnScreenOn
+            powerSaveWakeOnScreenOn = powerSaveWakeOnScreenOn,
+            peerSelectionMode = peerSelectionMode
         )
     }
 
@@ -117,7 +119,8 @@ data class YggstackConfigParcelable(
                 powerSaveSleepOnPortsIdle = config.powerSaveSleepOnPortsIdle,
                 powerSaveWakeOnPortsActive = config.powerSaveWakeOnPortsActive,
                 powerSaveSleepDuringScreenOff = config.powerSaveSleepDuringScreenOff,
-                powerSaveWakeOnScreenOn = config.powerSaveWakeOnScreenOn
+                powerSaveWakeOnScreenOn = config.powerSaveWakeOnScreenOn,
+                peerSelectionMode = config.peerSelectionMode
             )
         }
     }

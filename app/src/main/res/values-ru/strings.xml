@@ -9,6 +9,9 @@
 
     <!-- Configuration Screen -->
     <string name="peers_section">Узлы</string>
+    <string name="peers_mode_all">Все</string>
+    <string name="peers_mode_best">Один лучший</string>
+    <string name="best_peer_badge">Лучший узел</string>
     <string name="add_peer">Добавить узел</string>
     <string name="add_custom_peer">Свой узел</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>

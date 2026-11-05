@@ -17,7 +17,9 @@ data class YggdrasilSettings(
     val groupPasswordEnabled: Boolean = false,
     val groupPassword: String = "",
     val maxBackoffEnabled: Boolean = true,
-    val maxBackoff: Int = 5
+    val maxBackoff: Int = 5,
+    // "all"/"best" in TOML; defaulted so legacy backups import cleanly.
+    val peerSelectionMode: PeerSelectionMode = PeerSelectionMode.ALL
 )
 
 /**
@@ -55,7 +57,8 @@ data class BackupConfig(
                     groupPasswordEnabled = config.groupPasswordEnabled,
                     groupPassword = config.groupPassword,
                     maxBackoffEnabled = config.maxBackoffEnabled,
-                    maxBackoff = config.maxBackoff
+                    maxBackoff = config.maxBackoff,
+                    peerSelectionMode = config.peerSelectionMode
                 ) else null,
                 proxy = ProxySettings(
                     enabled = config.proxyEnabled,
@@ -108,6 +111,7 @@ data class BackupConfig(
             var ygGroupPassword = ""
             var ygMaxBackoffEnabled = true
             var ygMaxBackoff = 5
+            var ygPeerSelectionMode = PeerSelectionMode.ALL
             var hasYggdrasil = false
 
             // proxy
@@ -223,6 +227,9 @@ data class BackupConfig(
                         "groupPassword"  -> ygGroupPassword = strVal()
                         "maxBackoffEnabled" -> ygMaxBackoffEnabled = boolVal()
                         "maxBackoff"      -> ygMaxBackoff        = intVal()
+                        "peerSelectionMode" -> ygPeerSelectionMode =
+                            if (strVal().equals("best", ignoreCase = true)) PeerSelectionMode.BEST
+                            else PeerSelectionMode.ALL
                     }
                     "proxy" -> when (key) {
                         "enabled"     -> proxyEnabled = boolVal()
@@ -276,7 +283,8 @@ data class BackupConfig(
                     groupPasswordEnabled = ygGroupPasswordEnabled,
                     groupPassword = ygGroupPassword,
                     maxBackoffEnabled = ygMaxBackoffEnabled,
-                    maxBackoff      = ygMaxBackoff
+                    maxBackoff      = ygMaxBackoff,
+                    peerSelectionMode = ygPeerSelectionMode
                 ) else null,
                 proxy   = ProxySettings(enabled = proxyEnabled, socksAddress = proxySocks, httpAddress = proxyHttp, socksEnabled = proxySocksEnabled, httpEnabled = proxyHttpEnabled, dnsServer = proxyDns, dnsServer2 = proxyDns2,
                     pacEnabled = proxyPacEnabled, pacIp = proxyPacIp, pacPort = proxyPacPort, pacAllTraffic = proxyPacAllTraffic),
@@ -329,6 +337,7 @@ data class BackupConfig(
             appendLine("groupPassword = \"${yggdrasil.groupPassword.tomlEscape()}\"")
             appendLine("maxBackoffEnabled = ${yggdrasil.maxBackoffEnabled}")
             appendLine("maxBackoff = ${yggdrasil.maxBackoff}")
+            appendLine("peerSelectionMode = \"${yggdrasil.peerSelectionMode.name.lowercase()}\"")
             appendLine()
         }
 
@@ -414,7 +423,8 @@ data class BackupConfig(
                 maxBackoffEnabled = it.maxBackoffEnabled,
                 // 5-30s is the range the backoff slider enforces; backups may
                 // carry values outside it (e.g. legacy 0), so clamp on apply.
-                maxBackoff = it.maxBackoff.coerceIn(5, 30)
+                maxBackoff = it.maxBackoff.coerceIn(5, 30),
+                peerSelectionMode = it.peerSelectionMode
             )
         } ?: base
     }

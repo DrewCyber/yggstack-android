@@ -13,6 +13,9 @@
 
     <!-- Configuration Screen -->
     <string name="peers_section">Peers</string>
+    <string name="peers_mode_all">All</string>
+    <string name="peers_mode_best">Best one</string>
+    <string name="best_peer_badge">Best peer</string>
     <string name="add_peer">Add Peer</string>
     <string name="add_custom_peer">Custom Peer</string>
     <string name="peer_uri_hint">tcp://, tls://, quic://, ws://</string>
