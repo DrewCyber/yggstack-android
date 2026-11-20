@@ -64,6 +64,12 @@ class ConfigurationViewModel(
     private val _pendingDeepLink = MutableStateFlow<PendingDeepLink?>(null)
     val pendingDeepLink: StateFlow<PendingDeepLink?> = _pendingDeepLink.asStateFlow()
 
+    // Live Expose failures (port busy, invalid address, engine rejected the
+    // mapping). The screen shows these as a Toast instead of silently keeping
+    // a green toggle over a dead listener.
+    private val _exposeErrors = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val exposeErrors: SharedFlow<String> = _exposeErrors.asSharedFlow()
+
     // Expansion state of the collapsible Configuration cards; persisted in
     // DataStore so it survives app restarts
     private val _yggdrasilConfExpanded = MutableStateFlow(false)
@@ -453,23 +459,47 @@ class ConfigurationViewModel(
                 m == mapping -> m.copy(enabled = newEnabled)
                 // When enabling, disable any sibling with the same proto+localIp+localPort
                 newEnabled && m.protocol == mapping.protocol &&
-                        m.localIp == mapping.localIp && m.localPort == mapping.localPort && m.enabled -> {
-                    if (_serviceState.value is ServiceState.Running) {
-                        yggstackService?.enableExposeMapping(m, false)
-                    }
+                        m.localIp == mapping.localIp && m.localPort == mapping.localPort && m.enabled ->
                     m.copy(enabled = false)
-                }
                 else -> m
             }
         }
         val newConfig = _config.value.copy(exposeMappings = newList)
+        val service = yggstackService?.takeIf { candidate ->
+            _serviceState.value is ServiceState.Running && candidate.isRunning.value
+        }
+        if (service != null) {
+            // Apply before persisting the new toggle: a failed bind must not
+            // leave the config saying "enabled" over a listener that never
+            // started.
+            val result = service.enableExposeMapping(mapping, newEnabled)
+            if (!result.ok) {
+                _exposeErrors.tryEmit(result.message ?: "expose failed")
+                return
+            }
+        }
         updateConfig(newConfig)
-        if (_serviceState.value is ServiceState.Running) {
+        if (service != null) {
             // Keep the service's config snapshot in sync with the live
             // toggle — the port-check coordinator probes the enabled
             // mappings from it (same as forward toggles)
-            yggstackService?.updateLiveConfig(newConfig)
-            yggstackService?.enableExposeMapping(mapping, newEnabled)
+            service.updateLiveConfig(newConfig)
+            if (newEnabled) {
+                _config.value.exposeMappings
+                    .filter {
+                        it != mapping &&
+                            it.protocol == mapping.protocol &&
+                            it.localIp == mapping.localIp &&
+                            it.localPort == mapping.localPort &&
+                            !it.enabled
+                    }
+                    .forEach { sibling ->
+                        val result = service.enableExposeMapping(sibling, false)
+                        if (!result.ok) {
+                            _exposeErrors.tryEmit(result.message ?: "expose failed")
+                        }
+                    }
+            }
         }
     }
 
