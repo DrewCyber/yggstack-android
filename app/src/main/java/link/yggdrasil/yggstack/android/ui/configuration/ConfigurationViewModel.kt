@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import link.yggdrasil.yggstack.android.data.*
+import link.yggdrasil.yggstack.android.service.ExposeMappingResult
 import link.yggdrasil.yggstack.android.service.YggstackConfigParcelable
 import link.yggdrasil.yggstack.android.service.YggstackService
 import kotlinx.coroutines.flow.*
@@ -454,30 +455,20 @@ class ConfigurationViewModel(
 
     fun toggleExposeMapping(mapping: ExposeMapping) {
         val newEnabled = !mapping.enabled
-        val newList = _config.value.exposeMappings.map { m ->
-            when {
-                m == mapping -> m.copy(enabled = newEnabled)
-                // When enabling, disable any sibling with the same proto+localIp+localPort
-                newEnabled && m.protocol == mapping.protocol &&
-                        m.localIp == mapping.localIp && m.localPort == mapping.localPort && m.enabled ->
-                    m.copy(enabled = false)
-                else -> m
-            }
-        }
-        val newConfig = _config.value.copy(exposeMappings = newList)
         val service = yggstackService?.takeIf { candidate ->
             _serviceState.value is ServiceState.Running && candidate.isRunning.value
         }
-        if (service != null) {
-            // Apply before persisting the new toggle: a failed bind must not
-            // leave the config saying "enabled" over a listener that never
-            // started.
-            val result = service.enableExposeMapping(mapping, newEnabled)
-            if (!result.ok) {
-                _exposeErrors.tryEmit(result.message ?: "expose failed")
-                return
-            }
+        // Apply before persisting the new toggle: a failed bind must not
+        // leave the config saying "enabled" over a listener that never
+        // started. planExposeToggle is pure and covered by unit tests.
+        val liveResult = service?.enableExposeMapping(mapping, newEnabled)
+            ?: ExposeMappingResult(ok = true)
+        val plan = planExposeToggle(_config.value, mapping, liveResult)
+        if (plan.error != null) {
+            _exposeErrors.tryEmit(plan.error)
+            return
         }
+        val newConfig = requireNotNull(plan.config)
         updateConfig(newConfig)
         if (service != null) {
             // Keep the service's config snapshot in sync with the live
