@@ -80,6 +80,13 @@ fun ConfigurationScreen(
     val bestPeerSelection by viewModel.bestPeerSelection.collectAsStateWithLifecycle()
     val portChecks by viewModel.portChecks.collectAsStateWithLifecycle()
 
+    val exposeErrorContext = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.exposeErrors.collect { message ->
+            Toast.makeText(exposeErrorContext, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
     // Peer Discovery's ViewModel is created here instead of inside the screen
     // so the Discover Peers button can mirror the RTT check progress — and so
     // the check keeps running (and its progress stays observable) while the

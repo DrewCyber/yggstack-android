@@ -1217,33 +1217,38 @@ class YggstackService : Service() {
      * Enable or disable a single expose (remote) mapping while the service is running.
      * Calls the corresponding Add/Remove binding on the Go layer and logs the change.
      */
-    fun enableExposeMapping(mapping: link.yggdrasil.yggstack.android.data.ExposeMapping, enable: Boolean) {
+    fun enableExposeMapping(mapping: link.yggdrasil.yggstack.android.data.ExposeMapping, enable: Boolean): ExposeMappingResult {
         val localAddr = "${mapping.localIp}:${mapping.localPort}"
         val action = if (enable) "Enabling" else "Disabling"
+        val engine = yggstack
+        if (engine == null || !engine.isRunning()) {
+            return ExposeMappingResult(false, "engine is not running")
+        }
         logInfo("$action expose rule: ${mapping.protocol.name} port ${mapping.yggPort} -> $localAddr")
         try {
             when (mapping.protocol) {
                 link.yggdrasil.yggstack.android.data.Protocol.TCP -> {
                     if (enable) {
-                        yggstack?.addRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
+                        engine.addRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Enabled TCP expose: port ${mapping.yggPort} -> $localAddr")
                     } else {
-                        yggstack?.removeRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
+                        engine.removeRemoteTcpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Disabled TCP expose: port ${mapping.yggPort} -> $localAddr")
                     }
                 }
                 link.yggdrasil.yggstack.android.data.Protocol.UDP -> {
                     if (enable) {
-                        yggstack?.addRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
+                        engine.addRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Enabled UDP expose: port ${mapping.yggPort} -> $localAddr")
                     } else {
-                        yggstack?.removeRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
+                        engine.removeRemoteUdpMapping(mapping.yggPort.toLong(), localAddr)
                         logInfo("✓ Disabled UDP expose: port ${mapping.yggPort} -> $localAddr")
                     }
                 }
             }
         } catch (e: Exception) {
             logError("✗ Error ${action.lowercase()} expose rule: ${e.message}")
+            return ExposeMappingResult(false, e.message ?: "$action expose failed")
         }
         // The rule's previous verdict is stale the moment its listener is
         // toggled — drop it so the card shows yellow until the fresh probe
@@ -1252,6 +1257,7 @@ class YggstackService : Service() {
         // A freshly enabled expose gets an immediate verdict when there is
         // connectivity to check against (no-op otherwise).
         if (enable) schedulePortChecks(delayMs = 500)
+        return ExposeMappingResult(true)
     }
 
     /**

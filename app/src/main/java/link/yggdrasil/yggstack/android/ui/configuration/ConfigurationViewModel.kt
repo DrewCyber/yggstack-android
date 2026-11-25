@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import link.yggdrasil.yggstack.android.data.*
+import link.yggdrasil.yggstack.android.service.ExposeMappingResult
 import link.yggdrasil.yggstack.android.service.YggstackConfigParcelable
 import link.yggdrasil.yggstack.android.service.YggstackService
 import kotlinx.coroutines.flow.*
@@ -63,6 +64,12 @@ class ConfigurationViewModel(
 
     private val _pendingDeepLink = MutableStateFlow<PendingDeepLink?>(null)
     val pendingDeepLink: StateFlow<PendingDeepLink?> = _pendingDeepLink.asStateFlow()
+
+    // Live Expose failures (port busy, invalid address, engine rejected the
+    // mapping). The screen shows these as a Toast instead of silently keeping
+    // a green toggle over a dead listener.
+    private val _exposeErrors = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val exposeErrors: SharedFlow<String> = _exposeErrors.asSharedFlow()
 
     // Expansion state of the collapsible Configuration cards; persisted in
     // DataStore so it survives app restarts
@@ -448,28 +455,42 @@ class ConfigurationViewModel(
 
     fun toggleExposeMapping(mapping: ExposeMapping) {
         val newEnabled = !mapping.enabled
-        val newList = _config.value.exposeMappings.map { m ->
-            when {
-                m == mapping -> m.copy(enabled = newEnabled)
-                // When enabling, disable any sibling with the same proto+localIp+localPort
-                newEnabled && m.protocol == mapping.protocol &&
-                        m.localIp == mapping.localIp && m.localPort == mapping.localPort && m.enabled -> {
-                    if (_serviceState.value is ServiceState.Running) {
-                        yggstackService?.enableExposeMapping(m, false)
-                    }
-                    m.copy(enabled = false)
-                }
-                else -> m
-            }
+        val service = yggstackService?.takeIf { candidate ->
+            _serviceState.value is ServiceState.Running && candidate.isRunning.value
         }
-        val newConfig = _config.value.copy(exposeMappings = newList)
+        // Apply before persisting the new toggle: a failed bind must not
+        // leave the config saying "enabled" over a listener that never
+        // started. planExposeToggle is pure and covered by unit tests.
+        val liveResult = service?.enableExposeMapping(mapping, newEnabled)
+            ?: ExposeMappingResult(ok = true)
+        val plan = planExposeToggle(_config.value, mapping, liveResult)
+        if (plan.error != null) {
+            _exposeErrors.tryEmit(plan.error)
+            return
+        }
+        val newConfig = requireNotNull(plan.config)
         updateConfig(newConfig)
-        if (_serviceState.value is ServiceState.Running) {
+        if (service != null) {
             // Keep the service's config snapshot in sync with the live
             // toggle — the port-check coordinator probes the enabled
             // mappings from it (same as forward toggles)
-            yggstackService?.updateLiveConfig(newConfig)
-            yggstackService?.enableExposeMapping(mapping, newEnabled)
+            service.updateLiveConfig(newConfig)
+            if (newEnabled) {
+                _config.value.exposeMappings
+                    .filter {
+                        it != mapping &&
+                            it.protocol == mapping.protocol &&
+                            it.localIp == mapping.localIp &&
+                            it.localPort == mapping.localPort &&
+                            !it.enabled
+                    }
+                    .forEach { sibling ->
+                        val result = service.enableExposeMapping(sibling, false)
+                        if (!result.ok) {
+                            _exposeErrors.tryEmit(result.message ?: "expose failed")
+                        }
+                    }
+            }
         }
     }
 
